@@ -1,19 +1,19 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // ✨ [중요] 버셀 배포 시 절대 경로 사용 강제 (빈 화면 해결 핵심)
+  base: '/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
   },
-  // ✨ [중요] 배포 시 경로 문제 방지
-  base: '/', 
   build: {
     outDir: 'dist',
     sourcemap: false,
   },
-})
+});

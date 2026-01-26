@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
 
-// 이 파일을 모듈로 인식하도록 빈 export를 추가합니다.
+// 모듈 스코프로 만들어 충돌 방지
 export {};
 
 declare global {
   interface Window {
-    naver: any;
+    naver: any; // 전역 Window 객체에 naver 속성 확장
   }
 }
