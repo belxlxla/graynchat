@@ -4,7 +4,7 @@ import {
   Search, Settings, MapPin, Cloud, Sun, CloudRain, 
   Snowflake, Wallet, Gift, ShoppingBag, Music, 
   HelpCircle, Megaphone, ChevronRight, RefreshCw, Smartphone,
-  CloudLightning, CloudFog, CloudDrizzle, Moon, Wind
+  CloudLightning, CloudFog, CloudDrizzle, Moon // Wind 제거됨
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -31,13 +31,11 @@ const MOCK_BANNERS: Banner[] = [
 ];
 
 export default function SettingsPage() {
-  // === States ===
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
   const [currentBanner, setCurrentBanner] = useState(0);
 
-  // === Effects ===
   useEffect(() => { loadWeather(); }, []);
 
   useEffect(() => {
@@ -47,35 +45,28 @@ export default function SettingsPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // === Functions ===
-
   const loadWeather = () => {
     if (!navigator.geolocation) return toast.error('위치 정보를 사용할 수 없습니다.');
 
     setLoadingWeather(true);
     
-    // ✨ [수정] 정확도 높이기 옵션 추가 (enableHighAccuracy)
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         setLocationDenied(false);
         
         try {
-          // 1. 날씨 데이터 (Open-Meteo V1 Forecast API - 최신 데이터)
-          // current=temperature_2m,weather_code,is_day 옵션 사용
           const weatherRes = await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`
           );
           const weatherJson = await weatherRes.json();
           const current = weatherJson.current;
 
-          // 2. 위치 주소 (BigDataCloud - 무료 역지오코딩)
           const geoRes = await fetch(
             `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=ko`
           );
           const geoJson = await geoRes.json();
 
-          // 위치 이름 정제 (동 > 구 > 시 순서)
           const locationName = geoJson.locality || geoJson.city || geoJson.principalSubdivision || '위치 확인 불가';
 
           setWeather({
@@ -96,63 +87,53 @@ export default function SettingsPage() {
         console.error("위치 오류:", error);
         setLoadingWeather(false);
         setLocationDenied(true);
-        // 권한 거절 시 안내
         if (error.code === 1) toast.error('위치 권한을 허용해주세요.');
       },
       {
-        enableHighAccuracy: true, // ✨ GPS 사용 강제 (정확도 향상)
+        enableHighAccuracy: true, 
         timeout: 10000,
         maximumAge: 0
       }
     );
   };
 
-  // 날씨 코드 매핑 (WMO Code)
   const getWeatherDisplay = (code: number, isDay: boolean) => {
-    // 0: 맑음
     if (code === 0) return { 
       icon: isDay ? <Sun className="w-10 h-10 text-orange-400 drop-shadow-lg" /> : <Moon className="w-10 h-10 text-yellow-200 drop-shadow-lg" />, 
       text: '맑음',
       bg: isDay ? 'from-blue-400/20 to-blue-600/20' : 'from-slate-800 to-slate-900'
     };
-    // 1, 2, 3: 구름
-    if (code === 1 || code === 2 || code === 3) return { 
+    if (code >= 1 && code <= 3) return { 
       icon: <Cloud className="w-10 h-10 text-gray-300 drop-shadow-lg" />, 
       text: code === 1 ? '대체로 맑음' : '흐림',
       bg: 'from-gray-400/20 to-gray-600/20'
     };
-    // 45, 48: 안개
-    if (code === 45 || code === 48) return { 
+    if (code >= 45 && code <= 48) return { 
       icon: <CloudFog className="w-10 h-10 text-slate-400 drop-shadow-lg" />, 
       text: '안개',
       bg: 'from-slate-500/20 to-slate-700/20'
     };
-    // 51~67: 비 (이슬비 포함)
     if (code >= 51 && code <= 67) return { 
       icon: <CloudDrizzle className="w-10 h-10 text-blue-300 drop-shadow-lg" />, 
       text: '비',
       bg: 'from-blue-500/30 to-blue-800/30'
     };
-    // 71~77: 눈
     if (code >= 71 && code <= 77) return { 
       icon: <Snowflake className="w-10 h-10 text-white drop-shadow-lg" />, 
       text: '눈',
       bg: 'from-sky-300/20 to-sky-600/20'
     };
-    // 80~82: 소나기
     if (code >= 80 && code <= 82) return { 
       icon: <CloudRain className="w-10 h-10 text-blue-400 drop-shadow-lg" />, 
       text: '소나기',
       bg: 'from-indigo-400/20 to-indigo-800/20'
     };
-    // 95~99: 뇌우
     if (code >= 95) return { 
       icon: <CloudLightning className="w-10 h-10 text-yellow-400 drop-shadow-lg" />, 
       text: '뇌우',
       bg: 'from-purple-500/20 to-purple-900/20'
     };
 
-    // 기본값
     return { 
       icon: <Sun className="w-10 h-10 text-orange-400" />, 
       text: '맑음',
@@ -162,8 +143,6 @@ export default function SettingsPage() {
 
   return (
     <div className="w-full h-full flex flex-col bg-dark-bg text-white pb-4">
-      
-      {/* === Header === */}
       <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 shrink-0">
         <h1 className="text-xl font-bold ml-1">더보기</h1>
         <div className="flex gap-1">
@@ -177,8 +156,6 @@ export default function SettingsPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        
-        {/* === 1. User Info === */}
         <div className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-white/5 transition-colors mb-2">
           <div className="w-[52px] h-[52px] rounded-[20px] bg-[#3A3A3C] overflow-hidden border border-[#2C2C2E]">
             <img src="https://i.pravatar.cc/150?u=me" alt="Me" className="w-full h-full object-cover" />
@@ -190,7 +167,6 @@ export default function SettingsPage() {
           <ChevronRight className="w-5 h-5 text-[#636366]" />
         </div>
 
-        {/* === 2. Weather Widget (High Accuracy) === */}
         <div className="px-5 mb-6">
           <div className="relative w-full h-[90px] rounded-2xl overflow-hidden border border-white/10 shadow-lg">
             {loadingWeather ? (
@@ -225,7 +201,6 @@ export default function SettingsPage() {
                     <div className="z-10 scale-110">
                       {display.icon}
                     </div>
-                    {/* Background Effect */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/4" />
                   </div>
                 );
@@ -240,7 +215,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* === 3. Main Menu Grid === */}
         <div className="px-3 mb-8">
           <div className="grid grid-cols-4 gap-y-6">
             <MenuIcon icon={<Wallet className="w-6 h-6" />} label="지갑" />
@@ -254,7 +228,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* === 4. Business Banner (Auto Slider) === */}
         <div className="px-5 mb-8">
           <div className="w-full aspect-[2.8/1] rounded-2xl overflow-hidden relative bg-[#2C2C2E] shadow-md group cursor-pointer">
             <AnimatePresence mode="wait">
@@ -270,14 +243,12 @@ export default function SettingsPage() {
               />
             </AnimatePresence>
             
-            {/* Overlay */}
             <div className="absolute bottom-0 left-0 w-full p-4 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
               <p className="text-[13px] font-bold text-white drop-shadow-md line-clamp-1">
                 {MOCK_BANNERS[currentBanner].title}
               </p>
             </div>
 
-            {/* Pagination Dots */}
             <div className="absolute bottom-3 right-3 flex gap-1.5 bg-black/20 px-2 py-1 rounded-full backdrop-blur-sm">
               {MOCK_BANNERS.map((_, idx) => (
                 <div 
@@ -289,7 +260,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* === 5. Additional List Menu === */}
         <div className="px-5 space-y-4 pb-10">
           <SectionTitle title="서비스" />
           <div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C]">
@@ -307,8 +277,6 @@ export default function SettingsPage() {
     </div>
   );
 }
-
-// === [Sub Components] ===
 
 function MenuIcon({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (

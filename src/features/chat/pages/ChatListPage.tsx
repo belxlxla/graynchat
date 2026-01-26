@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useAnimation } from 'framer-motion';
-import type { PanInfo } from 'framer-motion'; // 타입 에러 방지
+import type { PanInfo } from 'framer-motion'; 
 import { 
-  MessageSquare, User as UserIcon, Users, 
+  MessageSquare, User as UserIcon, // Users 제거됨
   Trash2, Check, BellOff, Search, Plus 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -32,7 +32,7 @@ const MOCK_CHAT_DATA: ChatRoom[] = [
 
 export default function ChatListPage() {
   const [chats, setChats] = useState<ChatRoom[]>(MOCK_CHAT_DATA);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState(''); // setSearchQuery 제거 (사용하지 않음)
 
   // 채팅방 나가기
   const handleLeaveChat = (id: string) => {
@@ -58,7 +58,6 @@ export default function ChatListPage() {
       <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 border-b border-[#2C2C2E] shrink-0">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold ml-1">채팅</h1>
-          {/* 안 읽은 메시지 총 개수 */}
           <span className="text-xl font-bold text-brand-DEFAULT">
             {chats.reduce((acc, curr) => acc + curr.unreadCount, 0)}
           </span>
@@ -119,15 +118,12 @@ function ChatListItem({
     }
   };
 
-  // ✨ [중요] 리스트 클릭 시 -> 채팅방 상세 페이지로 이동
   const handleEnterChat = () => {
     navigate(`/chat/room/${data.id}`);
   };
 
   return (
     <div className="relative w-full h-[84px] overflow-hidden border-b border-[#2C2C2E] last:border-none bg-dark-bg">
-      
-      {/* Swipe Actions (Background) */}
       <div className="absolute inset-y-0 right-0 w-[140px] flex h-full z-0">
         <button 
           onClick={() => { onRead(); controls.start({ x: 0 }); }}
@@ -145,18 +141,16 @@ function ChatListItem({
         </button>
       </div>
 
-      {/* Main Content (Foreground) */}
       <motion.div
         drag="x"
         dragConstraints={{ left: -140, right: 0 }}
         dragElastic={0.1}
         onDragEnd={handleDragEnd}
         animate={controls}
-        onClick={handleEnterChat} // 클릭 시 이동
+        onClick={handleEnterChat}
         className="relative w-full h-full bg-dark-bg flex items-center px-4 z-10 cursor-pointer active:bg-white/5 transition-colors"
         style={{ touchAction: 'pan-y' }}
       >
-        {/* Avatar */}
         <div className="relative shrink-0 mr-4">
           <div className="w-[52px] h-[52px] rounded-[20px] bg-[#3A3A3C] overflow-hidden flex items-center justify-center border border-[#2C2C2E]">
             {data.avatar ? (
@@ -176,7 +170,6 @@ function ChatListItem({
           </div>
         </div>
 
-        {/* Text Info */}
         <div className="flex-1 min-w-0 flex flex-col justify-center h-full py-1.5">
           <div className="flex justify-between items-center mb-1">
             <div className="flex items-center gap-1.5 overflow-hidden">

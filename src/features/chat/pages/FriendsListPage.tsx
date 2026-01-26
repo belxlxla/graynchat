@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Settings, Star, MessageCircle, X, User as UserIcon, 
-  UserPlus, MessageSquarePlus, RefreshCw, CheckCircle2, Circle,
-  Camera, Image as ImageIcon, Trash2, ZoomIn, Phone, BookUser
+  UserPlus, MessageSquarePlus, CheckCircle2, Circle,
+  Camera, Image as ImageIcon, Trash2, ZoomIn, Phone, BookUser, RefreshCw,
+  ChevronRight, Users // ✨ 여기에 추가되었습니다.
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Cropper from 'react-easy-crop';
@@ -70,7 +71,6 @@ const MOCK_FRIENDS_DATA: Friend[] = [
 export default function FriendsListPage() {
   const navigate = useNavigate();
 
-  // 권한 상태
   const [step, setStep] = useState<'permission' | 'complete' | 'list'>(() => {
     return localStorage.getItem('grayn_contact_permission') ? 'list' : 'permission';
   });
@@ -78,7 +78,6 @@ export default function FriendsListPage() {
 
   const [friends, setFriends] = useState<Friend[]>([]);
 
-  // 내 프로필
   const [myProfile, setMyProfile] = useState<MyProfile>({
     name: '나 (임정민)',
     status: '상태메시지 설정',
@@ -86,19 +85,16 @@ export default function FriendsListPage() {
     bg: null
   });
 
-  // 모달 상태
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
   const [showCreateChatModal, setShowCreateChatModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   
-  // 검색 상태
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => { setFriends(MOCK_FRIENDS_DATA); }, []);
 
-  // Handlers
   const handlePermissionAllow = () => { 
     localStorage.setItem('grayn_contact_permission', 'granted'); 
     setIsSynced(true); 
@@ -139,7 +135,18 @@ export default function FriendsListPage() {
   const { favorites, normals } = useMemo(() => {
     const favs = filteredFriends.filter(f => f.isFavorite);
     const norms = filteredFriends.filter(f => !f.isFavorite);
-    const sortFn = (a: Friend, b: Friend) => a.name.localeCompare(b.name);
+    const sortFn = (a: Friend, b: Friend) => {
+      const getType = (s: string) => {
+        const code = s.charCodeAt(0);
+        if (code >= 48 && code <= 57) return 1;
+        if (code >= 44032 && code <= 55203) return 2;
+        return 3;
+      };
+      const typeA = getType(a.name);
+      const typeB = getType(b.name);
+      if (typeA !== typeB) return typeA - typeB;
+      return a.name.localeCompare(b.name);
+    };
     return { favorites: favs, normals: norms.sort(sortFn) };
   }, [filteredFriends]);
 
@@ -224,7 +231,6 @@ export default function FriendsListPage() {
       
       <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} initialProfile={myProfile} onSave={handleSaveMyProfile} />
       
-      {/* ✨ 리뉴얼된 친구 추가 모달 */}
       <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} />
       
       <CreateChatModal isOpen={showCreateChatModal} onClose={() => setShowCreateChatModal(false)} friends={friends} />
@@ -349,7 +355,6 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: { isOpen:
   );
 }
 
-// ✨ [RE-DESIGNED] 친구 추가 모달 (탭 UI 및 레이아웃 개선)
 function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<'search' | 'sync'>('search');
   const [name, setName] = useState('');
@@ -394,7 +399,6 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         onClick={(e) => e.stopPropagation()} 
         className="w-full max-w-[360px] bg-[#1C1C1E] rounded-3xl overflow-hidden border border-[#2C2C2E] shadow-2xl flex flex-col max-h-[500px]"
       >
-        {/* Header */}
         <div className="h-14 flex items-center justify-between px-5 bg-[#2C2C2E] shrink-0">
           <h3 className="text-white font-bold text-lg">친구 추가</h3>
           <button onClick={onClose} className="text-[#8E8E93] hover:text-white transition-colors">
@@ -402,7 +406,6 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
           </button>
         </div>
 
-        {/* Custom Tab Bar */}
         <div className="flex border-b border-[#3A3A3C] bg-[#1C1C1E]">
           <button 
             onClick={() => setTab('search')} 
@@ -424,7 +427,6 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
           </button>
         </div>
 
-        {/* Content Area */}
         <div className="p-6 flex-1 overflow-y-auto">
           {tab === 'search' ? (
             <div className="flex flex-col gap-5">
@@ -467,7 +469,6 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
                 </>
               )}
 
-              {/* Search Results */}
               {searchResult === 'found' && foundUser && (
                 <div className="flex flex-col items-center py-6 animate-fade-in">
                   <div className="w-24 h-24 rounded-full bg-[#3A3A3C] mb-4 overflow-hidden border-4 border-[#2C2C2E]">
@@ -504,7 +505,6 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
               )}
             </div>
           ) : (
-            // Sync Tab Content
             <div className="flex flex-col items-center justify-center h-full py-6 text-center animate-fade-in">
               <div className="w-20 h-20 rounded-full bg-[#2C2C2E] flex items-center justify-center mb-5 relative">
                 <BookUser className="w-9 h-9 text-[#8E8E93]" />
