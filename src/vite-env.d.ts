@@ -1,10 +1,20 @@
-/// <reference types="vite/client" />
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
 
-// 모듈 스코프로 만들어 충돌 방지
-export {};
-
-declare global {
-  interface Window {
-    naver: any; // 전역 Window 객체에 naver 속성 확장
-  }
-}
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  // ✨ [중요] 배포 경로 문제 해결 (상대 경로가 아닌 절대 경로 '/')
+  base: '/',
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    sourcemap: false,
+  },
+});
