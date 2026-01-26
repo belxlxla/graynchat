@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 전체 앱 기본 스타일 설정 */
+body {
+  /* tailwind.config.js에서 설정한 색상 변수를 적용합니다 */
+  @apply bg-dark-bg text-dark-text-primary antialiased;
+  
+  /* 모바일 앱처럼 스크롤 튕김(바운스) 방지 */
+  overscroll-behavior-y: none;
+  
+  /* 폰트 렌더링 최적화 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 스크롤바 숨기기 (선택사항: 앱처럼 보이게 하려면 추천) */
+::-webkit-scrollbar {
+  display: none;
+}
