@@ -91,7 +91,7 @@ export default function PhoneAuthPage({ onBackToLogin, onNewUser }: PhoneAuthPag
 
   // 인증 확인
   const handleVerify = () => {
-    if (verifyCode === '123456') {
+    if (verifyCode === '000000') {
       toast.success('인증이 완료되었습니다.');
       onNewUser();
     } else {
@@ -202,7 +202,7 @@ export default function PhoneAuthPage({ onBackToLogin, onNewUser }: PhoneAuthPag
                       setVerifyCode(e.target.value.slice(0, 6)); 
                       setCodeError(false);
                     }}
-                    placeholder="123456"
+                    placeholder="000000"
                     className="w-full h-14 bg-transparent px-4 text-lg text-white placeholder-[#636366] outline-none"
                     autoFocus
                   />

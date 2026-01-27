@@ -13,8 +13,9 @@ import FriendsListPage from '../features/chat/pages/FriendsListPage';
 import ChatListPage from '../features/chat/pages/ChatListPage';
 import ChatRoomPage from '../features/chat/pages/ChatRoomPage';
 import SettingsPage from '../features/settings/pages/SettingsPage';
+import AccountInfoPage from '../features/settings/pages/AccountInfoPage';
+import SecurityPage from '../features/settings/pages/SecurityPage'; // ✨ 추가됨
 
-// Layout
 import MainLayout from '../components/layout/MainLayout';
 
 const Placeholder = ({ title }: { title: string }) => (
@@ -48,10 +49,12 @@ function App() {
           <Route path="contents" element={<Placeholder title="그레인 콘텐츠" />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
-        
-        {/* 채팅방 상세 (독립 페이지) */}
+
+        {/* 독립 페이지들 (하단 탭 없음) */}
         <Route path="/chat/room/:chatId" element={<ChatRoomPage />} />
-        
+        <Route path="/settings/account" element={<AccountInfoPage />} />
+        <Route path="/settings/security" element={<SecurityPage />} /> {/* ✨ 라우트 추가 */}
+
         <Route path="*" element={<Navigate to="/main/friends" replace />} />
       </Routes>
     </BrowserRouter>
