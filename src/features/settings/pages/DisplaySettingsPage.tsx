@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion'; // ✨ AnimatePresence 제거됨
-import { ChevronLeft, Moon, Sun, Type, Smartphone, Check } from 'lucide-react';
+import { ChevronLeft, Moon, Sun, Type, Smartphone, Check } from 'lucide-react'; // ✨ motion 제거됨
 import toast from 'react-hot-toast';
 
 export default function DisplaySettingsPage() {

@@ -1,15 +1,16 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import type { PanInfo, Point, Area } from 'framer-motion'; 
+import type { PanInfo } from 'framer-motion'; 
 import { 
   Search, Settings, Star, MessageCircle, X, User as UserIcon, 
   UserPlus, MessageSquarePlus, CheckCircle2, Circle,
   Camera, Image as ImageIcon, Trash2, ZoomIn, Phone, BookUser, RefreshCw,
-  ChevronRight, Users, Ban, AlertTriangle // ✨ AlertTriangle 추가
+  ChevronRight, Users, Ban, AlertTriangle 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Cropper from 'react-easy-crop';
+import type { Point, Area } from 'react-easy-crop'; // ✨ 수정됨: framer-motion -> react-easy-crop
 
 // === [Utility] 이미지 크롭 함수 ===
 async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
@@ -90,16 +91,12 @@ export default function FriendsListPage() {
   const [showCreateChatModal, setShowCreateChatModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   
-  // 차단 모달 상태
   const [blockTarget, setBlockTarget] = useState<Friend | null>(null);
-  
-  // ✨ 삭제 모달 상태 추가
   const [deleteTarget, setDeleteTarget] = useState<Friend | null>(null);
   
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 설정 드롭다운 상태
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => { setFriends(MOCK_FRIENDS_DATA); }, []);
@@ -135,7 +132,6 @@ export default function FriendsListPage() {
     navigate(`/chat/room/${friendId}`); 
   };
 
-  // ✨ 친구 삭제 버튼 클릭 (모달 열기)
   const handleDeleteClick = (id: number) => {
     const target = friends.find(f => f.id === id);
     if (target) {
@@ -143,7 +139,6 @@ export default function FriendsListPage() {
     }
   };
 
-  // ✨ 친구 삭제 확정 (모달에서 확인 클릭 시)
   const handleDeleteConfirm = () => {
     if (deleteTarget) {
       setFriends(prev => prev.filter(f => f.id !== deleteTarget.id));
@@ -152,14 +147,13 @@ export default function FriendsListPage() {
     }
   };
 
-  // 친구 차단 처리
-  const handleBlockConfirm = (friendId: number, options: { blockMessage: boolean, hideProfile: boolean }) => {
+  // ✨ _options로 변경 (TS6133 에러 해결)
+  const handleBlockConfirm = (friendId: number, _options: { blockMessage: boolean, hideProfile: boolean }) => {
     setFriends(prev => prev.filter(f => f.id !== friendId));
     setBlockTarget(null);
-    toast.success('차단되었습니다. 더보기 > 친구 메뉴에서 확인 가능합니다.');
+    toast.success('차단되었습니다. 차단된 친구 관리에서 확인 가능합니다.');
   };
 
-  // 드롭다운 메뉴 핸들러
   const handleGoFriends = () => {
     navigate('/settings/friends');
     setIsSettingsOpen(false);
@@ -303,7 +297,7 @@ export default function FriendsListPage() {
                             friend={f} 
                             onClick={() => setSelectedFriend(f)} 
                             onBlock={() => setBlockTarget(f)}
-                            onDelete={() => handleDeleteClick(f.id)} // ✨ 함수 변경
+                            onDelete={() => handleDeleteClick(f.id)}
                           />
                         ))}
                       </div>
@@ -316,7 +310,7 @@ export default function FriendsListPage() {
                           friend={f} 
                           onClick={() => setSelectedFriend(f)}
                           onBlock={() => setBlockTarget(f)}
-                          onDelete={() => handleDeleteClick(f.id)} // ✨ 함수 변경
+                          onDelete={() => handleDeleteClick(f.id)}
                         />
                       ))}
                     </div>
@@ -344,7 +338,6 @@ export default function FriendsListPage() {
         onConfirm={handleBlockConfirm} 
       />
 
-      {/* ✨ 친구 삭제 모달 */}
       <DeleteFriendModal
         friend={deleteTarget}
         onClose={() => setDeleteTarget(null)}
@@ -369,8 +362,6 @@ export default function FriendsListPage() {
     </div>
   );
 }
-
-// === Sub Components ===
 
 function FriendItem({ 
   friend, 
@@ -515,7 +506,6 @@ function BlockFriendModal({
   );
 }
 
-// ✨ [New] 친구 삭제 모달 컴포넌트
 function DeleteFriendModal({ 
   friend, 
   onClose, 

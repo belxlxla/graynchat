@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Plus, Trash2, AlertTriangle, Upload, Check, ChevronDown, X } from 'lucide-react';
+import { motion } from 'framer-motion'; // ✨ AnimatePresence 제거됨
+import { ChevronLeft, Plus, Trash2, AlertTriangle, Check, ChevronDown } from 'lucide-react'; // ✨ Upload, X 제거됨
 import toast from 'react-hot-toast';
 
 // === Types ===
@@ -132,7 +132,7 @@ export default function IllegalContentReportPage() {
     toast.success('인증이 완료되었습니다.');
   };
 
-  // 4. Submit (Mailto - Formatted Report)
+  // 4. Submit (Mailto)
   const handleSubmit = () => {
     if (!name || !contact || !emailId || !birthdate || !detail) return toast.error('필수 항목을 모두 입력해주세요.');
     if (!isVerified) return toast.error('본인 인증을 완료해주세요.');
@@ -431,7 +431,8 @@ ${files.map((f, i) => f.file ? `${i + 1}. ${f.file.name}` : `${i + 1}. (파일 �
                     <input 
                       type="file" 
                       className="hidden" 
-                      ref={el => fileInputRefs.current[item.id] = el}
+                      // ✨ 수정됨: 암시적 리턴 방지를 위해 중괄호 사용
+                      ref={(el) => { fileInputRefs.current[item.id] = el; }}
                       onChange={(e) => handleFileChange(item.id, e)}
                     />
                     <button onClick={() => fileInputRefs.current[item.id]?.click()} className="text-white bg-[#3A3A3C] px-2 py-1 rounded text-xs ml-2 hover:bg-[#48484A]">파일 선택</button>
@@ -504,7 +505,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div className="border-t border-[#2C2C2E] pt-6">
       <h3 className="text-[15px] font-bold text-white mb-4 flex items-center gap-2">
-        <div className="w-1 h-4 bg-[#B91C1C]" /> {/* Red Accent */}
+        <div className="w-1 h-4 bg-[#B91C1C]" /> 
         {title}
       </h3>
       {children}

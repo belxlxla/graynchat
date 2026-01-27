@@ -1,27 +1,24 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+// ✨ motion, AnimatePresence 제거됨 (단순 렌더링 사용)
 import { ChevronLeft, ChevronRight, Siren, Scale, Camera, Activity, CheckCircle2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ReportCenterPage() {
   const navigate = useNavigate();
 
-  // State for diagnostics
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectComplete, setInspectComplete] = useState(false);
   
-  // State for Mail Modal
   const [isMailModalOpen, setIsMailModalOpen] = useState(false);
 
-  // Handlers
   const handleReportClick = (type: string) => {
     if (type === 'harmful') {
       navigate('/settings/help/report/harmful');
     } else if (type === 'copyright') {
       navigate('/settings/help/report/copyright');
     } else if (type === 'illegal') {
-      navigate('/settings/help/report/illegal'); // ✨ 불법촬영물 신고 페이지 연결
+      navigate('/settings/help/report/illegal');
     } else {
       toast('준비 중인 기능입니다.');
     }
@@ -64,7 +61,6 @@ export default function ReportCenterPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
       
-      {/* Header */}
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
         <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
           <ChevronLeft className="w-7 h-7" />
@@ -72,10 +68,8 @@ export default function ReportCenterPage() {
         <h1 className="text-lg font-bold ml-1">그레인 신고센터</h1>
       </header>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-10">
         
-        {/* 1. Title Section */}
         <div className="p-6 pt-8">
           <h2 className="text-2xl font-bold leading-tight">
             언제든지 그레인에게<br/>말씀해주세요
@@ -84,7 +78,6 @@ export default function ReportCenterPage() {
 
         <div className="px-5 space-y-6">
           
-          {/* 2. Report List */}
           <div className="space-y-4">
             <ReportItem 
               icon={<Siren className="w-5 h-5 text-[#FF453A]" />}
@@ -102,13 +95,12 @@ export default function ReportCenterPage() {
               icon={<Camera className="w-5 h-5 text-[#BF5AF2]" />}
               title="불법촬영물 등 유통 신고"
               desc="불법촬영물 등이 유통되는 것을 목격하거나 발견하셨나요? 전기통신사업법 시행령에 따라 유통방지에 필요한 조치를 요청할 수 있습니다."
-              onClick={() => handleReportClick('illegal')} // ✨ ID 전달
+              onClick={() => handleReportClick('illegal')}
             />
           </div>
 
           <div className="h-[1px] bg-[#2C2C2E] mx-2" />
 
-          {/* 3. Diagnostics Section */}
           <div className="bg-[#2C2C2E] rounded-2xl p-5 border border-[#3A3A3C]">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -179,8 +171,6 @@ export default function ReportCenterPage() {
   );
 }
 
-// === Sub Components ===
-
 function ReportItem({ icon, title, desc, onClick }: { icon: React.ReactNode, title: string, desc: string, onClick: () => void }) {
   return (
     <button 
@@ -206,13 +196,11 @@ function ConfirmMailModal({ isOpen, onClose, onConfirm }: { isOpen: boolean, onC
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <motion.div 
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      <div 
         className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
         onClick={onClose} 
       />
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+      <div 
         className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center"
       >
         <div className="p-6">
@@ -236,7 +224,7 @@ function ConfirmMailModal({ isOpen, onClose, onConfirm }: { isOpen: boolean, onC
             확인
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
