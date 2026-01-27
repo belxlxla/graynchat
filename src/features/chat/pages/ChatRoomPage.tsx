@@ -3,8 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Plus, Send, Image as ImageIcon, Camera, 
-  MapPin, FileText, User, Crop, X, CheckCircle2, Circle,
-  Search, Settings // Menu 제거됨
+  MapPin, FileText, User as UserIcon, Crop, X, CheckCircle2, Circle,
+  Search, Settings 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -16,6 +16,13 @@ interface Message {
   timestamp: string;
   type: 'text' | 'image' | 'file';
 }
+
+// ✨ 멘션용 참여자 데이터 (실제로는 서버에서 가져옴)
+const PARTICIPANTS = [
+  { id: '1', name: '강민수', avatar: 'https://i.pravatar.cc/150?u=2' },
+  { id: '2', name: '김철수', avatar: 'https://i.pravatar.cc/150?u=4' },
+  { id: '3', name: '박영희', avatar: null },
+];
 
 // --- [Mock Data] ---
 const MOCK_MESSAGES: Message[] = [
@@ -29,7 +36,7 @@ const MOCK_MESSAGES: Message[] = [
 
 export default function ChatRoomPage() {
   const navigate = useNavigate();
-  useParams(); // chatId 제거 (사용하지 않음)
+  const { chatId } = useParams();
   
   // 데이터 상태
   const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
@@ -44,6 +51,10 @@ export default function ChatRoomPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
 
+  // ✨ 멘션 상태
+  const [showMentionList, setShowMentionList] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 스크롤 하단 고정
@@ -52,6 +63,33 @@ export default function ChatRoomPage() {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isMenuOpen, isSearchOpen, isCaptureMode]);
+
+  // ✨ 입력값 변경 핸들러 (멘션 감지)
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputText(value);
+
+    // 마지막 단어가 '@'로 시작하는지 확인
+    const words = value.split(' ');
+    const lastWord = words[words.length - 1];
+
+    if (lastWord.startsWith('@')) {
+      setShowMentionList(true);
+      setMentionQuery(lastWord.slice(1)); // '@' 제외한 검색어
+    } else {
+      setShowMentionList(false);
+    }
+  };
+
+  // ✨ 멘션 선택 핸들러
+  const handleSelectMention = (name: string) => {
+    const words = inputText.split(' ');
+    words.pop(); // 방금 입력하던 @... 제거
+    const newValue = words.join(' ') + (words.length > 0 ? ' ' : '') + `@${name} `;
+    setInputText(newValue);
+    setShowMentionList(false);
+    // 입력창 포커스 유지는 실제 구현 시 ref 사용 필요
+  };
 
   // 메시지 전송
   const handleSend = () => {
@@ -65,6 +103,7 @@ export default function ChatRoomPage() {
     };
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
+    setShowMentionList(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -96,8 +135,15 @@ export default function ChatRoomPage() {
     );
   };
 
+  const handleGoSettings = () => {
+    navigate(`/chat/room/${chatId}/settings`);
+  };
+
+  // 멘션 필터링
+  const filteredParticipants = PARTICIPANTS.filter(p => p.name.includes(mentionQuery));
+
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden relative">
       
       {/* Header */}
       <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-30">
@@ -124,7 +170,7 @@ export default function ChatRoomPage() {
               <button onClick={() => { setIsSearchOpen(!isSearchOpen); setSearchKeyword(''); }} className={`p-2 rounded-full transition-colors ${isSearchOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}>
                 <Search className="w-6 h-6" />
               </button>
-              <button onClick={() => toast('채팅방 설정 (준비중)')} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
+              <button onClick={handleGoSettings} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
                 <Settings className="w-6 h-6" />
               </button>
             </>
@@ -171,13 +217,44 @@ export default function ChatRoomPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* ✨ 멘션 리스트 팝업 (입력창 위) */}
+      <AnimatePresence>
+        {showMentionList && filteredParticipants.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
+            className="absolute bottom-[70px] left-4 right-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] overflow-hidden shadow-2xl z-40 max-h-[200px] overflow-y-auto custom-scrollbar"
+          >
+            <div className="px-4 py-2 text-xs text-[#8E8E93] font-bold border-b border-[#3A3A3C]">대화상대 멘션</div>
+            {filteredParticipants.map(user => (
+              <button 
+                key={user.id} 
+                onClick={() => handleSelectMention(user.name)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#3A3A3C] transition-colors text-left"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#3A3A3C] overflow-hidden">
+                  {user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : <UserIcon className="w-4 h-4 m-auto mt-2 text-[#8E8E93]" />}
+                </div>
+                <span className="text-sm text-white font-medium">{user.name}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Input Area */}
       {!isCaptureMode && (
         <div className="shrink-0 z-20 bg-[#1C1C1E] border-t border-[#2C2C2E]">
           <div className="flex items-center gap-2 p-3">
             <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={`p-2 rounded-full transition-transform duration-200 ${isMenuOpen ? 'rotate-45 bg-[#2C2C2E]' : ''}`}><Plus className={`w-6 h-6 ${isMenuOpen ? 'text-white' : 'text-[#8E8E93]'}`} /></button>
             <div className="flex-1 bg-[#2C2C2E] rounded-full h-10 flex items-center px-4">
-              <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown} placeholder="메시지 입력" className="bg-transparent w-full text-white text-sm placeholder-[#636366] focus:outline-none" />
+              <input 
+                type="text" 
+                value={inputText} 
+                onChange={handleInputChange} // ✨ 변경된 핸들러 연결
+                onKeyDown={handleKeyDown} 
+                placeholder="메시지 입력" 
+                className="bg-transparent w-full text-white text-sm placeholder-[#636366] focus:outline-none" 
+              />
             </div>
             <button onClick={handleSend} disabled={!inputText.trim()} className={`p-2.5 rounded-full transition-colors ${inputText.trim() ? 'bg-brand-DEFAULT text-white' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5 ml-0.5" /></button>
           </div>
@@ -189,7 +266,7 @@ export default function ChatRoomPage() {
                   <MenuIcon icon={<Camera className="w-6 h-6" />} label="카메라" onClick={() => toast('카메라 실행 (준비중)')} />
                   <MenuIcon icon={<MapPin className="w-6 h-6" />} label="지도" onClick={() => toast('위치 공유 (준비중)')} />
                   <MenuIcon icon={<FileText className="w-6 h-6" />} label="파일" onClick={() => toast('파일 전송 (준비중)')} />
-                  <MenuIcon icon={<User className="w-6 h-6" />} label="연락처" onClick={() => toast('연락처 전송 (준비중)')} />
+                  <MenuIcon icon={<UserIcon className="w-6 h-6" />} label="연락처" onClick={() => toast('연락처 전송 (준비중)')} />
                   <MenuIcon icon={<Crop className="w-6 h-6" />} label="캡처" onClick={() => { setIsMenuOpen(false); setIsCaptureMode(true); toast('캡처할 대화를 선택하세요.'); }} />
                 </div>
               </motion.div>

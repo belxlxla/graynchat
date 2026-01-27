@@ -9,7 +9,15 @@ export default function SecurityPage() {
   const navigate = useNavigate();
 
   const handleMenuClick = (menu: string) => {
-    toast(`${menu} 기능은 준비 중입니다.`);
+    if (menu === '개인정보 관리') {
+      navigate('/settings/security/privacy');
+    } else if (menu === '기기 연결 관리') {
+      navigate('/settings/security/devices');
+    } else if (menu === '화면 잠금') {
+      navigate('/settings/security/lock'); // ✨ 연결됨
+    } else {
+      toast(`${menu} 기능은 준비 중입니다.`);
+    }
   };
 
   return (
@@ -63,7 +71,6 @@ export default function SecurityPage() {
 }
 
 // === [Sub Components] ===
-// 설정 페이지와 디자인 통일성을 위한 컴포넌트
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (

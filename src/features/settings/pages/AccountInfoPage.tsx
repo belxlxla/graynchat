@@ -196,7 +196,7 @@ export default function AccountInfoPage() {
           {/* 로그아웃 버튼 */}
           <button 
             onClick={handleLogout}
-            className="w-full py-4 text-[#FF453A] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2"
+            className="w-full py-4 text-[#EC5022] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2"
           >
             <LogOut className="w-4 h-4" />
             로그아웃
@@ -235,7 +235,7 @@ export default function AccountInfoPage() {
                 </button>
                 <button 
                   onClick={() => handleResetImage(editTarget)}
-                  className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-[#FF453A] font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"
+                  className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-[#EC5022] font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"
                 >
                   <Trash2 className="w-5 h-5" /> 기본값으로 변경
                 </button>

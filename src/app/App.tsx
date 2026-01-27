@@ -14,7 +14,17 @@ import ChatListPage from '../features/chat/pages/ChatListPage';
 import ChatRoomPage from '../features/chat/pages/ChatRoomPage';
 import SettingsPage from '../features/settings/pages/SettingsPage';
 import AccountInfoPage from '../features/settings/pages/AccountInfoPage';
-import SecurityPage from '../features/settings/pages/SecurityPage'; // ✨ 추가됨
+import SecurityPage from '../features/settings/pages/SecurityPage';
+import PrivacyManagementPage from '../features/settings/pages/PrivacyManagementPage';
+import DeviceManagementPage from '../features/settings/pages/DeviceManagementPage';
+import ScreenLockPage from '../features/settings/pages/ScreenLockPage';
+import FriendsSettingsPage from '../features/settings/pages/FriendsSettingsPage';
+import BlockedFriendsPage from '../features/settings/pages/BlockedFriendsPage';
+import ChatRoomSettingsPage from '../features/chat/pages/ChatRoomSettingsPage';
+import NotificationSettingsPage from '../features/settings/pages/NotificationSettingsPage';
+import DisplaySettingsPage from '../features/settings/pages/DisplaySettingsPage';
+import FontSettingsPage from '../features/settings/pages/FontSettingsPage';
+import WallpaperSettingsPage from '../features/settings/pages/WallpaperSettingsPage'; // ✨ 추가됨
 
 import MainLayout from '../components/layout/MainLayout';
 
@@ -50,10 +60,22 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* 독립 페이지들 (하단 탭 없음) */}
+        {/* 독립 페이지들 */}
         <Route path="/chat/room/:chatId" element={<ChatRoomPage />} />
+        <Route path="/chat/room/:chatId/settings" element={<ChatRoomSettingsPage />} />
+
+        {/* 설정 페이지들 */}
         <Route path="/settings/account" element={<AccountInfoPage />} />
-        <Route path="/settings/security" element={<SecurityPage />} /> {/* ✨ 라우트 추가 */}
+        <Route path="/settings/security" element={<SecurityPage />} />
+        <Route path="/settings/security/privacy" element={<PrivacyManagementPage />} />
+        <Route path="/settings/security/devices" element={<DeviceManagementPage />} />
+        <Route path="/settings/security/lock" element={<ScreenLockPage />} />
+        <Route path="/settings/friends" element={<FriendsSettingsPage />} />
+        <Route path="/settings/friends/blocked" element={<BlockedFriendsPage />} />
+        <Route path="/settings/notification" element={<NotificationSettingsPage />} />
+        <Route path="/settings/display" element={<DisplaySettingsPage />} />
+        <Route path="/settings/display/font" element={<FontSettingsPage />} />
+        <Route path="/settings/display/wallpaper" element={<WallpaperSettingsPage />} /> {/* ✨ 라우트 추가 */}
 
         <Route path="*" element={<Navigate to="/main/friends" replace />} />
       </Routes>

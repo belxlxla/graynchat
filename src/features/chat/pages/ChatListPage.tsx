@@ -246,7 +246,7 @@ function ChatListItem({
         </button>
         <button 
           onClick={onLeave}
-          className="flex-1 h-full bg-[#FF453A] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"
+          className="flex-1 h-full bg-[#EC5022] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"
         >
           <Trash2 className="w-5 h-5 mb-1" />
           <span className="text-[10px] font-medium">나가기</span>
@@ -307,7 +307,7 @@ function ChatListItem({
               {data.lastMessage}
             </p>
             {data.unreadCount > 0 && (
-              <div className="min-w-[18px] h-[18px] px-1.5 bg-[#FF453A] rounded-full flex items-center justify-center ml-2">
+              <div className="min-w-[18px] h-[18px] px-1.5 bg-[#EC5022] rounded-full flex items-center justify-center ml-2">
                 <span className="text-[10px] font-bold text-white leading-none">
                   {data.unreadCount > 99 ? '99+' : data.unreadCount}
                 </span>
