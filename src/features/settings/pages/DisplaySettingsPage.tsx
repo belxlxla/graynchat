@@ -1,142 +1,120 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Type, Image as ImageIcon, Smartphone, Check, X } from 'lucide-react';
+import { motion } from 'framer-motion'; // ✨ AnimatePresence 제거됨
+import { ChevronLeft, Moon, Sun, Type, Smartphone, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function DisplaySettingsPage() {
   const navigate = useNavigate();
+  const [textSize, setTextSize] = useState(2); // 1~5 step
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
-  // === States ===
-  const [orientation, setOrientation] = useState<'auto' | 'portrait' | 'landscape'>('auto');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // === Helper ===
-  const getOrientationLabel = (val: string) => {
-    switch(val) {
-      case 'auto': return '자동 회전';
-      case 'portrait': return '세로 고정';
-      case 'landscape': return '가로 고정';
-      default: return '자동 회전';
-    }
-  };
-
-  // === Handler ===
-  const handleOrientationSelect = (val: 'auto' | 'portrait' | 'landscape') => {
-    setOrientation(val);
-    setIsModalOpen(false);
-    toast.success(`화면 방향이 '${getOrientationLabel(val)}'으로 설정되었습니다.`);
+  const handleSave = () => {
+    toast.success('화면 설정이 저장되었습니다.');
+    navigate(-1);
   };
 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
-      
-      {/* Header */}
-      <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
+      <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
         <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
           <ChevronLeft className="w-7 h-7" />
         </button>
-        <h1 className="text-lg font-bold ml-1">화면</h1>
+        <h1 className="text-lg font-bold">화면</h1>
+        <button onClick={handleSave} className="p-2 text-brand-DEFAULT font-bold text-sm">
+          완료
+        </button>
       </header>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pb-10 pt-4">
-        <div className="px-5 space-y-6">
-          <div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C]">
-            
-            {/* 1. 글자크기/글씨체 */}
-            <ListItem 
-              icon={<Type className="w-5 h-5 text-[#8E8E93]" />}
-              label="글자크기/글씨체"
-              onClick={() => navigate('/settings/display/font')}
-            />
-
-            <div className="h-[1px] bg-[#3A3A3C] mx-4" />
-
-            {/* 2. 배경화면 (연결됨) */}
-            <ListItem 
-              icon={<ImageIcon className="w-5 h-5 text-[#8E8E93]" />}
-              label="배경화면"
-              onClick={() => navigate('/settings/display/wallpaper')} // ✨ 연결됨
-            />
-
-            <div className="h-[1px] bg-[#3A3A3C] mx-4" />
-
-            {/* 3. 화면 방향 */}
-            <ListItem 
-              icon={<Smartphone className="w-5 h-5 text-[#8E8E93]" />}
-              label="화면 방향"
-              value={getOrientationLabel(orientation)}
-              onClick={() => setIsModalOpen(true)}
-            />
-
-          </div>
-        </div>
-      </div>
-
-      {/* Orientation Selection Modal */}
-      <OrientationModal 
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        current={orientation}
-        onSelect={handleOrientationSelect}
-      />
-    </div>
-  );
-}
-
-// === Sub Components ===
-
-function ListItem({ icon, label, value, onClick }: { icon: React.ReactNode, label: string, value?: string, onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group">
-      <div className="flex items-center gap-3">
-        {icon}
-        <span className="text-[15px] text-white">{label}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        {value && <span className="text-[13px] text-[#8E8E93]">{value}</span>}
-        <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
-      </div>
-    </button>
-  );
-}
-
-function OrientationModal({ isOpen, onClose, current, onSelect }: { isOpen: boolean, onClose: () => void, current: string, onSelect: (val: any) => void }) {
-  if (!isOpen) return null;
-  const options = [
-    { id: 'auto', label: '자동 회전' },
-    { id: 'portrait', label: '세로 고정' },
-    { id: 'landscape', label: '가로 고정' },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center px-4 sm:items-center">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div 
-        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} 
-        transition={{ type: "spring", damping: 25, stiffness: 300 }} 
-        className="relative z-10 w-full max-w-[480px] bg-[#1C1C1E] rounded-t-3xl sm:rounded-2xl overflow-hidden p-6 pb-10 border border-[#2C2C2E]"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-white font-bold text-lg">화면 방향 선택</h3>
-          <button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button>
-        </div>
-        <div className="space-y-2">
-          {options.map((opt) => (
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-6 space-y-8">
+        
+        {/* 1. Theme Mode */}
+        <section>
+          <h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-3">화면 모드</h3>
+          <div className="grid grid-cols-2 gap-4">
             <button 
-              key={opt.id} 
-              onClick={() => onSelect(opt.id)} 
-              className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-[#2C2C2E] transition-colors"
+              onClick={() => setIsDarkMode(false)}
+              className={`relative p-4 rounded-2xl border-2 transition-all ${!isDarkMode ? 'border-brand-DEFAULT bg-[#2C2C2E]' : 'border-[#3A3A3C] bg-[#2C2C2E]'}`}
             >
-              <span className={`text-[15px] ${current === opt.id ? 'text-brand-DEFAULT font-bold' : 'text-white'}`}>
-                {opt.label}
-              </span>
-              {current === opt.id && <Check className="w-5 h-5 text-brand-DEFAULT" />}
+              <div className="h-24 bg-gray-100 rounded-xl mb-3 flex items-center justify-center overflow-hidden">
+                <div className="w-3/4 h-full bg-white shadow-sm p-2">
+                  <div className="w-full h-2 bg-gray-200 rounded mb-2"/>
+                  <div className="w-2/3 h-2 bg-gray-200 rounded"/>
+                </div>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <Sun className="w-4 h-4 text-[#8E8E93]" />
+                <span className="text-sm font-medium text-white">라이트 모드</span>
+              </div>
+              {!isDarkMode && <div className="absolute top-3 right-3 w-5 h-5 bg-brand-DEFAULT rounded-full flex items-center justify-center"><Check className="w-3 h-3 text-white" /></div>}
             </button>
-          ))}
-        </div>
-      </motion.div>
+
+            <button 
+              onClick={() => setIsDarkMode(true)}
+              className={`relative p-4 rounded-2xl border-2 transition-all ${isDarkMode ? 'border-brand-DEFAULT bg-[#2C2C2E]' : 'border-[#3A3A3C] bg-[#2C2C2E]'}`}
+            >
+              <div className="h-24 bg-[#1C1C1E] rounded-xl mb-3 flex items-center justify-center overflow-hidden">
+                <div className="w-3/4 h-full bg-[#2C2C2E] shadow-sm p-2 border border-[#3A3A3C]">
+                  <div className="w-full h-2 bg-[#48484A] rounded mb-2"/>
+                  <div className="w-2/3 h-2 bg-[#48484A] rounded"/>
+                </div>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <Moon className="w-4 h-4 text-[#8E8E93]" />
+                <span className="text-sm font-medium text-white">다크 모드</span>
+              </div>
+              {isDarkMode && <div className="absolute top-3 right-3 w-5 h-5 bg-brand-DEFAULT rounded-full flex items-center justify-center"><Check className="w-3 h-3 text-white" /></div>}
+            </button>
+          </div>
+        </section>
+
+        {/* 2. Text Size */}
+        <section>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h3 className="text-xs font-bold text-[#8E8E93]">글자 크기</h3>
+            <span className="text-xs text-brand-DEFAULT font-bold">{textSize * 20}%</span>
+          </div>
+          <div className="bg-[#2C2C2E] rounded-2xl p-6 border border-[#3A3A3C]">
+            <div className="flex items-center justify-between mb-6">
+              <Type className="w-4 h-4 text-[#8E8E93]" />
+              <Type className="w-8 h-8 text-white" />
+            </div>
+            <input 
+              type="range" 
+              min="1" 
+              max="5" 
+              step="1" 
+              value={textSize}
+              onChange={(e) => setTextSize(Number(e.target.value))}
+              className="w-full accent-brand-DEFAULT h-1.5 bg-[#48484A] rounded-lg appearance-none cursor-pointer"
+            />
+            
+            {/* Preview Bubble */}
+            <div className="mt-6 flex justify-center">
+              <div className="bg-brand-DEFAULT text-white px-4 py-3 rounded-2xl rounded-tr-sm">
+                <p style={{ fontSize: `${13 + textSize}px` }} className="leading-snug transition-all">
+                  안녕하세요! 글자 크기 미리보기입니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 3. Etc */}
+        <section>
+          <h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-3">기타</h3>
+          <div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C]">
+            <button className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] transition-colors text-left">
+              <div className="flex items-center gap-3">
+                <Smartphone className="w-5 h-5 text-[#8E8E93]" />
+                <span className="text-[15px] text-white">화면 자동 꺼짐 시간</span>
+              </div>
+              <span className="text-[13px] text-[#8E8E93]">1분</span>
+            </button>
+          </div>
+        </section>
+
+      </div>
     </div>
   );
 }

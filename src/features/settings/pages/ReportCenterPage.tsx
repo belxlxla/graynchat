@@ -10,24 +10,55 @@ export default function ReportCenterPage() {
   // State for diagnostics
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectComplete, setInspectComplete] = useState(false);
+  
+  // State for Mail Modal
+  const [isMailModalOpen, setIsMailModalOpen] = useState(false);
 
   // Handlers
-  const handleReportClick = (title: string) => {
-    toast(`${title} 페이지로 이동합니다. (준비중)`);
+  const handleReportClick = (type: string) => {
+    if (type === 'harmful') {
+      navigate('/settings/help/report/harmful');
+    } else if (type === 'copyright') {
+      navigate('/settings/help/report/copyright');
+    } else if (type === 'illegal') {
+      navigate('/settings/help/report/illegal'); // ✨ 불법촬영물 신고 페이지 연결
+    } else {
+      toast('준비 중인 기능입니다.');
+    }
   };
 
   const handleInspect = () => {
-    if (isInspecting || inspectComplete) return;
+    if (isInspecting) return;
+    
+    if (inspectComplete) {
+      setIsMailModalOpen(true);
+      return;
+    }
     
     setIsInspecting(true);
     toast('네트워크 및 데이터 무결성 검사를 시작합니다...');
 
-    // 검사 시뮬레이션 (3초)
     setTimeout(() => {
       setIsInspecting(false);
       setInspectComplete(true);
-      toast.success('검사가 완료되었습니다. 문의하기를 통해 결과를 전송할 수 있습니다.');
+      setIsMailModalOpen(true);
     }, 3000);
+  };
+
+  const handleSendMail = () => {
+    setIsMailModalOpen(false);
+    
+    const email = 'balla@vanishst.com';
+    const subject = encodeURIComponent('[그레인] 정보수집 및 오류보고 (검사 결과 첨부)');
+    const body = encodeURIComponent(
+      `검사 ID: ${Date.now().toString(36).toUpperCase()}\n` +
+      `기기 정보: ${navigator.userAgent}\n` +
+      `-----------------------------------\n` +
+      `검사 결과가 자동으로 첨부되었습니다.\n` +
+      `겪고 계신 증상을 아래에 상세히 적어주세요.\n\n`
+    );
+
+    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
   };
 
   return (
@@ -59,19 +90,19 @@ export default function ReportCenterPage() {
               icon={<Siren className="w-5 h-5 text-[#FF453A]" />}
               title="유해 정보 신고하기"
               desc="음란, 불법 게시물을 발견하셨나요? 여러분의 제보로 더 깨끗한 서비스를 만들어가도록 노력하겠습니다."
-              onClick={() => handleReportClick('유해 정보 신고')}
+              onClick={() => handleReportClick('harmful')}
             />
             <ReportItem 
               icon={<Scale className="w-5 h-5 text-brand-DEFAULT" />}
               title="권리침해 신고하기"
               desc="공개 게시물로 인한 명예훼손, 저작권 침해 등 본인의 권리침해로 곤란을 겪고 계신가요? 권리침해 신고를 이용해 주시기 바랍니다."
-              onClick={() => handleReportClick('권리침해 신고')}
+              onClick={() => handleReportClick('copyright')}
             />
             <ReportItem 
               icon={<Camera className="w-5 h-5 text-[#BF5AF2]" />}
               title="불법촬영물 등 유통 신고"
               desc="불법촬영물 등이 유통되는 것을 목격하거나 발견하셨나요? 전기통신사업법 시행령에 따라 유통방지에 필요한 조치를 요청할 수 있습니다."
-              onClick={() => handleReportClick('불법촬영물 신고')}
+              onClick={() => handleReportClick('illegal')} // ✨ ID 전달
             />
           </div>
 
@@ -87,10 +118,10 @@ export default function ReportCenterPage() {
               
               <button 
                 onClick={handleInspect}
-                disabled={isInspecting || inspectComplete}
+                disabled={isInspecting}
                 className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-2 ${
                   inspectComplete 
-                    ? 'bg-green-500/20 text-green-500 cursor-default' 
+                    ? 'bg-green-500/20 text-green-500 hover:bg-green-500/30' 
                     : isInspecting 
                       ? 'bg-[#3A3A3C] text-[#8E8E93] cursor-wait' 
                       : 'bg-brand-DEFAULT text-white hover:bg-brand-hover'
@@ -102,7 +133,7 @@ export default function ReportCenterPage() {
                   </>
                 ) : inspectComplete ? (
                   <>
-                    <CheckCircle2 className="w-3 h-3" /> 검사 완료
+                    <CheckCircle2 className="w-3 h-3" /> 다시 검사
                   </>
                 ) : (
                   '검사하기'
@@ -136,11 +167,20 @@ export default function ReportCenterPage() {
 
         </div>
       </div>
+
+      {/* Mail Confirmation Modal */}
+      <ConfirmMailModal 
+        isOpen={isMailModalOpen}
+        onClose={() => setIsMailModalOpen(false)}
+        onConfirm={handleSendMail}
+      />
+
     </div>
   );
 }
 
-// === Sub Component ===
+// === Sub Components ===
+
 function ReportItem({ icon, title, desc, onClick }: { icon: React.ReactNode, title: string, desc: string, onClick: () => void }) {
   return (
     <button 
@@ -158,5 +198,45 @@ function ReportItem({ icon, title, desc, onClick }: { icon: React.ReactNode, tit
         {desc}
       </p>
     </button>
+  );
+}
+
+function ConfirmMailModal({ isOpen, onClose, onConfirm }: { isOpen: boolean, onClose: () => void, onConfirm: () => void }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose} 
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center"
+      >
+        <div className="p-6">
+          <h3 className="text-white font-bold text-lg mb-2">검사 완료</h3>
+          <p className="text-[#8E8E93] text-sm leading-relaxed">
+            검사가 완료되었습니다.<br/>
+            해당 내용으로 1:1 문의할까요?
+          </p>
+        </div>
+        <div className="flex border-t border-[#3A3A3C] h-12">
+          <button 
+            onClick={onClose} 
+            className="flex-1 text-[#8E8E93] font-medium text-[16px] hover:bg-[#2C2C2E] transition-colors border-r border-[#3A3A3C]"
+          >
+            취소
+          </button>
+          <button 
+            onClick={onConfirm} 
+            className="flex-1 text-brand-DEFAULT font-bold text-[16px] hover:bg-[#2C2C2E] transition-colors"
+          >
+            확인
+          </button>
+        </div>
+      </motion.div>
+    </div>
   );
 }

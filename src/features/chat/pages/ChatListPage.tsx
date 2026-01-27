@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion'; 
 import { 
-  MessageSquare, User as UserIcon, Users, 
+  User as UserIcon, Users, // ✨ MessageSquare 제거됨
   Trash2, Check, BellOff, Search, Plus, Pencil, X,
-  ChevronRight, CheckCircle2, Circle // ✨ 추가된 아이콘
+  ChevronRight, CheckCircle2, Circle, Settings 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -23,7 +23,7 @@ interface ChatRoom {
   isMuted?: boolean;
 }
 
-// ✨ 친구 데이터 타입 (채팅방 생성용)
+// 친구 데이터 타입
 interface Friend {
   id: number;
   name: string;
@@ -39,7 +39,7 @@ const MOCK_CHAT_DATA: ChatRoom[] = [
   { id: '5', type: 'individual', title: 'Alice', avatar: 'https://i.pravatar.cc/150?u=3', lastMessage: 'Can you send me the file?', timestamp: '1월 24일', unreadCount: 1 },
 ];
 
-// ✨ 친구 목록 데이터 (채팅방 생성 시 선택용)
+// 친구 목록 데이터
 const MOCK_FRIENDS_DATA: Friend[] = [
   { id: 1, name: '1004천사', avatar: null },
   { id: 2, name: '강민수', avatar: 'https://i.pravatar.cc/150?u=2' },
@@ -49,6 +49,7 @@ const MOCK_FRIENDS_DATA: Friend[] = [
 ];
 
 export default function ChatListPage() {
+  const navigate = useNavigate();
   const [chats, setChats] = useState<ChatRoom[]>(MOCK_CHAT_DATA);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,8 +58,11 @@ export default function ChatListPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingChat, setEditingChat] = useState<ChatRoom | null>(null);
   
-  // ✨ 채팅방 생성 모달 상태
+  // 채팅방 생성 모달 상태
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
+
+  // 설정 드롭다운 상태
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // 채팅방 나가기
   const handleLeaveChat = (id: string) => {
@@ -89,6 +93,17 @@ export default function ChatListPage() {
     }
   };
 
+  // 드롭다운 메뉴 핸들러
+  const handleGoFriends = () => {
+    navigate('/settings/friends');
+    setIsSettingsOpen(false);
+  };
+
+  const handleGoSettings = () => {
+    navigate('/main/settings'); // 더보기(설정) 페이지로 이동
+    setIsSettingsOpen(false);
+  };
+
   const filteredChats = chats.filter(chat => 
     chat.title.includes(searchQuery) || chat.lastMessage.includes(searchQuery)
   );
@@ -96,27 +111,63 @@ export default function ChatListPage() {
   return (
     <div className="w-full h-full flex flex-col bg-dark-bg text-white">
       {/* === Header === */}
-      <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 border-b border-[#2C2C2E] shrink-0">
+      <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-50 border-b border-[#2C2C2E] shrink-0">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold ml-1">채팅</h1>
           <span className="text-xl font-bold text-brand-DEFAULT">
             {chats.reduce((acc, curr) => acc + curr.unreadCount, 0)}
           </span>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 relative">
            <button 
              onClick={() => setIsSearching(!isSearching)} 
              className={`p-2 transition-colors ${isSearching ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}
            >
              <Search className="w-6 h-6" />
            </button>
-           {/* ✨ 채팅방 생성 모달 열기 */}
+           
            <button 
              onClick={() => setIsCreateChatOpen(true)}
              className="p-2 text-white hover:text-brand-DEFAULT transition-colors"
            >
              <Plus className="w-6 h-6" />
            </button>
+
+           <button 
+             onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+             className={`p-2 transition-colors ${isSettingsOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}
+           >
+             <Settings className="w-6 h-6" />
+           </button>
+
+           <AnimatePresence>
+             {isSettingsOpen && (
+               <>
+                 <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsSettingsOpen(false)} />
+                 <motion.div 
+                   initial={{ opacity: 0, y: -10, scale: 0.95 }} 
+                   animate={{ opacity: 1, y: 0, scale: 1 }} 
+                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                   transition={{ duration: 0.15 }}
+                   className="absolute top-10 right-0 w-40 bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl shadow-xl z-50 overflow-hidden py-1.5"
+                 >
+                   <button 
+                     onClick={handleGoFriends}
+                     className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors"
+                   >
+                     친구 관리
+                   </button>
+                   <div className="h-[1px] bg-[#3A3A3C] mx-3 my-1" />
+                   <button 
+                     onClick={handleGoSettings}
+                     className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors"
+                   >
+                     전체 설정
+                   </button>
+                 </motion.div>
+               </>
+             )}
+           </AnimatePresence>
         </div>
       </header>
 
@@ -181,7 +232,7 @@ export default function ChatListPage() {
         onSave={handleSaveTitle}
       />
 
-      {/* ✨ 채팅방 생성 모달 (추가됨) */}
+      {/* 채팅방 생성 모달 */}
       <CreateChatModal 
         isOpen={isCreateChatOpen} 
         onClose={() => setIsCreateChatOpen(false)} 
@@ -377,13 +428,12 @@ function EditTitleModal({
   );
 }
 
-// ✨ [New Component] 채팅방 생성 모달 (FriendsListPage에서 가져옴)
+// 채팅방 생성 모달
 function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClose: () => void; friends: Friend[] }) {
   const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
   const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  // 모달 닫힐 때 초기화
   useEffect(() => {
     if (isOpen) {
       setStep('select-type');

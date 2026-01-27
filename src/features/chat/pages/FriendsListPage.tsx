@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
+import type { PanInfo, Point, Area } from 'framer-motion'; 
 import { 
   Search, Settings, Star, MessageCircle, X, User as UserIcon, 
   UserPlus, MessageSquarePlus, CheckCircle2, Circle,
   Camera, Image as ImageIcon, Trash2, ZoomIn, Phone, BookUser, RefreshCw,
-  ChevronRight, Users // ✨ 여기에 추가되었습니다.
+  ChevronRight, Users, Ban, AlertTriangle // ✨ AlertTriangle 추가
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Cropper from 'react-easy-crop';
-import type { Point, Area } from 'react-easy-crop';
 
 // === [Utility] 이미지 크롭 함수 ===
 async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
@@ -90,8 +90,17 @@ export default function FriendsListPage() {
   const [showCreateChatModal, setShowCreateChatModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   
+  // 차단 모달 상태
+  const [blockTarget, setBlockTarget] = useState<Friend | null>(null);
+  
+  // ✨ 삭제 모달 상태 추가
+  const [deleteTarget, setDeleteTarget] = useState<Friend | null>(null);
+  
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 설정 드롭다운 상태
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => { setFriends(MOCK_FRIENDS_DATA); }, []);
 
@@ -126,6 +135,41 @@ export default function FriendsListPage() {
     navigate(`/chat/room/${friendId}`); 
   };
 
+  // ✨ 친구 삭제 버튼 클릭 (모달 열기)
+  const handleDeleteClick = (id: number) => {
+    const target = friends.find(f => f.id === id);
+    if (target) {
+      setDeleteTarget(target);
+    }
+  };
+
+  // ✨ 친구 삭제 확정 (모달에서 확인 클릭 시)
+  const handleDeleteConfirm = () => {
+    if (deleteTarget) {
+      setFriends(prev => prev.filter(f => f.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast.success('친구가 삭제되었습니다.');
+    }
+  };
+
+  // 친구 차단 처리
+  const handleBlockConfirm = (friendId: number, options: { blockMessage: boolean, hideProfile: boolean }) => {
+    setFriends(prev => prev.filter(f => f.id !== friendId));
+    setBlockTarget(null);
+    toast.success('차단되었습니다. 더보기 > 친구 메뉴에서 확인 가능합니다.');
+  };
+
+  // 드롭다운 메뉴 핸들러
+  const handleGoFriends = () => {
+    navigate('/settings/friends');
+    setIsSettingsOpen(false);
+  };
+
+  const handleGoSettings = () => {
+    navigate('/main/settings'); 
+    setIsSettingsOpen(false);
+  };
+
   const filteredFriends = useMemo(() => {
     let result = friends;
     if (searchQuery) result = result.filter(f => f.name.includes(searchQuery) || f.phone.includes(searchQuery));
@@ -154,9 +198,9 @@ export default function FriendsListPage() {
     <div className="h-full w-full flex flex-col">
       {step === 'list' && (
         <>
-          <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 border-b border-[#2C2C2E] shrink-0">
+          <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-50 border-b border-[#2C2C2E] shrink-0">
             <h1 className="text-xl font-bold text-white ml-1">친구</h1>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 relative">
               <button onClick={() => setIsSearching(!isSearching)} className={`p-2 transition-colors ${isSearching ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}>
                 <Search className="w-6 h-6" />
               </button>
@@ -166,9 +210,42 @@ export default function FriendsListPage() {
               <button onClick={() => setShowCreateChatModal(true)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
                 <MessageSquarePlus className="w-6 h-6" />
               </button>
-              <button className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
+              
+              <button 
+                onClick={() => setIsSettingsOpen(!isSettingsOpen)} 
+                className={`p-2 transition-colors ${isSettingsOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}
+              >
                 <Settings className="w-6 h-6" />
               </button>
+
+              <AnimatePresence>
+                {isSettingsOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsSettingsOpen(false)} />
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10, scale: 0.95 }} 
+                      animate={{ opacity: 1, y: 0, scale: 1 }} 
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute top-10 right-0 w-40 bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl shadow-xl z-50 overflow-hidden py-1.5"
+                    >
+                      <button 
+                        onClick={handleGoFriends}
+                        className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors"
+                      >
+                        친구 관리
+                      </button>
+                      <div className="h-[1px] bg-[#3A3A3C] mx-3 my-1" />
+                      <button 
+                        onClick={handleGoSettings}
+                        className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors"
+                      >
+                        전체 설정
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
           </header>
 
@@ -184,9 +261,9 @@ export default function FriendsListPage() {
             )}
           </AnimatePresence>
 
-          <div className="flex-1 px-5 pb-4 overflow-y-auto custom-scrollbar">
+          <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
             {isSynced && searchQuery && filteredFriends.length === 0 ? (
-               <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] gap-2 animate-fade-in">
+               <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] gap-2 animate-fade-in px-5">
                  <Search className="w-12 h-12 opacity-20 mb-2" />
                  <p className="text-base font-medium text-white">검색 결과가 없습니다.</p>
                  <button onClick={() => setShowAddFriendModal(true)} className="mt-4 px-5 py-2 bg-[#2C2C2E] rounded-full text-sm hover:bg-[#3A3A3C] transition-colors">연락처로 친구 찾기</button>
@@ -195,28 +272,54 @@ export default function FriendsListPage() {
               <>
                 {!searchQuery && (
                   <>
-                    <div onClick={() => setShowEditProfileModal(true)} className="py-4 flex items-center gap-3 mb-1 cursor-pointer hover:bg-white/5 rounded-xl px-2 transition-colors">
-                      <div className="w-14 h-14 rounded-[20px] bg-[#3A3A3C] overflow-hidden relative">
-                        {myProfile.avatar ? <img src={myProfile.avatar} alt="Me" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93]"><UserIcon className="w-6 h-6 opacity-50"/></div>}
-                      </div>
-                      <div>
-                        <h2 className="text-[16px] font-bold">{myProfile.name}</h2>
-                        <p className="text-xs text-[#8E8E93] mt-0.5">{myProfile.status || '상태메시지 설정'}</p>
-                      </div>
+                    <div className="px-5">
+                        <div onClick={() => setShowEditProfileModal(true)} className="py-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-2 transition-colors">
+                        <div className="w-14 h-14 rounded-[20px] bg-[#3A3A3C] overflow-hidden relative">
+                            {myProfile.avatar ? <img src={myProfile.avatar} alt="Me" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93]"><UserIcon className="w-6 h-6 opacity-50"/></div>}
+                        </div>
+                        <div>
+                            <h2 className="text-[16px] font-bold">{myProfile.name}</h2>
+                            <p className="text-xs text-[#8E8E93] mt-0.5">{myProfile.status || '상태메시지 설정'}</p>
+                        </div>
+                        </div>
                     </div>
                     <div className="h-[1px] bg-[#2C2C2E] w-full my-2" />
                   </>
                 )}
                 {!isSynced && !searchQuery ? (
-                  <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] gap-4">
+                  <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] gap-4 px-5">
                     <UserIcon className="w-16 h-16 opacity-20" />
                     <p className="text-sm text-center">연락처를 동기화하면<br/>친구들을 만날 수 있어요.</p>
                     <button onClick={() => { localStorage.removeItem('grayn_contact_permission'); setStep('permission'); }} className="px-6 py-2 bg-[#2C2C2E] rounded-full text-sm font-medium hover:bg-[#3A3A3C] transition-colors">동기화하기</button>
                   </div>
                 ) : (
-                  <div className="animate-fade-in pb-4">
-                    {favorites.length > 0 && (<div className="mb-4"><p className="text-[11px] text-[#636366] font-medium mb-2 px-2 mt-2">즐겨찾기</p>{favorites.map(f => (<FriendItem key={f.id} friend={f} onClick={() => setSelectedFriend(f)} />))}</div>)}
-                    <div><p className="text-[11px] text-[#636366] font-medium mb-2 px-2 mt-2">친구 {normals.length}</p>{normals.map(f => (<FriendItem key={f.id} friend={f} onClick={() => setSelectedFriend(f)} />))}</div>
+                  <div className="animate-fade-in">
+                    {favorites.length > 0 && (
+                      <div className="mb-2">
+                        <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">즐겨찾기</p>
+                        {favorites.map(f => (
+                          <FriendItem 
+                            key={f.id} 
+                            friend={f} 
+                            onClick={() => setSelectedFriend(f)} 
+                            onBlock={() => setBlockTarget(f)}
+                            onDelete={() => handleDeleteClick(f.id)} // ✨ 함수 변경
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">친구 {normals.length}</p>
+                      {normals.map(f => (
+                        <FriendItem 
+                          key={f.id} 
+                          friend={f} 
+                          onClick={() => setSelectedFriend(f)}
+                          onBlock={() => setBlockTarget(f)}
+                          onDelete={() => handleDeleteClick(f.id)} // ✨ 함수 변경
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -235,6 +338,19 @@ export default function FriendsListPage() {
       
       <CreateChatModal isOpen={showCreateChatModal} onClose={() => setShowCreateChatModal(false)} friends={friends} />
       
+      <BlockFriendModal 
+        friend={blockTarget} 
+        onClose={() => setBlockTarget(null)} 
+        onConfirm={handleBlockConfirm} 
+      />
+
+      {/* ✨ 친구 삭제 모달 */}
+      <DeleteFriendModal
+        friend={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+      />
+
       {selectedFriend && (
         <ModalBackdrop onClick={() => setSelectedFriend(null)}>
           <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-[340px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E]" onClick={(e) => e.stopPropagation()}>
@@ -255,12 +371,197 @@ export default function FriendsListPage() {
 }
 
 // === Sub Components ===
-function FriendItem({ friend, onClick }: { friend: Friend; onClick: () => void }) {
+
+function FriendItem({ 
+  friend, 
+  onClick, 
+  onBlock, 
+  onDelete 
+}: { 
+  friend: Friend; 
+  onClick: () => void; 
+  onBlock: () => void; 
+  onDelete: () => void; 
+}) {
+  const controls = useAnimation();
+  const SWIPE_WIDTH = -140; 
+
+  const handleDragEnd = async (_: any, info: PanInfo) => {
+    if (info.offset.x < -50) {
+      await controls.start({ x: SWIPE_WIDTH }); 
+    } else {
+      await controls.start({ x: 0 });
+    }
+  };
+
   const scoreColor = friend.friendlyScore >= 80 ? 'text-green-500' : friend.friendlyScore >= 40 ? 'text-yellow-500' : 'text-[#8E8E93]';
+
   return (
-    <div onClick={onClick} className="flex items-center gap-3 py-2.5 px-2 cursor-pointer hover:bg-white/5 rounded-xl transition-colors">
-      <div className="w-[42px] h-[42px] rounded-[14px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative">{friend.avatar ? <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93]"><UserIcon className="w-5 h-5 opacity-50" /></div>}</div>
-      <div className="flex-1 min-w-0"><div className="flex items-center gap-2"><h4 className="text-[15px] font-medium text-white leading-tight truncate">{friend.name}</h4><span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-[#2C2C2E] ${scoreColor}`}>{friend.friendlyScore}°</span></div>{friend.status && <p className="text-[12px] text-[#8E8E93] mt-0.5 truncate">{friend.status}</p>}</div>
+    <div className="relative w-full h-[72px] overflow-hidden border-b border-[#2C2C2E] last:border-none bg-dark-bg">
+      <div 
+        className="absolute inset-y-0 right-0 flex h-full z-0"
+        style={{ width: `140px` }}
+      >
+        <button 
+          onClick={() => { onBlock(); controls.start({ x: 0 }); }}
+          className="flex-1 h-full bg-[#3A3A3C] flex flex-col items-center justify-center text-[#E5E5EA] active:bg-[#48484A] transition-colors"
+        >
+          <Ban className="w-5 h-5 mb-1" />
+          <span className="text-[10px] font-medium">차단</span>
+        </button>
+        <button 
+          onClick={() => { onDelete(); controls.start({ x: 0 }); }}
+          className="flex-1 h-full bg-[#EC5022] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"
+        >
+          <Trash2 className="w-5 h-5 mb-1" />
+          <span className="text-[10px] font-medium">삭제</span>
+        </button>
+      </div>
+
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: SWIPE_WIDTH, right: 0 }}
+        dragElastic={0.1}
+        onDragEnd={handleDragEnd}
+        animate={controls}
+        onClick={onClick}
+        className="relative w-full h-full bg-dark-bg flex items-center px-4 z-10 cursor-pointer active:bg-white/5 transition-colors"
+        style={{ touchAction: 'pan-y' }}
+      >
+        <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4">
+          {friend.avatar ? <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93]"><UserIcon className="w-6 h-6 opacity-50" /></div>}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h4 className="text-[15px] font-medium text-white leading-tight truncate">{friend.name}</h4>
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-[#2C2C2E] ${scoreColor}`}>{friend.friendlyScore}°</span>
+          </div>
+          {friend.status && <p className="text-[12px] text-[#8E8E93] mt-0.5 truncate">{friend.status}</p>}
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function BlockFriendModal({ 
+  friend, 
+  onClose, 
+  onConfirm 
+}: { 
+  friend: Friend | null; 
+  onClose: () => void; 
+  onConfirm: (id: number, options: { blockMessage: boolean, hideProfile: boolean }) => void; 
+}) {
+  const [blockMessage, setBlockMessage] = useState(true);
+  const [hideProfile, setHideProfile] = useState(true);
+
+  if (!friend) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClose}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} 
+        onClick={(e) => e.stopPropagation()} 
+        className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]"
+      >
+        <div className="p-6">
+          <h3 className="text-white font-bold text-lg mb-4 text-center">
+            {friend.name}님을 차단하시겠습니까?
+          </h3>
+          <p className="text-xs text-[#8E8E93] text-center mb-6 leading-relaxed">
+            차단하면 서로에게 연락할 수 없습니다.<br/>
+            차단 친구 관리에서 해제할 수 있습니다.
+          </p>
+          
+          <div className="space-y-3">
+            <label className="flex items-center justify-between p-3 bg-[#2C2C2E] rounded-xl cursor-pointer hover:bg-[#3A3A3C] transition-colors">
+              <span className="text-sm text-white">메시지 차단</span>
+              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${blockMessage ? 'bg-brand-DEFAULT border-brand-DEFAULT' : 'border-[#636366]'}`}>
+                {blockMessage && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+              </div>
+              <input type="checkbox" className="hidden" checked={blockMessage} onChange={() => setBlockMessage(!blockMessage)} />
+            </label>
+            <label className="flex items-center justify-between p-3 bg-[#2C2C2E] rounded-xl cursor-pointer hover:bg-[#3A3A3C] transition-colors">
+              <span className="text-sm text-white">프로필 비공개</span>
+              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${hideProfile ? 'bg-brand-DEFAULT border-brand-DEFAULT' : 'border-[#636366]'}`}>
+                {hideProfile && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+              </div>
+              <input type="checkbox" className="hidden" checked={hideProfile} onChange={() => setHideProfile(!hideProfile)} />
+            </label>
+          </div>
+          {hideProfile && (
+            <p className="text-[11px] text-[#EC5022] mt-2 text-center">
+              * 상대방에게 기본 프로필로 보여집니다.
+            </p>
+          )}
+        </div>
+        <div className="flex border-t border-[#3A3A3C] h-12">
+          <button 
+            onClick={onClose} 
+            className="flex-1 text-[#8E8E93] font-medium text-[15px] hover:bg-[#2C2C2E] transition-colors border-r border-[#3A3A3C]"
+          >
+            취소
+          </button>
+          <button 
+            onClick={() => onConfirm(friend.id, { blockMessage, hideProfile })} 
+            className="flex-1 text-brand-DEFAULT font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors"
+          >
+            확인
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// ✨ [New] 친구 삭제 모달 컴포넌트
+function DeleteFriendModal({ 
+  friend, 
+  onClose, 
+  onConfirm 
+}: { 
+  friend: Friend | null; 
+  onClose: () => void; 
+  onConfirm: () => void; 
+}) {
+  if (!friend) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClose}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} 
+        onClick={(e) => e.stopPropagation()} 
+        className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]"
+      >
+        <div className="p-6 text-center">
+          <div className="w-12 h-12 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6 text-[#EC5022]" />
+          </div>
+          <h3 className="text-white font-bold text-lg mb-2">
+            {friend.name}님을 삭제하시겠습니까?
+          </h3>
+          <p className="text-xs text-[#8E8E93] leading-relaxed">
+            삭제된 친구는<br/>
+            친구 추가 메뉴에서 다시 추가할 수 있습니다.
+          </p>
+        </div>
+        <div className="flex border-t border-[#3A3A3C] h-12">
+          <button 
+            onClick={onClose} 
+            className="flex-1 text-[#8E8E93] font-medium text-[15px] hover:bg-[#2C2C2E] transition-colors border-r border-[#3A3A3C]"
+          >
+            취소
+          </button>
+          <button 
+            onClick={onConfirm} 
+            className="flex-1 text-[#EC5022] font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors"
+          >
+            삭제
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 }

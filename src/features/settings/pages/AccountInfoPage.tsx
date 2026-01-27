@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react'; // ✨ useEffect 추가됨
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, ChevronRight, 
   Camera, User, Mail, Phone, Globe, LogOut, 
-  Trash2, Image as ImageIcon, X, Check, Search, CheckCircle2, Circle
+  Trash2, Image as ImageIcon, X, Search, CheckCircle2, Circle // ✨ Check 제거됨
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -57,6 +57,9 @@ export default function AccountInfoPage() {
   // 모달 상태
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null); // 이미지 변경 타겟
+  
+  // 로그아웃 모달 상태 추가
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   // 파일 인풋 Refs
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -85,14 +88,18 @@ export default function AccountInfoPage() {
     setEditTarget(null);
   };
 
-  // 3. 로그아웃
-  const handleLogout = () => {
-    if (confirm('정말 로그아웃 하시겠습니까?')) {
-      // 실제로는 여기서 토큰 삭제 등의 로직 수행
-      localStorage.removeItem('login_provider');
-      toast.success('로그아웃 되었습니다.');
-      navigate('/auth/login'); // 로그인 페이지로 이동
-    }
+  // 3. 로그아웃 버튼 클릭 (모달 열기)
+  const handleLogoutClick = () => {
+    setIsLogoutModalOpen(true);
+  };
+
+  // 4. 로그아웃 확정 (실제 동작)
+  const handleLogoutConfirm = () => {
+    // 로컬 데이터 삭제
+    localStorage.removeItem('login_provider');
+    
+    // 앱 전체 새로고침 (스플래시 화면부터 다시 시작)
+    window.location.reload();
   };
 
   // 로그인 제공자 아이콘/텍스트
@@ -195,7 +202,7 @@ export default function AccountInfoPage() {
 
           {/* 로그아웃 버튼 */}
           <button 
-            onClick={handleLogout}
+            onClick={handleLogoutClick}
             className="w-full py-4 text-[#EC5022] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2"
           >
             <LogOut className="w-4 h-4" />
@@ -252,6 +259,13 @@ export default function AccountInfoPage() {
         onClose={() => setIsCountryModalOpen(false)}
         blockedList={blockedCountries}
         onSave={setBlockedCountries}
+      />
+
+      {/* 3. 로그아웃 확인 모달 */}
+      <LogoutModal 
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
+        onConfirm={handleLogoutConfirm}
       />
     </div>
   );
@@ -355,6 +369,44 @@ function CountrySelectModal({
         <div className="p-4 bg-[#1C1C1E] border-t border-[#2C2C2E]">
           <button onClick={handleSave} className="w-full h-11 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover transition-colors">
             {selected.length}개국 차단 적용
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+// 로그아웃 확인 모달 컴포넌트
+function LogoutModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: () => void; onConfirm: () => void }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose} 
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        className="relative z-10 w-full max-w-[280px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center"
+      >
+        <div className="p-6">
+          <h3 className="text-white font-bold text-lg mb-2">로그아웃</h3>
+          <p className="text-[#8E8E93] text-sm">정말 로그아웃 하시겠습니까?</p>
+        </div>
+        <div className="flex border-t border-[#3A3A3C] h-12">
+          <button 
+            onClick={onClose} 
+            className="flex-1 text-[#8E8E93] font-medium text-[16px] hover:bg-[#2C2C2E] transition-colors border-r border-[#3A3A3C]"
+          >
+            취소
+          </button>
+          <button 
+            onClick={onConfirm} 
+            className="flex-1 text-[#FF453A] font-bold text-[16px] hover:bg-[#2C2C2E] transition-colors"
+          >
+            로그아웃
           </button>
         </div>
       </motion.div>
