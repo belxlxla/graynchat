@@ -24,7 +24,9 @@ import ChatRoomSettingsPage from '../features/chat/pages/ChatRoomSettingsPage';
 import NotificationSettingsPage from '../features/settings/pages/NotificationSettingsPage';
 import DisplaySettingsPage from '../features/settings/pages/DisplaySettingsPage';
 import FontSettingsPage from '../features/settings/pages/FontSettingsPage';
-import WallpaperSettingsPage from '../features/settings/pages/WallpaperSettingsPage'; // ✨ 추가됨
+import WallpaperSettingsPage from '../features/settings/pages/WallpaperSettingsPage';
+import CustomerServicePage from '../features/settings/pages/CustomerServicePage';
+import ReportCenterPage from '../features/settings/pages/ReportCenterPage'; // ✨ 추가됨
 
 import MainLayout from '../components/layout/MainLayout';
 
@@ -75,7 +77,9 @@ function App() {
         <Route path="/settings/notification" element={<NotificationSettingsPage />} />
         <Route path="/settings/display" element={<DisplaySettingsPage />} />
         <Route path="/settings/display/font" element={<FontSettingsPage />} />
-        <Route path="/settings/display/wallpaper" element={<WallpaperSettingsPage />} /> {/* ✨ 라우트 추가 */}
+        <Route path="/settings/display/wallpaper" element={<WallpaperSettingsPage />} />
+        <Route path="/settings/help" element={<CustomerServicePage />} />
+        <Route path="/settings/help/report" element={<ReportCenterPage />} /> {/* ✨ 라우트 추가 */}
 
         <Route path="*" element={<Navigate to="/main/friends" replace />} />
       </Routes>

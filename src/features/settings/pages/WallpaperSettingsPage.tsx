@@ -83,7 +83,7 @@ export default function WallpaperSettingsPage() {
           />
           <div className="absolute inset-0 bg-black/10" /> 
           
-          {/* Mock Chat Bubbles (Updated to match ChatRoomPage exactly) */}
+          {/* Mock Chat Bubbles */}
           <div className="absolute inset-0 p-5 flex flex-col justify-end space-y-3">
             
             {/* Other (상대방) */}
@@ -91,22 +91,21 @@ export default function WallpaperSettingsPage() {
               <div className="w-8 h-8 rounded-xl bg-[#3A3A3C] shrink-0 overflow-hidden border border-white/10">
                  <img src="https://i.pravatar.cc/150?u=2" alt="Other" className="w-full h-full object-cover" />
               </div>
-              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-tl-none text-[14px] leading-snug bg-[#2C2C2E] text-[#E5E5EA] shadow-sm">
+              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-tl-none text-[14px] leading-snug bg-[#2C2C2E] text-[#E5E5EA] shadow-sm border border-white/5">
                 배경화면을 바꾸니까 분위기가 확 달라지네요!
               </div>
             </div>
 
-            {/* Me (나) */}
+            {/* Me (나) - 수정됨: bg-[#EC5022] (가시성 확보) */}
             <div className="flex items-end gap-2 justify-end">
-              {/* bg-brand-DEFAULT, rounded-br-none 적용 */}
-              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-brand-DEFAULT text-white shadow-sm">
+              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-[#EC5022] text-white shadow-sm">
                 네, 마음에 드는 사진으로 설정해보세요.
               </div>
             </div>
             
             {/* Me (나) - 연속 메시지 */}
             <div className="flex items-end gap-2 justify-end">
-              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-brand-DEFAULT text-white shadow-sm">
+              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-[#EC5022] text-white shadow-sm">
                 훨씬 보기 좋네요 👍
               </div>
             </div>
@@ -146,11 +145,12 @@ export default function WallpaperSettingsPage() {
             </div>
           </div>
 
-          {/* Section: Apply All */}
+          {/* Section: Apply All (Left Aligned) */}
           <div>
+            {/* ✨ 수정됨: flex, justify-start, text-left, pl-5 */}
             <button 
               onClick={handleApplyAll}
-              className="w-full py-4 bg-brand-DEFAULT rounded-2xl text-white font-bold text-[15px] text-left px-5 hover:bg-brand-hover transition-colors shadow-lg"
+              className="w-full h-14 bg-brand-DEFAULT rounded-2xl text-white font-bold text-[15px] flex items-center justify-start pl-5 hover:bg-brand-hover transition-colors shadow-lg"
             >
               모든 채팅방에 적용
             </button>

@@ -17,7 +17,7 @@ interface Message {
   type: 'text' | 'image' | 'file';
 }
 
-// ✨ 멘션용 참여자 데이터 (실제로는 서버에서 가져옴)
+// ✨ 멘션용 참여자 데이터
 const PARTICIPANTS = [
   { id: '1', name: '강민수', avatar: 'https://i.pravatar.cc/150?u=2' },
   { id: '2', name: '김철수', avatar: 'https://i.pravatar.cc/150?u=4' },
@@ -51,7 +51,7 @@ export default function ChatRoomPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
 
-  // ✨ 멘션 상태
+  // 멘션 상태
   const [showMentionList, setShowMentionList] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
 
@@ -64,31 +64,29 @@ export default function ChatRoomPage() {
     }
   }, [messages, isMenuOpen, isSearchOpen, isCaptureMode]);
 
-  // ✨ 입력값 변경 핸들러 (멘션 감지)
+  // 입력값 변경 핸들러 (멘션 감지)
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInputText(value);
 
-    // 마지막 단어가 '@'로 시작하는지 확인
     const words = value.split(' ');
     const lastWord = words[words.length - 1];
 
     if (lastWord.startsWith('@')) {
       setShowMentionList(true);
-      setMentionQuery(lastWord.slice(1)); // '@' 제외한 검색어
+      setMentionQuery(lastWord.slice(1));
     } else {
       setShowMentionList(false);
     }
   };
 
-  // ✨ 멘션 선택 핸들러
+  // 멘션 선택 핸들러
   const handleSelectMention = (name: string) => {
     const words = inputText.split(' ');
-    words.pop(); // 방금 입력하던 @... 제거
+    words.pop();
     const newValue = words.join(' ') + (words.length > 0 ? ' ' : '') + `@${name} `;
     setInputText(newValue);
     setShowMentionList(false);
-    // 입력창 포커스 유지는 실제 구현 시 ref 사용 필요
   };
 
   // 메시지 전송
@@ -208,7 +206,8 @@ export default function ChatRoomPage() {
                 <img src="https://i.pravatar.cc/150?u=2" alt="Other" className="w-full h-full object-cover" />
               </div>
             )}
-            <div className={`max-w-[70%] px-3.5 py-2 rounded-2xl text-[14px] leading-snug break-words relative ${msg.sender === 'me' ? 'bg-brand-DEFAULT text-white rounded-br-none' : 'bg-[#2C2C2E] text-[#E5E5EA] rounded-tl-none'} ${isCaptureMode && selectedForCapture.includes(msg.id) ? 'ring-2 ring-white ring-offset-2 ring-offset-dark-bg' : ''}`}>
+            {/* ✨ 말풍선 디자인 수정됨: bg-[#EC5022] 적용 */}
+            <div className={`max-w-[70%] px-3.5 py-2 rounded-2xl text-[14px] leading-snug break-words relative ${msg.sender === 'me' ? 'bg-[#EC5022] text-white rounded-br-none' : 'bg-[#2C2C2E] text-[#E5E5EA] rounded-tl-none'} ${isCaptureMode && selectedForCapture.includes(msg.id) ? 'ring-2 ring-white ring-offset-2 ring-offset-dark-bg' : ''}`}>
               {renderHighlightedText(msg.text)}
             </div>
             {!isCaptureMode && <span className="text-[9px] text-[#636366] min-w-fit mb-1">{msg.timestamp}</span>}
@@ -217,7 +216,7 @@ export default function ChatRoomPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ✨ 멘션 리스트 팝업 (입력창 위) */}
+      {/* 멘션 리스트 팝업 */}
       <AnimatePresence>
         {showMentionList && filteredParticipants.length > 0 && (
           <motion.div 
@@ -250,7 +249,7 @@ export default function ChatRoomPage() {
               <input 
                 type="text" 
                 value={inputText} 
-                onChange={handleInputChange} // ✨ 변경된 핸들러 연결
+                onChange={handleInputChange} 
                 onKeyDown={handleKeyDown} 
                 placeholder="메시지 입력" 
                 className="bg-transparent w-full text-white text-sm placeholder-[#636366] focus:outline-none" 

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// ... (Interface 및 Mock Data 생략 - 기존과 동일)
+// ... (Types & Mock Data 생략 - 기존과 동일)
 interface WeatherData {
   temp: number;
   code: number;
@@ -77,9 +77,13 @@ export default function SettingsPage() {
     } else if (id === 'noti') {
       navigate('/settings/notification');
     } else if (id === 'display') {
-      navigate('/settings/display'); // ✨ 화면 설정 연결
+      navigate('/settings/display');
     } else if (id === 'backup') {
       toast('백업 기능은 준비 중입니다.');
+    } else if (id === 'notice') {
+      window.open('https://www.notion.so', '_blank'); 
+    } else if (id === 'help') {
+      navigate('/settings/help'); // ✨ 고객센터 연결
     } else {
       toast('준비 중인 기능입니다.');
     }
