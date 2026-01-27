@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion'; // ✨ AnimatePresence 제거됨
 import { 
   ChevronLeft, Bell, Users, Image, FileText, Link, 
   LogOut, ChevronRight, Download, ExternalLink,
-  X, AlertTriangle, Search, CheckCircle2, Circle, ArrowLeft
+  X, AlertTriangle, Search, CheckCircle2, Circle, ArrowLeft 
+  // ✨ ChevronDown 제거됨
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -434,7 +435,7 @@ function InviteMemberModal({ isOpen, onClose }: { isOpen: boolean, onClose: () =
   );
 }
 
-// ✨ Image Detail Modal with Floating Download Button
+// Image Detail Modal with Floating Download Button
 function ImageDetailModal({ isOpen, imageSrc, onClose }: { isOpen: boolean, imageSrc: string | null, onClose: () => void }) {
   if (!isOpen || !imageSrc) return null;
 
