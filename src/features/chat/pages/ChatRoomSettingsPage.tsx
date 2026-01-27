@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom'; // ✨ chatId 미사용 에러 해결을 위해 useParams만 유지
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   ChevronLeft, Bell, Users, Image, FileText, Link, 
-  LogOut, Trash2, ChevronRight 
+  LogOut, ChevronRight // ✨ Trash2 제거됨
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ChatRoomSettingsPage() {
   const navigate = useNavigate();
-  useParams(); // ✨ chatId 변수 선언 제거 (에러 해결)
+  useParams(); 
 
   const [isMuted, setIsMuted] = useState(false);
 
@@ -21,7 +21,6 @@ export default function ChatRoomSettingsPage() {
     }
   };
 
-  // 핸들러 수정: e 파라미터 제거 (에러 해결)
   const handleToggleMute = () => {
     setIsMuted(!isMuted);
     toast.success(isMuted ? '알림이 켜졌습니다.' : '알림이 꺼졌습니다.');
