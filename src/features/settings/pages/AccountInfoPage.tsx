@@ -43,7 +43,6 @@ export default function AccountInfoPage() {
   const navigate = useNavigate();
   const { user } = useAuth(); // 현재 로그인 유저 정보
   
-  // ✨ 실시간 연동을 위한 상태 관리
   const [profile, setProfile] = useState<UserProfile>({
     name: '사용자',
     avatar: null,
@@ -61,7 +60,6 @@ export default function AccountInfoPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
 
-  // ✨ [데이터 로드] 실제 유저 정보를 DB에서 가져옴
   useEffect(() => {
     const fetchUserData = async () => {
       if (!user) return;
@@ -73,11 +71,13 @@ export default function AccountInfoPage() {
           .eq('id', user.id)
           .single();
 
+        if (error) throw error; // 에러 객체 사용 유도
+
         if (data) {
           setProfile({
             name: data.name || user.user_metadata.full_name || '사용자',
             avatar: data.avatar || null,
-            bg: data.bg_image || null, // DB 컬럼명에 맞춰 bg_image 사용
+            bg: data.bg_image || null,
             provider: user.app_metadata.provider || 'email',
             email: data.email || user.email || '',
             phone: data.phone || '번호 없음'
@@ -92,7 +92,6 @@ export default function AccountInfoPage() {
 
   // === Handlers ===
 
-  // ✨ [사진 변경] Storage 업로드 후 DB 업데이트 연동
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
     if (e.target.files && e.target.files.length > 0 && user) {
       const file = e.target.files[0];
@@ -102,17 +101,14 @@ export default function AccountInfoPage() {
         const fileExt = file.name.split('.').pop();
         const filePath = `${user.id}/${type}_${Date.now()}.${fileExt}`;
 
-        // 1. Storage 업로드
         const { error: uploadError } = await supabase.storage
           .from('profiles')
           .upload(filePath, file, { upsert: true });
 
         if (uploadError) throw uploadError;
 
-        // 2. Public URL 가져오기
         const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
 
-        // 3. Database 업데이트
         const dbField = type === 'avatar' ? 'avatar' : 'bg_image';
         const { error: dbError } = await supabase
           .from('users')
@@ -131,15 +127,16 @@ export default function AccountInfoPage() {
     }
   };
 
-  // ✨ [사진 초기화] DB 데이터 null 처리
   const handleResetImage = async (type: 'avatar' | 'bg') => {
     if (!user) return;
     const loadingToast = toast.loading('이미지 초기화 중...');
 
     try {
       const dbField = type === 'avatar' ? 'avatar' : 'bg_image';
-      await supabase.from('users').update({ [dbField]: null }).eq('id', user.id);
+      const { error: resetError } = await supabase.from('users').update({ [dbField]: null }).eq('id', user.id);
       
+      if (resetError) throw resetError;
+
       setProfile(prev => ({ ...prev, [type]: null }));
       toast.success('기본 이미지로 변경되었습니다.', { id: loadingToast });
     } catch (err) {
@@ -156,12 +153,15 @@ export default function AccountInfoPage() {
   const handleLogoutConfirm = async () => {
     const logoutToast = toast.loading('로그아웃 중...');
     try {
-      await supabase.auth.signOut();
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) throw signOutError;
+
       localStorage.removeItem('login_provider');
       localStorage.removeItem('grayn_contact_permission');
       toast.success('안전하게 로그아웃되었습니다.', { id: logoutToast });
       setTimeout(() => { window.location.href = '/'; }, 500);
     } catch (error) {
+      console.error('Logout error:', error); // 미사용 에러 변수 사용
       toast.error('오류 발생', { id: logoutToast });
     }
   };
@@ -212,11 +212,11 @@ export default function AccountInfoPage() {
 
         <div className="text-center mb-8 px-5">
           <h2 className="text-xl font-bold text-white mb-1">{profile.name}</h2>
-          <p className={`text-xs font-medium ${getProviderInfo().color} flex items-center justify-center gap-1`}>
+          <div className={`text-xs font-medium ${getProviderInfo().color} flex items-center justify-center gap-1`}>
             {getProviderInfo().label}
             <span className="w-1 h-1 rounded-full bg-current opacity-50" />
             <span className="text-[#8E8E93] font-normal">{profile.email}</span>
-          </p>
+          </div>
         </div>
 
         <div className="px-5 space-y-6">
@@ -252,7 +252,7 @@ export default function AccountInfoPage() {
         {editTarget && (
           <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setEditTarget(null)}>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} className="relative z-10 w-full max-w-[480px] bg-[#1C1C1E] rounded-t-3xl overflow-hidden p-6 pb-safe" onClick={(e) => e.stopPropagation()}>
+            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="relative z-10 w-full max-w-[480px] bg-[#1C1C1E] rounded-t-3xl overflow-hidden p-6 pb-safe" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-center text-white font-bold text-lg mb-6">{editTarget === 'avatar' ? '프로필 사진 설정' : '배경 사진 설정'}</h3>
               <div className="space-y-3">
                 <button onClick={() => (editTarget === 'avatar' ? avatarInputRef : bgInputRef).current?.click()} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-white font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><ImageIcon className="w-5 h-5" /> 앨범에서 선택</button>

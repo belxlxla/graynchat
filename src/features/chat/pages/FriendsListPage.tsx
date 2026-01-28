@@ -1,48 +1,17 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import type { PanInfo } from 'framer-motion'; 
 import { 
   Search, Settings, Star, MessageCircle, X, User as UserIcon, 
   UserPlus, MessageSquarePlus, CheckCircle2, Circle,
-  Camera, Image as ImageIcon, Trash2, ZoomIn, Phone, BookUser, RefreshCw,
+  Image as ImageIcon, Trash2, RefreshCw,
   ChevronRight, Users, Ban, AlertTriangle 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import Cropper from 'react-easy-crop';
-import type { Point, Area } from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 // ✨ Supabase 클라이언트 임포트
 import { supabase } from '../../../shared/lib/supabaseClient';
-
-// === [Utility] 이미지 크롭 함수 ===
-async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
-  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.setAttribute('crossOrigin', 'anonymous'); 
-    img.addEventListener('load', () => resolve(img));
-    img.addEventListener('error', (err) => reject(err));
-    img.src = imageSrc;
-  });
-
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
-
-  ctx.drawImage(
-    image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height,
-    0, 0, pixelCrop.width, pixelCrop.height
-  );
-
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      resolve(URL.createObjectURL(blob));
-    }, 'image/jpeg');
-  });
-}
 
 // === [Types] ===
 interface Friend {
@@ -69,7 +38,6 @@ export default function FriendsListPage() {
   const [step, setStep] = useState<'permission' | 'complete' | 'list'>(() => {
     return localStorage.getItem('grayn_contact_permission') ? 'list' : 'permission';
   });
-  const [isSynced, setIsSynced] = useState(() => localStorage.getItem('grayn_contact_permission') === 'granted');
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -120,8 +88,6 @@ export default function FriendsListPage() {
   const fetchFriends = async () => {
     setIsLoading(true);
     try {
-      // ✨ [강력한 필터링] is_blocked가 명시적으로 false인 것만 가져옵니다. 
-      // (1단계 SQL UPDATE를 실행해야 NULL이 false가 되어 정상 작동합니다.)
       const { data, error } = await supabase
         .from('friends')
         .select('*')
@@ -145,6 +111,7 @@ export default function FriendsListPage() {
       }
     } catch (error) {
       console.error('Error fetching friends:', error);
+      toast.error('친구 목록을 불러오지 못했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -154,19 +121,6 @@ export default function FriendsListPage() {
     fetchMyProfile();
     fetchFriends();
   }, []);
-
-  const handlePermissionAllow = () => { 
-    localStorage.setItem('grayn_contact_permission', 'granted'); 
-    setIsSynced(true); 
-    setStep('complete'); 
-    setTimeout(() => setStep('list'), 1500); 
-  };
-  
-  const handlePermissionDeny = () => { 
-    localStorage.setItem('grayn_contact_permission', 'denied');
-    setIsSynced(false); 
-    setStep('list'); 
-  };
   
   const handleSaveMyProfile = async (newProfile: MyProfile) => { 
     try {
@@ -274,11 +228,8 @@ export default function FriendsListPage() {
     }
   };
 
-  // ✨ [전문가 솔루션] 차단 로직의 비동기 처리와 상태 초기화를 완벽히 분리
   const handleBlockConfirm = async (friendId: number, options: { blockMessage: boolean, hideProfile: boolean }) => {
-    const loadingToast = toast.loading('차단 정보를 반영 중입니다...');
     try {
-      // 1. DB 업데이트 (RLS 정책이 뚫려야 실제 true로 바뀝니다)
       const { error } = await supabase
         .from('friends')
         .update({ 
@@ -289,20 +240,12 @@ export default function FriendsListPage() {
 
       if (error) throw error;
 
-      // 2. UI 즉시 반영
       setFriends(prev => prev.filter(f => f.id !== friendId));
-      setSelectedFriend(null); 
       setBlockTarget(null);
-      
-      toast.dismiss(loadingToast);
-      toast.success('차단되었습니다. 관리 페이지에서 확인하세요.');
-      
-      // 3. 다시 메뉴를 돌아왔을 때를 대비해 목록 리로드
-      fetchFriends();
+      toast.success('차단되었습니다. 차단된 친구 관리에서 확인 가능합니다.');
     } catch (error) {
-      console.error("Block Fail:", error);
-      toast.dismiss(loadingToast);
-      toast.error("차단 처리에 실패했습니다. DB 권한 설정을 확인하세요.");
+      console.error("Block Update Error:", error);
+      toast.error("차단 처리에 실패했습니다.");
     }
   };
 
