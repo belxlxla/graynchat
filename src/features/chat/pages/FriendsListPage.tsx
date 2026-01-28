@@ -74,10 +74,11 @@ export default function FriendsListPage() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ✨ [연동] 내 프로필 초기 상태
   const [myProfile, setMyProfile] = useState<MyProfile>({
-    name: '나 (임정민)',
+    name: '사용자',
     status: '상태메시지 설정',
-    avatar: 'https://i.pravatar.cc/150?u=me',
+    avatar: null,
     bg: null
   });
 
@@ -93,6 +94,29 @@ export default function FriendsListPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // ✨ [추가] 내 실제 프로필 정보를 가져오는 함수
+  const fetchMyProfile = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('name, avatar, bg_image, status_message')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (data) {
+        setMyProfile({
+          name: data.name || '사용자',
+          status: data.status_message || '상태메시지 설정',
+          avatar: data.avatar || null,
+          bg: data.bg_image || null
+        });
+      }
+    } catch (e) { console.error("MyProfile Load Error", e); }
+  };
 
   const fetchFriends = async () => {
     setIsLoading(true);
@@ -110,8 +134,8 @@ export default function FriendsListPage() {
           name: item.name,
           phone: item.phone,
           status: item.status,
-          avatar: item.avatar,
-          bg: item.bg,
+          avatar: item.avatar, // ✨ 실제 DB 아바타 연동
+          bg: item.bg,         // ✨ 실제 DB 배경사진 연동
           isFavorite: item.is_favorite,
           friendlyScore: item.friendly_score || 0
         }));
@@ -126,6 +150,7 @@ export default function FriendsListPage() {
   };
 
   useEffect(() => {
+    fetchMyProfile(); // ✨ 내 정보 로드 실행
     fetchFriends();
   }, []);
 
@@ -142,7 +167,22 @@ export default function FriendsListPage() {
     setStep('list'); 
   };
   
-  const handleSaveMyProfile = (newProfile: MyProfile) => { 
+  // ✨ [수정] 프로필 저장 시 DB 연동
+  const handleSaveMyProfile = async (newProfile: MyProfile) => { 
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const { error } = await supabase.from('users').update({
+        name: newProfile.name,
+        status_message: newProfile.status,
+        avatar: newProfile.avatar,
+        bg_image: newProfile.bg
+      }).eq('id', session.user.id);
+
+      if (error) {
+        toast.error('저장 실패');
+        return;
+      }
+    }
     setMyProfile(newProfile); 
     setShowEditProfileModal(false); 
     toast.success('프로필이 업데이트되었습니다.'); 
@@ -280,19 +320,9 @@ export default function FriendsListPage() {
                       transition={{ duration: 0.15 }}
                       className="absolute top-10 right-0 w-40 bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl shadow-xl z-50 overflow-hidden py-1.5"
                     >
-                      <button 
-                        onClick={handleGoFriends}
-                        className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors"
-                      >
-                        친구 관리
-                      </button>
+                      <button onClick={handleGoFriends} className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors">친구 관리</button>
                       <div className="h-[1px] bg-[#3A3A3C] mx-3 my-1" />
-                      <button 
-                        onClick={handleGoSettings}
-                        className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors"
-                      >
-                        전체 설정
-                      </button>
+                      <button onClick={handleGoSettings} className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors">전체 설정</button>
                     </motion.div>
                   </>
                 )}
@@ -329,7 +359,7 @@ export default function FriendsListPage() {
                   <>
                     <div className="px-5">
                         <div onClick={() => setShowEditProfileModal(true)} className="py-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-2 transition-colors">
-                        <div className="w-14 h-14 rounded-[20px] bg-[#3A3A3C] overflow-hidden relative">
+                        <div className="w-14 h-14 rounded-[20px] bg-[#3A3A3C] overflow-hidden relative border border-white/5 shadow-sm">
                             {myProfile.avatar ? <img src={myProfile.avatar} alt="Me" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93]"><UserIcon className="w-6 h-6 opacity-50"/></div>}
                         </div>
                         <div>
@@ -353,26 +383,14 @@ export default function FriendsListPage() {
                       <div className="mb-2">
                         <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">즐겨찾기</p>
                         {favorites.map(f => (
-                          <FriendItem 
-                            key={f.id} 
-                            friend={f} 
-                            onClick={() => setSelectedFriend(f)} 
-                            onBlock={() => setBlockTarget(f)}
-                            onDelete={() => handleDeleteClick(f.id)}
-                          />
+                          <FriendItem key={f.id} friend={f} onClick={() => setSelectedFriend(f)} onBlock={() => setBlockTarget(f)} onDelete={() => handleDeleteClick(f.id)} />
                         ))}
                       </div>
                     )}
                     <div>
                       <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">친구 {normals.length}</p>
                       {normals.map(f => (
-                        <FriendItem 
-                          key={f.id} 
-                          friend={f} 
-                          onClick={() => setSelectedFriend(f)}
-                          onBlock={() => setBlockTarget(f)}
-                          onDelete={() => handleDeleteClick(f.id)}
-                        />
+                        <FriendItem key={f.id} friend={f} onClick={() => setSelectedFriend(f)} onBlock={() => setBlockTarget(f)} onDelete={() => handleDeleteClick(f.id)} />
                       ))}
                     </div>
                   </div>
@@ -383,25 +401,21 @@ export default function FriendsListPage() {
         </>
       )}
 
-      {step === 'permission' && (<ModalBackdrop><div className="w-full max-w-[280px] bg-[#1C1C1E] rounded-xl overflow-hidden shadow-2xl z-10 text-center"><div className="p-6"><h3 className="text-white font-semibold text-lg mb-2">연락처 접근 권한</h3><p className="text-[#8E8E93] text-sm">친구 목록 자동 동기화를 위해<br/>권한이 필요합니다.</p></div><div className="flex border-t border-[#3A3A3C]"><button onClick={handlePermissionDeny} className="flex-1 py-3.5 text-[#0A84FF] text-[17px] border-r border-[#3A3A3C]">허용 안 함</button><button onClick={handlePermissionAllow} className="flex-1 py-3.5 text-[#0A84FF] font-semibold text-[17px]">확인</button></div></div></ModalBackdrop>)}
-      
-      {step === 'complete' && (<ModalBackdrop><motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="flex flex-col items-center gap-4"><div className="w-16 h-16 rounded-full bg-brand-DEFAULT flex items-center justify-center shadow-lg"><Star className="w-8 h-8 text-white fill-white" /></div><h3 className="text-xl font-bold text-white">설정 완료!</h3></motion.div></ModalBackdrop>)}
-      
-      <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} initialProfile={myProfile} onSave={handleSaveMyProfile} />
-      <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} onFriendAdded={handleFriendAdded} />
-      <CreateChatModal isOpen={showCreateChatModal} onClose={() => setShowCreateChatModal(false)} friends={friends} />
-      
-      <BlockFriendModal friend={blockTarget} onClose={() => setBlockTarget(null)} onConfirm={handleBlockConfirm} />
-      <DeleteFriendModal friend={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDeleteConfirm} />
-
+      {/* 친구 상세 프로필 모달 (실제 DB 이미지/배경 연동) */}
       {selectedFriend && (
         <ModalBackdrop onClick={() => setSelectedFriend(null)}>
           <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-[340px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E]" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => toggleFavorite(selectedFriend.id)} className="absolute top-4 left-4 z-20 p-2 rounded-full hover:bg-black/20"><Star className={`w-6 h-6 ${selectedFriend.isFavorite ? 'text-yellow-400 fill-yellow-400' : 'text-white/70'}`} /></button>
             <button onClick={() => setSelectedFriend(null)} className="absolute top-4 right-4 z-20 p-2 bg-black/30 rounded-full text-white"><X className="w-5 h-5" /></button>
-            <div className="h-64 bg-[#2C2C2E]">{selectedFriend.bg ? <img src={selectedFriend.bg} className="w-full h-full object-cover" alt="Background" /> : <div className="w-full h-full bg-gradient-to-br from-[#2C2C2E] to-[#1C1C1E]" />}</div>
+            <div className="h-64 bg-[#2C2C2E]">
+               {/* ✨ 친구의 실제 배경사진 연동 */}
+               {selectedFriend.bg ? <img src={selectedFriend.bg} className="w-full h-full object-cover" alt="Background" /> : <div className="w-full h-full bg-gradient-to-br from-[#2C2C2E] to-[#1C1C1E]" />}
+            </div>
             <div className="px-6 pb-8 -mt-12 relative z-10 flex flex-col items-center text-center">
-              <div className="w-24 h-24 rounded-full border-[3px] border-[#1C1C1E] bg-[#2C2C2E] overflow-hidden shadow-lg mb-4">{selectedFriend.avatar ? <img src={selectedFriend.avatar} className="w-full h-full object-cover" alt="Avatar" /> : <UserIcon className="w-10 h-10 opacity-50 m-auto mt-6" />}</div>
+              <div className="w-24 h-24 rounded-full border-[3px] border-[#1C1C1E] bg-[#2C2C2E] overflow-hidden shadow-lg mb-4">
+                 {/* ✨ 친구의 실제 아바타 연동 */}
+                 {selectedFriend.avatar ? <img src={selectedFriend.avatar} className="w-full h-full object-cover" alt="Avatar" /> : <UserIcon className="w-10 h-10 opacity-50 m-auto mt-6" />}
+              </div>
               <h3 className="text-xl font-bold text-white mb-1">{selectedFriend.name}</h3>{selectedFriend.status && <p className="text-[#8E8E93] text-sm mb-6">{selectedFriend.status}</p>}
               <div className="mb-6 flex flex-col items-center gap-1"><div className="text-[10px] text-brand-DEFAULT font-bold tracking-wider">AI SCORE</div><div className="flex items-center gap-2 bg-[#2C2C2E] px-3 py-1 rounded-full border border-[#3A3A3C]"><div className={`w-2 h-2 rounded-full ${selectedFriend.friendlyScore > 80 ? 'bg-green-500' : selectedFriend.friendlyScore > 40 ? 'bg-yellow-500' : 'bg-red-500'}`} /><span className="text-xs font-mono font-bold">{selectedFriend.friendlyScore}</span></div></div>
               <div className="flex gap-6 w-full justify-center"><button onClick={() => handleEnterChat(selectedFriend.id)} className="flex flex-col items-center gap-1 group"><div className="w-12 h-12 rounded-full bg-[#2C2C2E] group-hover:bg-[#3A3A3C] flex items-center justify-center text-white border border-[#3A3A3C]"><MessageCircle className="w-5 h-5" /></div><span className="text-[11px] text-[#E5E5EA]">1:1 채팅</span></button></div>
@@ -409,6 +423,13 @@ export default function FriendsListPage() {
           </motion.div>
         </ModalBackdrop>
       )}
+
+      {/* 기타 모달 */}
+      <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} initialProfile={myProfile} onSave={handleSaveMyProfile} />
+      <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} onFriendAdded={handleFriendAdded} />
+      <CreateChatModal isOpen={showCreateChatModal} onClose={() => setShowCreateChatModal(false)} friends={friends} />
+      <BlockFriendModal friend={blockTarget} onClose={() => setBlockTarget(null)} onConfirm={handleBlockConfirm} />
+      <DeleteFriendModal friend={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDeleteConfirm} />
     </div>
   );
 }
@@ -427,7 +448,7 @@ function FriendItem({ friend, onClick, onBlock, onDelete }: { friend: Friend; on
         <button onClick={() => { onDelete(); controls.start({ x: 0 }); }} className="flex-1 h-full bg-[#EC5022] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"><Trash2 className="w-5 h-5 mb-1" /><span className="text-[10px] font-medium">삭제</span></button>
       </div>
       <motion.div drag="x" dragConstraints={{ left: SWIPE_WIDTH, right: 0 }} dragElastic={0.1} onDragEnd={handleDragEnd} animate={controls} onClick={onClick} className="relative w-full h-full bg-dark-bg flex items-center px-4 z-10 cursor-pointer active:bg-white/5 transition-colors" style={{ touchAction: 'pan-y' }}>
-        <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4">
+        <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4 border border-white/5 shadow-sm">
           {friend.avatar ? <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93]"><UserIcon className="w-6 h-6 opacity-50" /></div>}
         </div>
         <div className="flex-1 min-w-0">
@@ -486,31 +507,14 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: { isOpen:
   const [deleteTarget, setDeleteTarget] = useState<'avatar' | 'bg' | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => { if (isOpen) setProfile(initialProfile); }, [isOpen, initialProfile]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.addEventListener('load', () => { setTempImageSrc(reader.result as string); setCropType(type); setCrop({ x: 0, y: 0 }); setZoom(1); });
-      reader.readAsDataURL(file);
-      e.target.value = '';
-    }
-  };
-
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => { if (e.target.files && e.target.files.length > 0) { const file = e.target.files[0]; const reader = new FileReader(); reader.addEventListener('load', () => { setTempImageSrc(reader.result as string); setCropType(type); setCrop({ x: 0, y: 0 }); setZoom(1); }); reader.readAsDataURL(file); e.target.value = ''; } };
   const onCropComplete = useCallback((_: Area, croppedAreaPixels: Area) => { setCroppedAreaPixels(croppedAreaPixels); }, []);
-  const handleCropSave = async () => {
-    if (!tempImageSrc || !croppedAreaPixels || !cropType) return;
-    try { const croppedImage = await getCroppedImg(tempImageSrc, croppedAreaPixels); setProfile(prev => ({ ...prev, [cropType]: croppedImage })); setTempImageSrc(null); setCropType(null); toast.success('이미지가 변경되었습니다.'); } catch (e) { toast.error('오류가 발생했습니다.'); }
-  };
-
+  const handleCropSave = async () => { if (!tempImageSrc || !croppedAreaPixels || !cropType) return; try { const croppedImage = await getCroppedImg(tempImageSrc, croppedAreaPixels); setProfile(prev => ({ ...prev, [cropType]: croppedImage })); setTempImageSrc(null); setCropType(null); toast.success('이미지가 변경되었습니다.'); } catch (e) { toast.error('오류가 발생했습니다.'); } };
   const requestDelete = (e: React.MouseEvent, type: 'avatar' | 'bg') => { e.preventDefault(); e.stopPropagation(); setDeleteTarget(type); setShowDeleteConfirm(true); };
   const confirmDelete = () => { if (deleteTarget) { setProfile(prev => ({ ...prev, [deleteTarget]: null })); toast.success('기본 이미지로 변경되었습니다.'); } setShowDeleteConfirm(false); setDeleteTarget(null); };
   const handleSave = () => { if (!profile.name.trim()) return toast.error('닉네임을 입력해주세요.'); onSave(profile); };
-
   if (!isOpen) return null;
-
   return (
     <>
       <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col">
@@ -518,13 +522,13 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: { isOpen:
         <div className="flex-1 overflow-y-auto bg-dark-bg">
           <div className="relative w-full">
             <div onClick={() => bgInputRef.current?.click()} className="h-48 bg-[#2C2C2E] relative cursor-pointer group">
-              {profile.bg ? (<><img src={profile.bg} className="w-full h-full object-cover opacity-70" alt="Background"/><button onClick={(e) => requestDelete(e, 'bg')} className="absolute top-4 right-4 p-2.5 bg-black/70 hover:bg-red-500 rounded-full text-white backdrop-blur-sm z-50 transition-all border border-white/10 shadow-lg"><Trash2 className="w-4 h-4" /></button></>) : (<div className="w-full h-full flex items-center justify-center text-[#8E8E93] gap-2"><ImageIcon className="w-6 h-6"/><span>배경 사진</span></div>)}
+              {profile.bg ? (<><img src={profile.bg} className="w-full h-full object-cover opacity-70" alt="Background" /><button onClick={(e) => requestDelete(e, 'bg')} className="absolute top-4 right-4 p-2.5 bg-black/70 hover:bg-red-500 rounded-full text-white backdrop-blur-sm z-50 transition-all border border-white/10 shadow-lg"><Trash2 className="w-4 h-4" /></button></>) : (<div className="w-full h-full flex items-center justify-center text-[#8E8E93] gap-2"><ImageIcon className="w-6 h-6"/><span>배경 사진</span></div>)}
               <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"><Camera className="w-8 h-8 text-white drop-shadow-md" /></div>
             </div>
             <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 z-20">
               <div className="relative">
                 <div onClick={() => avatarInputRef.current?.click()} className="w-28 h-28 rounded-full border-4 border-dark-bg bg-[#3A3A3C] overflow-hidden cursor-pointer group relative">
-                  {profile.avatar ? (<img src={profile.avatar} className="w-full h-full object-cover group-hover:opacity-70 transition-opacity" alt="Avatar"/>) : (<UserIcon className="w-10 h-10 text-[#8E8E93] m-auto mt-7" />)}
+                  {profile.avatar ? (<img src={profile.avatar} className="w-full h-full object-cover group-hover:opacity-70 transition-opacity" alt="Avatar" />) : (<UserIcon className="w-10 h-10 text-[#8E8E93] m-auto mt-7" />)}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity"><Camera className="w-6 h-6 text-white drop-shadow-md" /></div>
                 </div>
                 {profile.avatar && (<button onClick={(e) => requestDelete(e, 'avatar')} className="absolute -top-1 -right-1 w-9 h-9 bg-[#1C1C1E] border-2 border-white/20 rounded-full flex items-center justify-center text-white hover:bg-red-500 hover:border-red-500 transition-all z-50 shadow-lg"><Trash2 className="w-4 h-4" /></button>)}
@@ -550,43 +554,10 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
-
-  const handleAddDirectly = async () => {
-    if (!name || !phone) return toast.error('이름과 전화번호를 입력해주세요.');
-    try {
-      const { error } = await supabase
-        .from('friends')
-        .insert([{ name, phone, friendly_score: 50, is_favorite: false }]);
-      if (error) throw error;
-      toast.success(`${name}님이 친구로 추가되었습니다.`);
-      if (onFriendAdded) onFriendAdded();
-      onClose();
-    } catch (error) {
-      console.error('Add friend error:', error);
-      toast.error('친구 추가에 실패했습니다.');
-    }
-  };
-
-  const handleSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      toast.success('연락처가 최신 상태로 동기화되었습니다.');
-      if (onFriendAdded) onFriendAdded();
-      onClose();
-    }, 1500);
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      setTab('search');
-      setName('');
-      setPhone('');
-    }
-  }, [isOpen]);
-
+  const handleAddDirectly = async () => { if (!name || !phone) return toast.error('이름과 전화번호를 입력해주세요.'); try { const { error } = await supabase.from('friends').insert([{ name, phone, friendly_score: 50, is_favorite: false }]); if (error) throw error; toast.success(`${name}님이 친구로 추가되었습니다.`); if (onFriendAdded) onFriendAdded(); onClose(); } catch (error) { toast.error('친구 추가에 실패했습니다.'); } };
+  const handleSync = () => { setIsSyncing(true); setTimeout(() => { setIsSyncing(false); toast.success('연락처가 최신 상태로 동기화되었습니다.'); if (onFriendAdded) onFriendAdded(); onClose(); }, 1500); };
+  useEffect(() => { if (isOpen) { setTab('search'); setName(''); setPhone(''); } }, [isOpen]);
   if (!isOpen) return null;
-
   return (
     <ModalBackdrop onClick={onClose}>
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} onClick={(e) => e.stopPropagation()} className="w-full max-w-[360px] bg-[#1C1C1E] rounded-3xl overflow-hidden border border-[#2C2C2E] shadow-2xl flex flex-col max-h-[500px]">
@@ -602,15 +573,93 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
     const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
     const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const toggleSelection = (id: number) => { if (chatType === 'individual') { setSelectedIds([id]); } else { if (selectedIds.includes(id)) { setSelectedIds(prev => prev.filter(pid => pid !== id)); } else { if (selectedIds.length >= 100) return toast.error('최대 100명까지만 초대 가능합니다.'); setSelectedIds(prev => [...prev, id]); } } };
-    const handleCreate = () => { if (selectedIds.length === 0) return toast.error('대화 상대를 선택해주세요.'); toast.success(`${chatType === 'group' ? '그룹' : '1:1'} 채팅방이 생성되었습니다.`); onClose(); setTimeout(() => setStep('select-type'), 300); };
+    
+    // ✨ [연동] 실제 선택 로직 추가
+    const toggleSelection = (id: number) => { 
+        if (chatType === 'individual') { 
+            setSelectedIds([id]); 
+        } else { 
+            if (selectedIds.includes(id)) { 
+                setSelectedIds(prev => prev.filter(pid => pid !== id)); 
+            } else { 
+                setSelectedIds(prev => [...prev, id]); 
+            } 
+        } 
+    };
+
+    // ✨ [연동] 실제 채팅방 생성 및 리스트 추가 로직
+    const handleCreate = async () => { 
+        if (selectedIds.length === 0) return toast.error('대화 상대를 선택해주세요.'); 
+        
+        try {
+            const isGroup = chatType === 'group' || selectedIds.length > 1;
+            const roomId = isGroup ? Date.now() : selectedIds[0];
+            
+            // 1. Supabase chat_rooms 테이블에 생성
+            const { error } = await supabase.from('chat_rooms').upsert([{ 
+                id: roomId,
+                title: isGroup ? `나 외 ${selectedIds.length}명` : friends.find(f => f.id === selectedIds[0])?.name || '새 대화',
+                type: isGroup ? 'group' : 'individual',
+                last_message: '대화를 시작해보세요!',
+                unread_count: 0,
+                updated_at: new Date().toISOString()
+            }]);
+
+            if (error) throw error;
+
+            toast.success(`${isGroup ? '그룹' : '1:1'} 채팅방이 생성되었습니다.`);
+            onClose(); 
+            // 생성된 채팅방으로 이동
+            window.location.href = `/chat/room/${roomId}`;
+        } catch (e) {
+            toast.error('채팅방 생성에 실패했습니다.');
+        }
+    };
+
     if (!isOpen) return null;
     return (
         <ModalBackdrop onClick={onClose}>
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onClick={(e) => e.stopPropagation()} className="w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl overflow-hidden border border-[#2C2C2E] shadow-2xl h-[500px] flex flex-col">
-                <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4 flex-shrink-0">{step === 'select-friends' ? (<button onClick={() => setStep('select-type')}><ChevronRight className="w-6 h-6 rotate-180 text-white" /></button>) : (<span />)}<h3 className="text-white font-bold text-base">{step === 'select-type' ? '새로운 채팅' : chatType === 'group' ? '대화 상대 초대' : '대화 상대 선택'}</h3><button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button></div>
-                {step === 'select-type' && (<div className="flex-1 p-6 flex flex-col gap-4 justify-center"><button onClick={() => { setChatType('individual'); setStep('select-friends'); setSelectedIds([]); }} className="flex items-center gap-4 p-5 bg-[#2C2C2E] rounded-2xl hover:bg-[#3A3A3C] transition-colors text-left group"><div className="w-12 h-12 rounded-full bg-brand-DEFAULT/10 flex items-center justify-center text-brand-DEFAULT group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors"><UserIcon className="w-6 h-6" /></div><div><h4 className="text-lg font-bold text-white">1:1 채팅</h4><p className="text-xs text-[#8E8E93]">친구 한 명과 대화합니다.</p></div></button><button onClick={() => { setChatType('group'); setStep('select-friends'); setSelectedIds([]); }} className="flex items-center gap-4 p-5 bg-[#2C2C2E] rounded-2xl hover:bg-[#3A3A3C] transition-colors text-left group"><div className="w-12 h-12 rounded-full bg-brand-DEFAULT/10 flex items-center justify-center text-brand-DEFAULT group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors"><Users className="w-6 h-6" /></div><div><h4 className="text-lg font-bold text-white">그룹 채팅</h4><p className="text-xs text-[#8E8E93]">여러 친구와 함께 대화합니다.</p></div></button></div>)}
-                {step === 'select-friends' && (<><div className="flex-1 overflow-y-auto custom-scrollbar p-2">{friends.map(friend => { const isSelected = selectedIds.includes(friend.id); return (<div key={friend.id} onClick={() => toggleSelection(friend.id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}><div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">{friend.avatar ? <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}</div><div className="flex-1"><p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>{friend.name}</p></div>{isSelected ? <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}</div>) })}</div><div className="p-4 border-t border-[#2C2C2E]"><button onClick={handleCreate} disabled={selectedIds.length === 0} className={`w-full h-12 rounded-xl font-bold text-white transition-all ${selectedIds.length > 0 ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'}`}>{selectedIds.length}명과 시작하기</button></div></>)}
+                <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4 flex-shrink-0">
+                    {step === 'select-friends' ? (<button onClick={() => setStep('select-type')}><ChevronRight className="w-6 h-6 rotate-180 text-white" /></button>) : (<span />)}
+                    <h3 className="text-white font-bold text-base">{step === 'select-type' ? '새로운 채팅' : chatType === 'group' ? '대화 상대 초대' : '대화 상대 선택'}</h3>
+                    <button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button>
+                </div>
+                {step === 'select-type' && (
+                    <div className="flex-1 p-6 flex flex-col gap-4 justify-center">
+                        <button onClick={() => { setChatType('individual'); setStep('select-friends'); setSelectedIds([]); }} className="flex items-center gap-4 p-5 bg-[#2C2C2E] rounded-2xl hover:bg-[#3A3A3C] transition-colors text-left group">
+                            <div className="w-12 h-12 rounded-full bg-brand-DEFAULT/10 flex items-center justify-center text-brand-DEFAULT group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors"><UserIcon className="w-6 h-6" /></div>
+                            <div><h4 className="text-lg font-bold text-white">1:1 채팅</h4><p className="text-xs text-[#8E8E93]">친구 한 명과 대화합니다.</p></div>
+                        </button>
+                        <button onClick={() => { setChatType('group'); setStep('select-friends'); setSelectedIds([]); }} className="flex items-center gap-4 p-5 bg-[#2C2C2E] rounded-2xl hover:bg-[#3A3A3C] transition-colors text-left group">
+                            <div className="w-12 h-12 rounded-full bg-brand-DEFAULT/10 flex items-center justify-center text-brand-DEFAULT group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors"><Users className="w-6 h-6" /></div>
+                            <div><h4 className="text-lg font-bold text-white">그룹 채팅</h4><p className="text-xs text-[#8E8E93]">여러 친구와 함께 대화합니다.</p></div>
+                        </button>
+                    </div>
+                )}
+                {step === 'select-friends' && (
+                    <>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+                            {friends.map(friend => { 
+                                const isSelected = selectedIds.includes(friend.id); 
+                                return (
+                                    <div key={friend.id} onClick={() => toggleSelection(friend.id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}>
+                                        <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
+                                            {friend.avatar ? <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}
+                                        </div>
+                                        <div className="flex-1"><p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>{friend.name}</p></div>
+                                        {isSelected ? <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/20" /> : <Circle className="text-[#3A3A3C] w-5 h-5" />}
+                                    </div>
+                                ) 
+                            })}
+                        </div>
+                        <div className="p-4 border-t border-[#2C2C2E]">
+                            <button onClick={handleCreate} disabled={selectedIds.length === 0} className={`w-full h-12 rounded-xl font-bold text-white transition-all ${selectedIds.length > 0 ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'}`}>
+                                {selectedIds.length}명과 시작하기
+                            </button>
+                        </div>
+                    </>
+                )}
             </motion.div>
         </ModalBackdrop>
     );

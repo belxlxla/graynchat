@@ -9,10 +9,11 @@ import {
   Megaphone, Headphones, Info
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { supabase } from '../../../shared/lib/supabaseClient'; // ✨ Supabase 클라이언트 추가
 
 // === [Constants] ===
-const CURRENT_VERSION = '1.0.0'; // 현재 빌드된 버전
-const LATEST_VERSION = '1.0.0'; // 서버에서 받아온 최신 버전 (테스트 시 이 값을 변경해보세요)
+const CURRENT_VERSION = '1.0.0'; 
+const LATEST_VERSION = '1.0.0'; 
 
 // === [Types] ===
 interface WeatherData {
@@ -52,14 +53,12 @@ export default function SettingsPage() {
   const [locationDenied, setLocationDenied] = useState(false);
   const [currentBanner, setCurrentBanner] = useState(0);
 
-  // 검색 상태
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 로그인 방식 상태 관리
-  const [accountProvider, setAccountProvider] = useState('카카오 로그인');
+  // ✨ 로그인 방식 연동 상태 (초기값 빈 문자열)
+  const [accountProvider, setAccountProvider] = useState('확인 중...');
 
-  // 버전 관리 상태
   const isLatestVersion = CURRENT_VERSION === LATEST_VERSION;
 
   // === Effects ===
@@ -72,13 +71,42 @@ export default function SettingsPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // ✨ [연동 수정] 실제 로그인 세션 정보에서 제공자(Provider)를 추출합니다.
   useEffect(() => {
-    const provider = localStorage.getItem('login_provider'); 
-    
-    if (provider === 'naver') setAccountProvider('네이버 로그인');
-    else if (provider === 'kakao') setAccountProvider('카카오 로그인');
-    else if (provider === 'google') setAccountProvider('구글 로그인');
-    else if (provider === 'email') setAccountProvider('이메일 로그인');
+    const fetchUserProvider = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        // Supabase Auth 메타데이터에서 제공자 정보 가져오기
+        const provider = session.user.app_metadata.provider || 'email';
+        
+        // 제공자별 한글 명칭 매핑
+        const providerMap: Record<string, string> = {
+          'kakao': '카카오 로그인',
+          'naver': '네이버 로그인',
+          'google': '구글 로그인',
+          'apple': '애플 로그인',
+          'email': '이메일 로그인'
+        };
+
+        setAccountProvider(providerMap[provider] || '이메일 로그인');
+      } else {
+        // 세션이 없는 경우 localStorage 백업 확인 (기존 코드 호환)
+        const localProvider = localStorage.getItem('login_provider');
+        if (localProvider) {
+          const providerMap: Record<string, string> = {
+            'naver': '네이버 로그인',
+            'kakao': '카카오 로그인',
+            'google': '구글 로그인',
+            'apple': '애플 로그인',
+            'email': '이메일 로그인'
+          };
+          setAccountProvider(providerMap[localProvider] || '이메일 로그인');
+        }
+      }
+    };
+
+    fetchUserProvider();
   }, []);
 
   // === Functions ===
@@ -101,16 +129,14 @@ export default function SettingsPage() {
     } else if (id === 'help') {
       navigate('/settings/help');
     } else if (id === 'version') {
-      // 버전 클릭 시 아무 동작 안 함 (업데이트 버튼은 별도 처리)
       return; 
     } else {
       toast('준비 중인 기능입니다.');
     }
   };
 
-  // 앱 업데이트 핸들러
   const handleUpdateApp = (e: React.MouseEvent) => {
-    e.stopPropagation(); // 부모 클릭 이벤트 방지
+    e.stopPropagation(); 
     
     const userAgent = navigator.userAgent.toLowerCase();
     if (userAgent.indexOf("android") > -1) {
@@ -179,6 +205,7 @@ export default function SettingsPage() {
   };
 
   // === Menu Data Definition ===
+  // ✨ filteredSettings 내에서 accountProvider 값을 value로 사용
   const settingsItems: MenuItem[] = [
     { id: 'account', label: '그레인 계정정보', icon: <User className="w-5 h-5 text-[#8E8E93]" />, value: accountProvider },
     { id: 'privacy', label: '개인/보안', icon: <Lock className="w-5 h-5 text-[#8E8E93]" /> },
@@ -192,11 +219,9 @@ export default function SettingsPage() {
   const serviceItems: MenuItem[] = [
     { id: 'notice', label: '공지사항', icon: <Megaphone className="w-5 h-5 text-[#8E8E93]" /> },
     { id: 'help', label: '그레인 고객센터/운영정책', icon: <Headphones className="w-5 h-5 text-[#8E8E93]" /> },
-    // ✨ 앱 관리 (버전 정보)
     { id: 'version', label: '앱 관리', icon: <Info className="w-5 h-5 text-[#8E8E93]" /> },
   ];
 
-  // 검색 필터링 로직
   const filteredSettings = useMemo(() => {
     if (!searchQuery) return settingsItems;
     return settingsItems.filter(item => item.label.includes(searchQuery));
@@ -358,7 +383,6 @@ export default function SettingsPage() {
                     icon={item.icon} 
                     label={item.label} 
                     value={item.value} 
-                    // ✨ 앱 관리(version)는 Chevron을 숨기고 별도 UI 처리
                     hideChevron={item.id === 'version'}
                     rightElement={
                       item.id === 'version' ? (
@@ -406,8 +430,8 @@ function ListItem({
   icon, 
   label, 
   value, 
-  hideChevron, // ✨ Chevron 숨김 옵션 추가
-  rightElement, // ✨ 커스텀 우측 요소 추가
+  hideChevron, 
+  rightElement, 
   onClick 
 }: { 
   icon?: React.ReactNode; 
@@ -428,7 +452,6 @@ function ListItem({
       </div>
       <div className="flex items-center gap-2">
         {value && <span className="text-[13px] text-[#8E8E93]">{value}</span>}
-        {/* ✨ rightElement가 있으면 렌더링, 없으면 Chevron 렌더링 */}
         {rightElement ? rightElement : (
           !hideChevron && <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
         )}
