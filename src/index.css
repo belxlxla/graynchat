@@ -2,14 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 전체 화면 배경색 강제 지정 (다크모드) */
+/* ✨ 테마별 색상 변수 설정 */
+:root {
+  --grayn-bg: #1C1C1E;
+  --grayn-text: #FFFFFF;
+}
+
+/* ✨ 라이트 모드일 때 변수값 변경 */
+html.light {
+  --grayn-bg: #F2F2F7;
+  --grayn-text: #1C1C1E;
+}
+
+/* ✨ 다크 모드일 때 변수값 변경 */
+html.dark {
+  --grayn-bg: #1C1C1E;
+  --grayn-text: #FFFFFF;
+}
+
+/* 전체 화면 배경색 및 글자색 적용 */
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #1C1C1E; /* 다크 배경 */
-  color: white;
+  background-color: var(--grayn-bg); /* 변수 적용 */
+  color: var(--grayn-text); /* 변수 적용 */
   overflow: hidden; /* 이중 스크롤 방지 */
+  transition: background-color 0.3s ease, color 0.3s ease; /* 부드러운 전환 효과 */
 }
 
 /* 스크롤바 숨기기 유틸리티 */
