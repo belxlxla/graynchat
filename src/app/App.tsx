@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { AnimatePresence } from 'framer-motion';
 
 // ✨ Auth Context
 import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
@@ -12,7 +11,7 @@ import LoginPage from '../features/auth/pages/LoginPage';
 import SignUpPage from '../features/auth/pages/SignUpPage'; 
 import PhoneAuthPage from '../features/auth/pages/PhoneAuthPage';
 import ProfileSetupPage from '../features/auth/pages/ProfileSetupPage';
-import RecoveryPage from '../features/auth/pages/RecoveryPage'; // ✨ 추가된 페이지
+import RecoveryPage from '../features/auth/pages/RecoveryPage';
 
 // Main Pages
 import FriendsListPage from '../features/chat/pages/FriendsListPage';
@@ -46,55 +45,52 @@ const Placeholder = ({ title }: { title: string }) => (
   </div>
 );
 
-// 1. 로그인한 사용자만 접근 가능한 라우트 (보호된 라우트)
+// 1. 보호된 라우트
 function PrivateRoute() {
   const { user, loading } = useAuth();
-  
-  if (loading) return null; // 로딩 중일 때 빈 화면 (스피너 등)
-  
-  // 유저가 없으면 로그인 페이지로 리다이렉트
+  if (loading) return <div className="h-screen bg-[#1C1C1E]" />;
   return user ? <Outlet /> : <Navigate to="/auth/login" replace />;
 }
 
-// 2. 로그인 안 한 사용자만 접근 가능한 라우트 (로그인 페이지 등)
+// 2. 공용 라우트
 function PublicRoute() {
   const { user, loading } = useAuth();
-  
-  if (loading) return null;
-
-  // 이미 로그인했으면 메인으로 리다이렉트
+  if (loading) return <div className="h-screen bg-[#1C1C1E]" />;
   return !user ? <Outlet /> : <Navigate to="/main/friends" replace />;
 }
 
-// 3. 앱의 메인 로직
+// 3. 앱 콘텐츠 로직
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const { loading } = useAuth();
 
-  // 스플래시 화면 처리
   if (showSplash) {
     return <Splash onFinish={() => setShowSplash(false)} />;
   }
 
-  // 인증 정보 로딩 중일 때 (깜빡임 방지)
   if (loading) {
-    return <div className="h-screen bg-dark-bg" />;
+    return <div className="h-screen bg-[#1C1C1E]" />;
   }
 
   return (
     <Routes>
-      {/* === Public Routes (로그인 안 했을 때만 접근 가능) === */}
       <Route element={<PublicRoute />}>
         <Route path="/auth/login" element={<LoginPage />} />
         <Route path="/auth/signup" element={<SignUpPage />} />
-        <Route path="/auth/phone" element={<PhoneAuthPage />} />
-        <Route path="/auth/profile" element={<ProfileSetupPage />} />
-        <Route path="/auth/recovery" element={<RecoveryPage />} /> {/* ✨ 경로 연결됨 */}
+        {/* ✨ Vercel 에러 수정: 필수 Props 전달 (onBackToLogin, onNewUser) */}
+        <Route 
+          path="/auth/phone" 
+          element={<PhoneAuthPage onBackToLogin={() => window.history.back()} onNewUser={() => {}} />} 
+        />
+        {/* ✨ Vercel 에러 수정: 필수 Props 전달 (onComplete) */}
+        <Route 
+          path="/auth/profile" 
+          element={<ProfileSetupPage onComplete={() => {}} />} 
+        />
+        <Route path="/auth/recovery" element={<RecoveryPage />} />
       </Route>
 
-      {/* === Private Routes (로그인 해야만 접근 가능) === */}
       <Route element={<PrivateRoute />}>
-        {/* 메인 탭 화면 (MainLayout 내부) */}
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />
           <Route path="friends" element={<FriendsListPage />} />
@@ -103,11 +99,9 @@ function AppContent() {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* 독립 페이지들 (채팅방 등) */}
         <Route path="/chat/room/:chatId" element={<ChatRoomPage />} />
         <Route path="/chat/room/:chatId/settings" element={<ChatRoomSettingsPage />} />
 
-        {/* 설정 하위 페이지들 */}
         <Route path="/settings/account" element={<AccountInfoPage />} />
         <Route path="/settings/security" element={<SecurityPage />} />
         <Route path="/settings/security/privacy" element={<PrivacyManagementPage />} />
@@ -126,13 +120,11 @@ function AppContent() {
         <Route path="/settings/help/report/illegal" element={<IllegalContentReportPage />} /> 
       </Route>
 
-      {/* 잘못된 경로는 홈으로 리다이렉트 */}
       <Route path="*" element={<Navigate to="/main/friends" replace />} />
     </Routes>
   );
 }
 
-// 4. 최상위 컴포넌트에서 Provider 감싸기
 function App() {
   return (
     <AuthProvider>

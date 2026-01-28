@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Send, Plus, MoreHorizontal, 
   Image as ImageIcon, Smile, Search, Camera, 
-  FileText, X, Download, ChevronRight, Play, File, Film, Eye, Link as LinkIcon, ExternalLink, AtSign, User as UserIcon, ChevronUp, ChevronDown 
+  FileText, X, Download, ChevronUp, ChevronDown, AtSign, User as UserIcon 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -87,7 +87,6 @@ export default function ChatRoomPage() {
     return messages.filter(m => getFileType(m.content) === 'image').map(m => m.content);
   }, [messages]);
 
-  // ✨ 검색 필터링 및 앵커 포인트 계산
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     return messages
@@ -98,10 +97,8 @@ export default function ChatRoomPage() {
   const handleSearchMove = (direction: 'up' | 'down') => {
     if (searchResults.length === 0) return;
     let nextIndex = direction === 'up' ? currentSearchIndex - 1 : currentSearchIndex + 1;
-    
     if (nextIndex < 0) nextIndex = searchResults.length - 1;
     if (nextIndex >= searchResults.length) nextIndex = 0;
-    
     setCurrentSearchIndex(nextIndex);
     const targetId = searchResults[nextIndex];
     messageRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -224,7 +221,7 @@ export default function ChatRoomPage() {
       return (
         <div className="flex items-center gap-0 p-1.5 rounded-2xl max-w-[280px] bg-[#2C2C2E] border border-[#3A3A3C]">
           <div onClick={() => window.open(msg.content, '_blank')} className="flex-1 flex items-center gap-3 p-2 cursor-pointer hover:bg-white/5 rounded-xl transition-colors">
-            <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] flex items-center justify-center shrink-0 border border-white/5">{type === 'pdf' ? <FileText className="w-5 h-5 text-[#EC5022]" /> : <File className="w-5 h-5 text-[#0A84FF]" />}</div>
+            <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] flex items-center justify-center shrink-0 border border-white/5">{type === 'pdf' ? <FileText className="w-5 h-5 text-[#EC5022]" /> : <FileText className="w-5 h-5 text-[#0A84FF]" />}</div>
             <div className="flex-1 min-w-0 mr-1"><p className="text-[14px] text-white truncate font-medium">{getFileName(msg.content)}</p><p className="text-[10px] text-[#8E8E93] uppercase tracking-wide">{type.replace('-file','').toUpperCase()}</p></div>
           </div>
           <div className="h-8 w-[1px] bg-white/10 mx-1" /><button onClick={() => { const a = document.createElement('a'); a.href = msg.content; a.download = getFileName(msg.content); a.click(); }} className="p-3 text-[#8E8E93] hover:text-brand-DEFAULT transition-all"><Download className="w-5 h-5" /></button>
@@ -291,7 +288,7 @@ export default function ChatRoomPage() {
             const showProfile = !isSearching && !isMe && (index === 0 || messages[index - 1].sender_id !== msg.sender_id);
             return (
               <motion.div key={msg.id} ref={el => messageRefs.current[msg.id] = el} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
-                {!isMe && <div className={`w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 shrink-0 overflow-hidden ${!showProfile ? 'invisible' : ''}`}><img src={roomMembers.find(f => f.id === Number(msg.sender_id))?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} className="w-full h-full object-cover" /></div>}
+                {!isMe && <div className={`w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 shrink-0 overflow-hidden ${!showProfile ? 'invisible' : ''}`}><img src={roomMembers.find(f => f.id === Number(msg.sender_id))?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} className="w-full h-full object-cover" alt="" /></div>}
                 <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                   {!isMe && showProfile && <span className="text-[11px] text-[#8E8E93] mb-1 ml-1">상대방</span>}
                   {renderMessageContent(msg, isMe)}
@@ -311,7 +308,7 @@ export default function ChatRoomPage() {
               <div className="max-h-60 overflow-y-auto custom-scrollbar">
                 {filteredMentionFriends.map(f => (
                   <button key={f.id} onClick={() => handleMentionSelect(f.name)} className={`w-full flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-none group transition-all ${f.name === '나' ? 'opacity-50 cursor-default pointer-events-none' : 'hover:bg-brand-DEFAULT/15 active:bg-brand-DEFAULT/20'}`}>
-                    <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] overflow-hidden flex items-center justify-center shrink-0 border border-white/5 group-hover:border-brand-DEFAULT/40">{f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-[#8E8E93]" />}</div>
+                    <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] overflow-hidden flex items-center justify-center shrink-0 border border-white/5 group-hover:border-brand-DEFAULT/40">{f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" alt="" /> : <UserIcon className="w-5 h-5 text-[#8E8E93]" />}</div>
                     <div className="flex-1 flex items-center gap-1.5 text-left"><span className="text-[15px] font-medium text-white group-hover:text-brand-DEFAULT">{f.name}</span>{f.name === '나' && <span className="text-[12px] text-brand-DEFAULT/70 font-bold">(나)</span>}</div>
                   </button>
                 ))}
@@ -324,7 +321,7 @@ export default function ChatRoomPage() {
           <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={`w-[40px] h-[40px] flex items-center justify-center text-[#8E8E93] bg-[#2C2C2E] rounded-full transition-all shrink-0 hover:text-white ${isMenuOpen ? 'rotate-45 text-white bg-[#3A3A3C]' : ''}`}><Plus className="w-6 h-6" /></button>
           <div className="flex-1 h-full bg-[#2C2C2E] rounded-[22px] border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-all px-4 flex items-center gap-2">
             <textarea ref={inputRef} value={inputText} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="메시지 보내기 (@멘션)" className="w-full bg-transparent text-white text-[15px] focus:outline-none resize-none placeholder-[#636366] leading-tight py-2" rows={1} style={{ height: '40px', lineHeight: '24px' }} />
-            <button onClick={() => toast('이모티콘 준비중')} className="text-[#8E8E93] hover:text-white transition-colors shrink-0"><Smile className="w-6 h-6" /></button>
+            <button onClick={() => toast('준비중')} className="text-[#8E8E93] hover:text-white transition-colors shrink-0"><Smile className="w-6 h-6" /></button>
           </div>
           <button onClick={handleSendMessage} disabled={!inputText.trim()} className={`w-[40px] h-[40px] flex items-center justify-center rounded-full shrink-0 transition-all ${inputText.trim() ? 'bg-brand-DEFAULT text-white shadow-lg active:scale-90' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5" /></button>
         </div>
@@ -336,7 +333,7 @@ export default function ChatRoomPage() {
                 <MenuButton icon={<ImageIcon className="w-6 h-6" />} label="앨범" onClick={() => fileInputRef.current?.click()} />
                 <MenuButton icon={<Camera className="w-6 h-6" />} label="카메라" onClick={() => cameraInputRef.current?.click()} />
                 <MenuButton icon={<FileText className="w-6 h-6" />} label="파일" onClick={() => docInputRef.current?.click()} />
-                <MenuButton icon={<Film className="w-6 h-6" />} label="동영상" onClick={() => toast('준비 중입니다.')} />
+                <MenuButton icon={<Smile className="w-6 h-6" />} label="이모티콘" onClick={() => toast('준비 중입니다.')} />
               </div>
             </motion.div>
           )}

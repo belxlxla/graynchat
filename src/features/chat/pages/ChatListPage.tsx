@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
-import type { PanInfo } from 'framer-motion'; 
 import { 
   User as UserIcon, Users, 
-  Trash2, Check, BellOff, Search, Plus, Pencil, X,
-  ChevronRight, CheckCircle2, Circle, Settings, RefreshCw
+  Trash2, Check, Search, Plus, Pencil, X,
+  CheckCircle2, Circle, Settings, RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -55,6 +54,7 @@ export default function ChatListPage() {
       if (error) throw error;
 
       if (rooms) {
+        // 1:1 채팅인 경우 상대방 정보를 가져오기 위해 ID 추출
         const friendIds = rooms.filter(r => r.type === 'individual').map(r => r.id);
         let friendsData: Friend[] = [];
         if (friendIds.length > 0) {
@@ -135,7 +135,7 @@ export default function ChatListPage() {
     navigate(`/chat/room/${newChatId}`);
   };
 
-  // ✨ [추가] 실시간 검색 필터링 로직
+  // ✨ 실시간 검색 필터링 로직
   const filteredChats = useMemo(() => {
     if (!searchQuery.trim()) return chats;
     return chats.filter(chat => 
@@ -179,7 +179,7 @@ export default function ChatListPage() {
         </div>
       </header>
 
-      {/* ✨ [추가] 검색바 UI (친구 리스트와 디자인 통일) */}
+      {/* 검색바 UI */}
       <AnimatePresence>
         {isSearching && (
           <motion.div 
@@ -254,7 +254,7 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: { data: ChatRoom; 
 
       <motion.div drag="x" dragConstraints={{ left: SWIPE_WIDTH, right: 0 }} onDragEnd={async (_, info) => { if (info.offset.x < -50) await controls.start({ x: SWIPE_WIDTH }); else await controls.start({ x: 0 }); }} animate={controls} onClick={() => navigate(`/chat/room/${data.id}`)} className="relative w-full h-full bg-dark-bg flex items-center px-4 z-10 cursor-pointer active:bg-white/5 transition-colors">
         <div className="w-[52px] h-[52px] rounded-[20px] bg-[#3A3A3C] mr-4 flex items-center justify-center overflow-hidden border border-[#2C2C2E]">
-          {data.avatar ? <img src={data.avatar} className="w-full h-full object-cover" /> : (isGroup ? <Users className="w-6 h-6 text-[#8E8E93]" /> : <UserIcon className="w-6 h-6 text-[#8E8E93]" />)}
+          {data.avatar ? <img src={data.avatar} className="w-full h-full object-cover" alt="" /> : (isGroup ? <Users className="w-6 h-6 text-[#8E8E93]" /> : <UserIcon className="w-6 h-6 text-[#8E8E93]" />)}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-center mb-1">
@@ -307,7 +307,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
           {friends.map(f => (
             <div key={f.id} onClick={() => setSelectedIds(prev => prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id])} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ${selectedIds.includes(f.id) ? 'bg-brand-DEFAULT/10' : ''}`}>
-              <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">{f.avatar ? <img src={f.avatar} className="w-full h-full object-cover"/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}</div>
+              <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">{f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" alt=""/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}</div>
               <p className="flex-1 text-sm font-medium">{f.name}</p>
               {selectedIds.includes(f.id) ? <CheckCircle2 className="text-brand-DEFAULT w-5 h-5" /> : <Circle className="text-[#3A3A3C] w-5 h-5" />}
             </div>
