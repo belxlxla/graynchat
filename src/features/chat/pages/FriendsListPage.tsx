@@ -6,7 +6,7 @@ import {
   Search, Settings, Star, MessageCircle, X, User as UserIcon, 
   UserPlus, MessageSquarePlus, CheckCircle2, Circle,
   Image as ImageIcon, Trash2, RefreshCw,
-  ChevronRight, Users, Ban, AlertTriangle 
+  ChevronRight, Users, Ban, AlertTriangle, BookUser
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 // ✨ Supabase 클라이언트 임포트
@@ -34,9 +34,10 @@ interface MyProfile {
 export default function FriendsListPage() {
   const navigate = useNavigate();
 
-  // ✨ [수정] setStep이 사용되지 않아 초기값만 가지는 변수로 유지하거나 setStep 제거
-  const [step] = useState<'permission' | 'complete' | 'list'>(() => {
-    return localStorage.getItem('grayn_contact_permission') ? 'list' : 'permission';
+  // ✨ [동기화 로직 보완] Grayn 서비스의 핵심인 연락처 동기화 권한 상태 관리
+  const [step, setStep] = useState<'permission' | 'complete' | 'list'>(() => {
+    const savedPermission = localStorage.getItem('grayn_contact_permission');
+    return savedPermission === 'granted' ? 'list' : 'permission';
   });
 
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -61,6 +62,16 @@ export default function FriendsListPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // ✨ [권한 핸들러] 연락처 접근 허용 시 동작
+  const handleAllowContacts = () => {
+    localStorage.setItem('grayn_contact_permission', 'granted');
+    setStep('complete');
+    setTimeout(() => {
+      setStep('list');
+      fetchFriends();
+    }, 1500);
+  };
 
   const fetchMyProfile = async () => {
     try {
@@ -112,7 +123,6 @@ export default function FriendsListPage() {
       }
     } catch (error) {
       console.error('Error fetching friends:', error);
-      toast.error('친구 목록을 불러오지 못했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -120,8 +130,10 @@ export default function FriendsListPage() {
 
   useEffect(() => {
     fetchMyProfile();
-    fetchFriends();
-  }, []);
+    if (step === 'list') {
+      fetchFriends();
+    }
+  }, [step]);
   
   const handleSaveMyProfile = async (newProfile: MyProfile) => { 
     try {
@@ -246,11 +258,8 @@ export default function FriendsListPage() {
       setSelectedFriend(null); 
       setBlockTarget(null);
       toast.dismiss(loadingToast);
-      toast.success('차단되었습니다. 차단된 친구 관리에서 확인 가능합니다.');
-      
-      fetchFriends();
+      toast.success('차단되었습니다.');
     } catch (error) {
-      console.error("Block Error:", error);
       toast.dismiss(loadingToast);
       toast.error("차단 처리에 실패했습니다.");
     }
@@ -266,10 +275,6 @@ export default function FriendsListPage() {
     setIsSettingsOpen(false);
   };
 
-  const handleFriendAdded = () => {
-    fetchFriends();
-  };
-
   const filteredFriends = useMemo(() => {
     let result = friends;
     if (searchQuery) result = result.filter(f => f.name.includes(searchQuery) || f.phone.includes(searchQuery));
@@ -280,22 +285,56 @@ export default function FriendsListPage() {
     const favs = filteredFriends.filter(f => f.isFavorite);
     const norms = filteredFriends.filter(f => !f.isFavorite);
     const sortFn = (a: Friend, b: Friend) => {
-      const getType = (s: string) => {
-        const code = s.charCodeAt(0);
-        if (code >= 48 && code <= 57) return 1;
-        if (code >= 44032 && code <= 55203) return 2;
-        return 3;
-      };
-      const typeA = getType(a.name);
-      const typeB = getType(b.name);
-      if (typeA !== typeB) return typeA - typeB;
-      return a.name.localeCompare(b.name);
+      const typeA = a.name.charCodeAt(0);
+      const typeB = b.name.charCodeAt(0);
+      return typeA - typeB;
     };
     return { favorites: favs, normals: norms.sort(sortFn) };
   }, [filteredFriends]);
 
   return (
     <div className="h-full w-full flex flex-col bg-dark-bg text-white">
+      
+      {/* 1. 연락처 접근 권한 요청 단계 */}
+      {step === 'permission' && (
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-20 h-20 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mb-6">
+            <BookUser className="w-10 h-10 text-brand-DEFAULT" />
+          </div>
+          <h2 className="text-2xl font-bold mb-4">연락처 동기화</h2>
+          <p className="text-[#8E8E93] text-sm leading-relaxed mb-10">
+            Grayn을 사용하는 친구들을 찾기 위해<br/>연락처 접근 권한이 필요합니다.
+          </p>
+          <button 
+            onClick={handleAllowContacts}
+            className="w-full h-14 bg-brand-DEFAULT text-white font-bold rounded-2xl hover:bg-brand-hover transition-all"
+          >
+            허용하기
+          </button>
+          <button 
+            onClick={() => setFriends([])} // 임시 스킵 로직 (필요 시 수정)
+            className="mt-4 text-[#8E8E93] text-sm"
+          >
+            나중에 하기
+          </button>
+        </div>
+      )}
+
+      {/* 2. 동기화 완료 애니메이션 단계 */}
+      {step === 'complete' && (
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <motion.div 
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mb-6"
+          >
+            <CheckCircle2 className="w-10 h-10 text-green-500" />
+          </motion.div>
+          <h2 className="text-xl font-bold">동기화 완료</h2>
+        </div>
+      )}
+
+      {/* 3. 실제 친구 리스트 단계 */}
       {step === 'list' && (
         <>
           <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-50 border-b border-[#2C2C2E] shrink-0">
@@ -310,11 +349,7 @@ export default function FriendsListPage() {
               <button onClick={() => setShowCreateChatModal(true)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
                 <MessageSquarePlus className="w-6 h-6" />
               </button>
-              
-              <button 
-                onClick={() => setIsSettingsOpen(!isSettingsOpen)} 
-                className={`p-2 transition-colors ${isSettingsOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}
-              >
+              <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className={`p-2 transition-colors ${isSettingsOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}>
                 <Settings className="w-6 h-6" />
               </button>
 
@@ -356,12 +391,16 @@ export default function FriendsListPage() {
               <div className="flex justify-center items-center h-[50vh] text-[#8E8E93]">
                 <RefreshCw className="w-6 h-6 animate-spin" />
               </div>
+            ) : friends.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-[60vh] text-[#8E8E93] px-10 text-center">
+                    <UserIcon className="w-12 h-12 opacity-20 mb-4" />
+                    <p className="text-sm">등록된 친구가 없습니다.<br/>친구를 추가하거나 동기화해보세요.</p>
+                </div>
             ) : (
               <>
                 {!searchQuery && (
-                  <>
-                    <div className="px-5">
-                        <div onClick={() => setShowEditProfileModal(true)} className="py-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-2 transition-colors">
+                  <div className="px-5">
+                      <div onClick={() => setShowEditProfileModal(true)} className="py-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-2 transition-colors">
                         <div className="w-14 h-14 rounded-[20px] bg-[#3A3A3C] overflow-hidden relative border border-white/5 shadow-sm">
                             {myProfile.avatar ? <img src={myProfile.avatar} alt="Me" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93]"><UserIcon className="w-6 h-6 opacity-50"/></div>}
                         </div>
@@ -369,10 +408,9 @@ export default function FriendsListPage() {
                             <h2 className="text-[16px] font-bold">{myProfile.name}</h2>
                             <p className="text-xs text-[#8E8E93] mt-0.5">{myProfile.status || '상태메시지 설정'}</p>
                         </div>
-                        </div>
-                    </div>
-                    <div className="h-[1px] bg-[#2C2C2E] w-full my-2" />
-                  </>
+                      </div>
+                      <div className="h-[1px] bg-[#2C2C2E] w-full my-2" />
+                  </div>
                 )}
                 <div className="animate-fade-in">
                     {favorites.length > 0 && (
@@ -419,7 +457,7 @@ export default function FriendsListPage() {
 
       {/* Modals */}
       <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} initialProfile={myProfile} onSave={handleSaveMyProfile} />
-      <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} onFriendAdded={handleFriendAdded} />
+      <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} onFriendAdded={fetchFriends} />
       <CreateChatModal isOpen={showCreateChatModal} onClose={() => setShowCreateChatModal(false)} friends={friends} />
       <BlockFriendModal friend={blockTarget} onClose={() => setBlockTarget(null)} onConfirm={handleBlockConfirm} />
       <DeleteFriendModal friend={deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDeleteConfirm} />
@@ -670,7 +708,7 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
                     </>
                 )}
             </motion.div>
-        </ModalBackdrop> 
+        </ModalBackdrop>
     );
 }
 
