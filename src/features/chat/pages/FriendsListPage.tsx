@@ -9,7 +9,6 @@ import {
   ChevronRight, Users, Ban, AlertTriangle 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import type { Area } from 'react-easy-crop';
 // ✨ Supabase 클라이언트 임포트
 import { supabase } from '../../../shared/lib/supabaseClient';
 
@@ -35,7 +34,8 @@ interface MyProfile {
 export default function FriendsListPage() {
   const navigate = useNavigate();
 
-  const [step, setStep] = useState<'permission' | 'complete' | 'list'>(() => {
+  // ✨ [수정] setStep이 사용되지 않아 초기값만 가지는 변수로 유지하거나 setStep 제거
+  const [step] = useState<'permission' | 'complete' | 'list'>(() => {
     return localStorage.getItem('grayn_contact_permission') ? 'list' : 'permission';
   });
 
@@ -87,11 +87,12 @@ export default function FriendsListPage() {
 
   const fetchFriends = async () => {
     setIsLoading(true);
+    setFriends([]); 
     try {
       const { data, error } = await supabase
         .from('friends')
         .select('*')
-        .eq('is_blocked', false) 
+        .or('is_blocked.eq.false,is_blocked.is.null') 
         .order('id', { ascending: true });
 
       if (error) throw error;
@@ -229,6 +230,7 @@ export default function FriendsListPage() {
   };
 
   const handleBlockConfirm = async (friendId: number, options: { blockMessage: boolean, hideProfile: boolean }) => {
+    const loadingToast = toast.loading('차단 처리 중...');
     try {
       const { error } = await supabase
         .from('friends')
@@ -241,10 +243,15 @@ export default function FriendsListPage() {
       if (error) throw error;
 
       setFriends(prev => prev.filter(f => f.id !== friendId));
+      setSelectedFriend(null); 
       setBlockTarget(null);
+      toast.dismiss(loadingToast);
       toast.success('차단되었습니다. 차단된 친구 관리에서 확인 가능합니다.');
+      
+      fetchFriends();
     } catch (error) {
-      console.error("Block Update Error:", error);
+      console.error("Block Error:", error);
+      toast.dismiss(loadingToast);
       toast.error("차단 처리에 실패했습니다.");
     }
   };
