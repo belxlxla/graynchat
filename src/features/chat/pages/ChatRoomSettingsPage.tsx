@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react'; // ✨ useCallback 제거
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Bell, Users, Image, FileText, Link as LinkIcon, 
   LogOut, ChevronRight, Download, ExternalLink,
   X, AlertTriangle, Search, CheckCircle2, Circle, ArrowLeft,
-  File, Play
+  Play // ✨ File 제거
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -42,7 +42,6 @@ interface Friend {
 type ViewState = 'main' | 'media' | 'files' | 'links';
 
 // === [Utils] ===
-// 파일명 추출 (한글/특수문자 복원 + 타임스탬프 제거)
 const getFileName = (url: string) => {
   try {
     const decodedUrl = decodeURIComponent(url);
@@ -54,19 +53,13 @@ const getFileName = (url: string) => {
   }
 };
 
-// 콘텐츠 분류기
 const classifyContent = (url: string) => {
   const ext = url.split('.').pop()?.toLowerCase();
   const isStorage = url.includes('chat-uploads');
 
-  // 1. 미디어 (사진/영상)
   if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
   if (['mp4', 'mov', 'webm', 'avi', 'm4v'].includes(ext || '')) return 'video';
-
-  // 2. 파일 (문서/압축 등)
   if (isStorage) return 'file'; 
-
-  // 3. 링크 (http 포함하고 스토리지가 아닌 것)
   if (url.startsWith('http') && !isStorage) return 'link';
 
   return null;
@@ -77,11 +70,8 @@ export default function ChatRoomSettingsPage() {
   const { chatId } = useParams(); 
 
   const [currentView, setCurrentView] = useState<ViewState>('main');
-  
-  // ✨ [수정됨] 직관적인 상태명 사용 (기본값 True = 켜짐)
   const [isNotificationsOn, setIsNotificationsOn] = useState(true);
 
-  // Real Data State
   const [roomInfo, setRoomInfo] = useState<{ title: string; count: number; avatar: string | null; status: string | null }>({
     title: '로딩 중...', count: 0, avatar: null, status: null
   });
@@ -91,21 +81,17 @@ export default function ChatRoomSettingsPage() {
   const [linkList, setLinkList] = useState<LinkItem[]>([]);
   const [friendsList, setFriendsList] = useState<Friend[]>([]);
 
-  // Modals
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   
-  // Image Viewer State
   const [viewerOpen, setViewerOpen] = useState(false);
   const [initialImageIndex, setInitialImageIndex] = useState(0);
 
-  // 1. Data Fetching
   useEffect(() => {
     if (!chatId) return;
 
     const fetchData = async () => {
       try {
-        // A. 채팅방 정보
         const { data: friend } = await supabase.from('friends').select('*').eq('id', chatId).maybeSingle();
         if (friend) {
           setRoomInfo({ title: friend.name, count: 2, avatar: friend.avatar, status: friend.status || '상태메시지 없음' });
@@ -114,7 +100,6 @@ export default function ChatRoomSettingsPage() {
           setRoomInfo({ title: room?.title || '알 수 없는 대화방', count: 0, avatar: null, status: null });
         }
 
-        // B. 메시지 분류 (미디어 / 파일 / 링크)
         const { data: messages } = await supabase
           .from('messages')
           .select('id, content, created_at')
@@ -148,7 +133,6 @@ export default function ChatRoomSettingsPage() {
           setLinkList(links);
         }
 
-        // C. 친구 목록
         const { data: friends } = await supabase.from('friends').select('*');
         if (friends) setFriendsList(friends);
 
@@ -160,7 +144,6 @@ export default function ChatRoomSettingsPage() {
     fetchData();
   }, [chatId]);
 
-  // ✨ [수정됨] 알림 토글 핸들러 (UX 개선)
   const handleToggleNotifications = () => {
     const newState = !isNotificationsOn;
     setIsNotificationsOn(newState);
@@ -207,9 +190,6 @@ export default function ChatRoomSettingsPage() {
     setViewerOpen(true);
   };
 
-  // === Render Sub Views ===
-  
-  // 1. Media Grid View
   if (currentView === 'media') {
     return (
       <SubPageView title="사진/동영상" onBack={() => setCurrentView('main')}>
@@ -241,7 +221,6 @@ export default function ChatRoomSettingsPage() {
             ))}
           </div>
         )}
-        
         <ImageViewerModal 
           isOpen={viewerOpen}
           initialIndex={initialImageIndex}
@@ -252,7 +231,6 @@ export default function ChatRoomSettingsPage() {
     );
   }
 
-  // 2. File List View
   if (currentView === 'files') {
     return (
       <SubPageView title="파일" onBack={() => setCurrentView('main')}>
@@ -289,7 +267,6 @@ export default function ChatRoomSettingsPage() {
     );
   }
 
-  // 3. Link List View
   if (currentView === 'links') {
     return (
       <SubPageView title="링크" onBack={() => setCurrentView('main')}>
@@ -324,7 +301,6 @@ export default function ChatRoomSettingsPage() {
     );
   }
 
-  // === Main Settings View ===
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
@@ -335,7 +311,7 @@ export default function ChatRoomSettingsPage() {
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-10">
         <div className="p-6 flex flex-col items-center border-b border-[#2C2C2E]">
           <div className="w-24 h-24 bg-[#3A3A3C] rounded-[30px] mb-4 flex items-center justify-center overflow-hidden border border-[#2C2C2E]">
-             {roomInfo.avatar ? <img src={roomInfo.avatar} className="w-full h-full object-cover" /> : <Users className="w-10 h-10 text-[#8E8E93] opacity-50" />}
+             {roomInfo.avatar ? <img src={roomInfo.avatar} className="w-full h-full object-cover" alt="" /> : <Users className="w-10 h-10 text-[#8E8E93] opacity-50" />}
           </div>
           <h2 className="text-xl font-bold mb-1">{roomInfo.title}</h2>
           <p className="text-[#8E8E93] text-sm mt-1">{roomInfo.status || `멤버 ${roomInfo.count}명`}</p>
@@ -352,18 +328,15 @@ export default function ChatRoomSettingsPage() {
             <div className="flex items-center justify-between px-5 py-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C]">
               <div className="flex items-center gap-3">
                 <Bell className="w-5 h-5 text-[#8E8E93]" />
-                {/* ✨ [수정됨] 라벨 텍스트 변경: 알림 끄기 -> 알림 설정 */}
                 <span className="text-[15px] text-white">알림 설정</span>
               </div>
-              
-              {/* ✨ [수정됨] 토글 버튼 UX 개선 (오른쪽=켜짐=초록색) */}
               <button 
                 onClick={handleToggleNotifications}
                 className={`w-12 h-7 rounded-full p-1 transition-colors duration-200 ease-in-out ${isNotificationsOn ? 'bg-brand-DEFAULT' : 'bg-[#48484A]'}`}
               >
                 <motion.div 
                   className="w-5 h-5 bg-white rounded-full shadow-sm" 
-                  animate={{ x: isNotificationsOn ? 20 : 0 }} // 켜지면 오른쪽으로 이동
+                  animate={{ x: isNotificationsOn ? 20 : 0 }} 
                   transition={{ type: "spring", stiffness: 500, damping: 30 }}
                 />
               </button>
@@ -384,8 +357,6 @@ export default function ChatRoomSettingsPage() {
     </div>
   );
 }
-
-// === Sub Components ===
 
 function SubPageView({ title, onBack, children }: { title: string, onBack: () => void, children: React.ReactNode }) {
   return (
@@ -470,7 +441,7 @@ function InviteMemberModal({ isOpen, onClose, friends }: { isOpen: boolean, onCl
             const isSelected = selectedIds.includes(friend.id);
             return (
               <div key={friend.id} onClick={() => toggleSelect(friend.id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}>
-                <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">{friend.avatar ? <img src={friend.avatar} className="w-full h-full object-cover" /> : <Users className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}</div>
+                <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">{friend.avatar ? <img src={friend.avatar} className="w-full h-full object-cover" alt="" /> : <Users className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}</div>
                 <div className="flex-1"><p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>{friend.name}</p></div>
                 {isSelected ? <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
               </div>
@@ -483,7 +454,6 @@ function InviteMemberModal({ isOpen, onClose, friends }: { isOpen: boolean, onCl
   );
 }
 
-// ✨ [New] 미디어 뷰어 (이미지/동영상 지원)
 function ImageViewerModal({ isOpen, initialIndex, items, onClose }: { isOpen: boolean, initialIndex: number, items: MediaItem[], onClose: () => void }) {
   const [index, setIndex] = useState(initialIndex);
   const [direction, setDirection] = useState(0);
@@ -569,7 +539,7 @@ function ImageViewerModal({ isOpen, initialIndex, items, onClose }: { isOpen: bo
             {items[index].type === 'video' ? (
               <video src={items[index].url} controls className="max-w-full max-h-full" />
             ) : (
-              <img src={items[index].url} className="max-w-full max-h-full object-contain" />
+              <img src={items[index].url} className="max-w-full max-h-full object-contain" alt="" />
             )}
           </motion.div>
         </AnimatePresence>
