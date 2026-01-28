@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Check, Image as ImageIcon, X, ZoomIn, Eye, MessageCircle, Trash2 } from 'lucide-react';
+import { Camera, Check, Image as ImageIcon, X, Eye, Trash2 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Point, Area } from 'react-easy-crop';
 import toast from 'react-hot-toast';
@@ -34,7 +34,7 @@ interface ProfileSetupPageProps {
 type ImageType = 'avatar' | 'background';
 
 export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) {
-  const { user } = useAuth(); // Context에서 가져오는 유저 정보
+  const { user } = useAuth();
   const [nickname, setNickname] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   
@@ -103,20 +103,16 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
     }
   };
 
-  // ✨ 수정됨: 유저 ID 확인 로직 강화 (세션 리프레시 포함)
   const handleComplete = async () => {
-    // 1. Context에 유저가 없으면 직접 세션을 확인
     let currentUserId = user?.id;
     let currentUserEmail = user?.email;
 
     if (!currentUserId) {
-      // 1-1. 현재 세션 가져오기 시도
       const { data: sessionData } = await supabase.auth.getSession();
       if (sessionData.session?.user) {
         currentUserId = sessionData.session.user.id;
         currentUserEmail = sessionData.session.user.email;
       } else {
-        // 1-2. 세션이 없거나 만료된 것 같으면 강제 리프레시 시도 (회원가입 직후 이슈 방지)
         const { data: refreshData } = await supabase.auth.refreshSession();
         if (refreshData.user) {
           currentUserId = refreshData.user.id;
@@ -125,14 +121,12 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
       }
     }
 
-    // 2. 모든 시도 후에도 없으면 에러
     if (!currentUserId) {
       toast.error('잠시 후 다시 시도해주세요. (인증 대기 중)');
       return;
     }
     
     try {
-      // 3. users 테이블에 프로필 정보 업데이트
       const { error } = await supabase
         .from('users')
         .upsert({
@@ -144,8 +138,7 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
         });
 
       if (error) throw error;
-
-      onComplete(); // 완료 콜백 실행
+      onComplete();
     } catch (error) {
       console.error('Profile Update Error:', error);
       toast.error('프로필 저장에 실패했습니다.');
@@ -160,7 +153,7 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
         <div onClick={() => backgroundInputRef.current?.click()} className="relative w-full h-48 bg-[#2C2C2E] cursor-pointer group overflow-hidden">
           {backgroundUrl ? (
             <>
-              <img src={backgroundUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity" />
+              <img src={backgroundUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity" alt="Background" />
               <button onClick={(e) => handleRemoveClick(e, 'background')} className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-red-500/80 rounded-full text-white backdrop-blur-sm transition-colors z-20">
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -174,7 +167,7 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
         <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
           <div onClick={() => avatarInputRef.current?.click()} className="relative cursor-pointer group">
             <div className="w-28 h-28 rounded-full border-4 border-dark-bg bg-[#3A3A3C] overflow-hidden shadow-xl flex items-center justify-center relative">
-              {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover group-hover:opacity-70 transition-opacity" /> : <UserPlaceholder />}
+              {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover group-hover:opacity-70 transition-opacity" alt="Avatar" /> : <UserPlaceholder />}
             </div>
             <div className="absolute bottom-0 right-0 w-8 h-8 bg-brand-DEFAULT rounded-full flex items-center justify-center border-2 border-dark-bg shadow-lg z-10"><Camera className="w-4 h-4 text-white" /></div>
             {avatarUrl && <button onClick={(e) => handleRemoveClick(e, 'avatar')} className="absolute top-0 left-0 w-8 h-8 bg-[#2C2C2E] hover:bg-red-500 rounded-full flex items-center justify-center border-2 border-dark-bg shadow-lg z-20 transition-colors"><Trash2 className="w-4 h-4 text-white" /></button>}
@@ -228,9 +221,9 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsPreviewOpen(false)} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-[340px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E]">
               <button onClick={() => setIsPreviewOpen(false)} className="absolute top-4 right-4 z-20 p-2 bg-black/30 rounded-full text-white"><X className="w-5 h-5" /></button>
-              <div className="h-64 bg-[#2C2C2E] relative">{backgroundUrl ? <img src={backgroundUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#2C2C2E] to-[#1C1C1E]"><span className="text-[#636366] text-sm">배경 없음</span></div>}</div>
+              <div className="h-64 bg-[#2C2C2E] relative">{backgroundUrl ? <img src={backgroundUrl} className="w-full h-full object-cover" alt="Background Preview" /> : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#2C2C2E] to-[#1C1C1E]"><span className="text-[#636366] text-sm">배경 없음</span></div>}</div>
               <div className="px-6 pb-8 -mt-12 relative z-10 flex flex-col items-center text-center">
-                <div className="w-24 h-24 rounded-full border-[3px] border-[#1C1C1E] bg-[#2C2C2E] overflow-hidden shadow-lg mb-4">{avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" /> : <UserPlaceholder />}</div>
+                <div className="w-24 h-24 rounded-full border-[3px] border-[#1C1C1E] bg-[#2C2C2E] overflow-hidden shadow-lg mb-4">{avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" alt="Avatar Preview" /> : <UserPlaceholder />}</div>
                 <h3 className="text-xl font-bold text-white mb-1">{nickname || '닉네임'}</h3>
                 {statusMessage && <p className="text-[#8E8E93] text-sm max-w-[80%] break-keep leading-relaxed mb-6">{statusMessage}</p>}
               </div>

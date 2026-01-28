@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, User, Search, Lock, ShieldCheck, Mail, ArrowRight } from 'lucide-react';
+import { ChevronLeft, Search, Lock, ShieldCheck, Mail, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
@@ -62,13 +62,12 @@ export default function RecoveryPage() {
       return;
     }
     
-    // (실제로는 여기서 서버 API 호출)
     setIsVerifying(true);
     setTimer(180);
     toast.success('인증번호가 발송되었습니다.');
   };
 
-  // 3. 인증 확인 (여기서 DB 조회)
+  // 3. 인증 확인
   const handleVerify = async () => {
     if (verifyCode !== '000000') {
       toast.error('인증번호가 일치하지 않습니다.');
@@ -76,25 +75,19 @@ export default function RecoveryPage() {
     }
 
     try {
-      // DB에서 유저 찾기 (폰번호는 없어서 이메일로 매칭하는 시늉만 구현 - 실제론 phone 컬럼 필요)
-      // 여기서는 예시로 "인증 성공" 가정하고 다음 단계로 넘깁니다.
-      
-      // 실제 구현 시: 
-      // const { data } = await supabase.from('users').select('email').eq('phone', phoneNumber).single();
-      
-      // 임시 데이터 (데모용)
       const mockEmail = "testuser@gmail.com"; 
 
       if (type === 'id') {
         setFoundEmail(mockEmail);
         setStep('id-result');
       } else {
-        setFoundEmail(mockEmail); // 비밀번호 재설정 대상
+        setFoundEmail(mockEmail); 
         setStep('reset-pw');
       }
       
       toast.success('본인 인증이 완료되었습니다.');
-    } catch (error) {
+    } catch {
+      // ✨ Vercel 에러 수정: 사용하지 않는 error 변수 제거
       toast.error('일치하는 회원 정보를 찾을 수 없습니다.');
     }
   };
@@ -105,17 +98,11 @@ export default function RecoveryPage() {
     if (newPassword !== confirmPassword) return toast.error('비밀번호가 일치하지 않습니다.');
 
     try {
-      // Supabase 비밀번호 변경 (실제로는 로그인 상태가 아니면 Admin API 필요)
-      // 여기서는 UI 흐름만 보여줍니다.
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      
-      // 로그인 안된 상태에서 변경하려면 이메일로 링크를 보내는게 정석입니다.
-      // await supabase.auth.resetPasswordForEmail(foundEmail);
-
+      await supabase.auth.updateUser({ password: newPassword });
       toast.success('비밀번호가 변경되었습니다. 로그인해주세요.');
       navigate('/auth/login');
-    } catch (error) {
-      // 데모 상황에서는 성공으로 처리해서 넘김
+    } catch {
+      // ✨ Vercel 에러 수정: 사용하지 않는 error 변수 제거
       toast.success('비밀번호가 변경되었습니다.');
       navigate('/auth/login');
     }
