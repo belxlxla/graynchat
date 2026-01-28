@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion'; 
 import { 
-  User as UserIcon, Users, // ✨ MessageSquare 제거됨
+  User as UserIcon, Users, 
   Trash2, Check, BellOff, Search, Plus, Pencil, X,
-  ChevronRight, CheckCircle2, Circle, Settings 
+  ChevronRight, CheckCircle2, Circle, Settings, RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+// ✨ Supabase 연결
+import { supabase } from '../../../shared/lib/supabaseClient';
 
 // --- [Types] ---
 interface ChatRoom {
-  id: string;
+  id: string; // DB의 int8을 문자열로 처리하거나 number로 맞춰야 함 (여기선 편의상 string 변환)
   type: 'individual' | 'group';
   title: string;
   hostName?: string;
@@ -30,16 +32,10 @@ interface Friend {
   avatar: string | null;
 }
 
-// --- [Mock Data] ---
-const MOCK_CHAT_DATA: ChatRoom[] = [
-  { id: '1', type: 'individual', title: '강민수', avatar: 'https://i.pravatar.cc/150?u=2', lastMessage: '오늘 저녁에 시간 괜찮으세요?', timestamp: '오후 8:30', unreadCount: 2 },
-  { id: '2', type: 'group', title: '김철수 외 3명', hostName: '김철수', membersCount: 4, avatar: null, lastMessage: '오늘 마라탕 어때요?', timestamp: '오후 1:15', unreadCount: 0, isMuted: true },
-  { id: '3', type: 'individual', title: '1004천사', avatar: null, lastMessage: '네 알겠습니다. 내일 뵙겠습니다!', timestamp: '어제', unreadCount: 0 },
-  { id: '4', type: 'group', title: '개발팀 공지방', hostName: '팀장님', membersCount: 12, avatar: null, lastMessage: '서버 점검 예정입니다. (22:00~)', timestamp: '어제', unreadCount: 5 },
-  { id: '5', type: 'individual', title: 'Alice', avatar: 'https://i.pravatar.cc/150?u=3', lastMessage: 'Can you send me the file?', timestamp: '1월 24일', unreadCount: 1 },
-];
+// ✨ 목업 데이터 제거하고 DB에서 불러올 예정이므로 빈 배열 초기화에 사용
+// const MOCK_CHAT_DATA = ... (제거됨)
 
-// 친구 목록 데이터
+// 친구 목록 불러오기용 (채팅방 생성 시 필요)
 const MOCK_FRIENDS_DATA: Friend[] = [
   { id: 1, name: '1004천사', avatar: null },
   { id: 2, name: '강민수', avatar: 'https://i.pravatar.cc/150?u=2' },
@@ -50,47 +46,122 @@ const MOCK_FRIENDS_DATA: Friend[] = [
 
 export default function ChatListPage() {
   const navigate = useNavigate();
-  const [chats, setChats] = useState<ChatRoom[]>(MOCK_CHAT_DATA);
+  
+  // ✨ State: DB 데이터로 관리
+  const [chats, setChats] = useState<ChatRoom[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // 모달 상태들
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingChat, setEditingChat] = useState<ChatRoom | null>(null);
-  
-  // 채팅방 생성 모달 상태
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
-
-  // 설정 드롭다운 상태
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // 채팅방 나가기
-  const handleLeaveChat = (id: string) => {
-    if (confirm('채팅방을 나가시겠습니까?')) { 
-      setChats(prev => prev.filter(chat => chat.id !== id));
-      toast.success('채팅방을 나갔습니다.');
+  // ✨ [Backend] 채팅방 목록 불러오기
+  const fetchChats = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('chat_rooms')
+        .select('*')
+        .order('updated_at', { ascending: false }); // 최신순 정렬
+
+      if (error) throw error;
+
+      if (data) {
+        // DB 데이터를 화면 타입(ChatRoom)으로 변환
+        const formattedData: ChatRoom[] = data.map((room: any) => ({
+          id: room.id.toString(),
+          type: room.type || 'group',
+          title: room.title || '새로운 채팅방',
+          hostName: '', // 추후 구현
+          avatar: null, // 추후 구현
+          membersCount: 1, // 추후 구현
+          lastMessage: room.last_message || '대화가 없습니다.',
+          timestamp: new Date(room.updated_at).toLocaleDateString(),
+          unreadCount: room.unread_count || 0,
+          isMuted: false
+        }));
+        setChats(formattedData);
+      }
+    } catch (error) {
+      console.error('Error fetching chats:', error);
+      // toast.error('채팅 목록을 불러오지 못했습니다.'); // 초기 로딩 에러는 조용히 처리
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // 읽음 처리
-  const handleMarkAsRead = (id: string) => {
+  // 초기 로딩
+  useEffect(() => {
+    fetchChats();
+  }, []);
+
+  // ✨ [Backend] 채팅방 나가기 (DB Delete)
+  const handleLeaveChat = async (id: string) => {
+    if (confirm('채팅방을 나가시겠습니까?')) { 
+      // 화면 먼저 갱신 (Optimistic UI)
+      setChats(prev => prev.filter(chat => chat.id !== id));
+
+      const { error } = await supabase
+        .from('chat_rooms')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        toast.error('나가기 실패');
+        fetchChats(); // 실패 시 롤백
+      } else {
+        toast.success('채팅방을 나갔습니다.');
+      }
+    }
+  };
+
+  // ✨ [Backend] 읽음 처리 (DB Update)
+  const handleMarkAsRead = async (id: string) => {
     setChats(prev => prev.map(chat => chat.id === id ? { ...chat, unreadCount: 0 } : chat));
+    
+    await supabase
+      .from('chat_rooms')
+      .update({ unread_count: 0 })
+      .eq('id', id);
+      
     toast.success('읽음 처리되었습니다.');
   };
 
-  // 채팅방 이름 수정
+  // 채팅방 이름 수정 모달 열기
   const openEditModal = (chat: ChatRoom) => {
     setEditingChat(chat);
     setIsEditModalOpen(true);
   };
 
-  const handleSaveTitle = (newTitle: string) => {
+  // ✨ [Backend] 채팅방 이름 변경 (DB Update)
+  const handleSaveTitle = async (newTitle: string) => {
     if (editingChat) {
+      // 화면 먼저 갱신
       setChats(prev => prev.map(c => c.id === editingChat.id ? { ...c, title: newTitle } : c));
-      toast.success('채팅방 이름이 변경되었습니다.');
       setIsEditModalOpen(false);
       setEditingChat(null);
+
+      const { error } = await supabase
+        .from('chat_rooms')
+        .update({ title: newTitle })
+        .eq('id', editingChat.id);
+
+      if (error) {
+        toast.error('이름 변경 실패');
+        fetchChats();
+      } else {
+        toast.success('채팅방 이름이 변경되었습니다.');
+      }
     }
+  };
+
+  // ✨ [Backend] 새 채팅방 생성 후 목록 갱신
+  const handleChatCreated = () => {
+    fetchChats(); // 목록 새로고침
   };
 
   // 드롭다운 메뉴 핸들러
@@ -100,7 +171,7 @@ export default function ChatListPage() {
   };
 
   const handleGoSettings = () => {
-    navigate('/main/settings'); // 더보기(설정) 페이지로 이동
+    navigate('/main/settings'); 
     setIsSettingsOpen(false);
   };
 
@@ -202,11 +273,15 @@ export default function ChatListPage() {
 
       {/* === List === */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
-        {filteredChats.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center h-[60vh] text-[#8E8E93] gap-3">
+            <RefreshCw className="w-8 h-8 animate-spin opacity-50" />
+          </div>
+        ) : filteredChats.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-[#8E8E93] gap-3">
             <Search className="w-12 h-12 opacity-20" />
             <p className="text-sm">
-              {searchQuery ? '검색 결과가 없습니다.' : '대화 내역이 없습니다.'}
+              {searchQuery ? '검색 결과가 없습니다.' : '개설된 채팅방이 없습니다.'}
             </p>
           </div>
         ) : (
@@ -236,7 +311,8 @@ export default function ChatListPage() {
       <CreateChatModal 
         isOpen={isCreateChatOpen} 
         onClose={() => setIsCreateChatOpen(false)} 
-        friends={MOCK_FRIENDS_DATA} 
+        friends={MOCK_FRIENDS_DATA} // 실제로는 친구 API에서 가져온 데이터를 넘겨야 함
+        onCreated={handleChatCreated}
       />
     </div>
   );
@@ -428,8 +504,18 @@ function EditTitleModal({
   );
 }
 
-// 채팅방 생성 모달
-function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClose: () => void; friends: Friend[] }) {
+// ✨ [Updated] 채팅방 생성 모달 (DB 연동)
+function CreateChatModal({ 
+  isOpen, 
+  onClose, 
+  friends,
+  onCreated 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  friends: Friend[];
+  onCreated?: () => void;
+}) {
   const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
   const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -454,10 +540,34 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
     } 
   };
 
-  const handleCreate = () => { 
+  // ✨ [Backend] 채팅방 DB 생성
+  const handleCreate = async () => { 
     if (selectedIds.length === 0) return toast.error('대화 상대를 선택해주세요.'); 
-    toast.success(`${chatType === 'group' ? '그룹' : '1:1'} 채팅방이 생성되었습니다.`); 
-    onClose(); 
+    
+    // DB Insert Logic
+    try {
+      // 1. 채팅방 만들기
+      const { data, error } = await supabase
+        .from('chat_rooms')
+        .insert([{ 
+          title: chatType === 'group' ? '새로운 그룹 채팅' : '새로운 대화',
+          type: chatType,
+          last_message: '대화를 시작해보세요!',
+          unread_count: 0
+        }])
+        .select();
+
+      if (error) throw error;
+
+      // 2. (추후 구현) 참가자 연결 로직 필요 (chat_participants 테이블 등)
+      
+      toast.success(`${chatType === 'group' ? '그룹' : '1:1'} 채팅방이 생성되었습니다.`); 
+      if (onCreated) onCreated(); // 리스트 갱신
+      onClose(); 
+    } catch (error) {
+      console.error('Create Chat Error:', error);
+      toast.error('채팅방 생성 실패');
+    }
   };
 
   if (!isOpen) return null;

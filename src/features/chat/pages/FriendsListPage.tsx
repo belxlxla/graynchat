@@ -10,7 +10,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Cropper from 'react-easy-crop';
-import type { Point, Area } from 'react-easy-crop'; // ✨ 수정됨: framer-motion -> react-easy-crop
+import type { Point, Area } from 'react-easy-crop';
+// ✨ Supabase 클라이언트 임포트
+import { supabase } from '../../../shared/lib/supabaseClient';
 
 // === [Utility] 이미지 크롭 함수 ===
 async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
@@ -43,11 +45,12 @@ async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string>
 }
 
 // === [Types] ===
+// DB 컬럼명과 매칭되도록 일부 수정될 수 있음 (여기선 카멜케이스 변환 사용)
 interface Friend {
   id: number;
   name: string;
   phone: string;
-  status: string;
+  status: string | null;
   avatar: string | null;
   bg: string | null;
   isFavorite: boolean;
@@ -61,14 +64,6 @@ interface MyProfile {
   bg: string | null;
 }
 
-// === [Mock Data] ===
-const MOCK_FRIENDS_DATA: Friend[] = [
-    { id: 1, name: '1004천사', phone: '010-1004-1004', status: '숫자가 제일 먼저', avatar: null, bg: null, isFavorite: false, friendlyScore: 95 },
-    { id: 2, name: '강민수', phone: '010-1234-5678', status: '한글은 가나다순', avatar: 'https://i.pravatar.cc/150?u=2', bg: 'https://picsum.photos/500/300?random=1', isFavorite: false, friendlyScore: 30 },
-    { id: 3, name: 'Alice', phone: '010-1111-2222', status: '영어는 마지막', avatar: 'https://i.pravatar.cc/150?u=3', bg: 'https://picsum.photos/500/300?random=2', isFavorite: false, friendlyScore: 70 },
-    { id: 4, name: '김철수', phone: '010-3333-4444', status: '상태메시지가 있어요', avatar: 'https://i.pravatar.cc/150?u=4', bg: null, isFavorite: false, friendlyScore: 10 },
-];
-
 export default function FriendsListPage() {
   const navigate = useNavigate();
 
@@ -78,6 +73,7 @@ export default function FriendsListPage() {
   const [isSynced, setIsSynced] = useState(() => localStorage.getItem('grayn_contact_permission') === 'granted');
 
   const [friends, setFriends] = useState<Friend[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // ✨ 로딩 상태 추가
 
   const [myProfile, setMyProfile] = useState<MyProfile>({
     name: '나 (임정민)',
@@ -91,15 +87,56 @@ export default function FriendsListPage() {
   const [showCreateChatModal, setShowCreateChatModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   
+  // 차단 모달 상태
   const [blockTarget, setBlockTarget] = useState<Friend | null>(null);
+  
+  // 삭제 모달 상태
   const [deleteTarget, setDeleteTarget] = useState<Friend | null>(null);
   
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // 설정 드롭다운 상태
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  useEffect(() => { setFriends(MOCK_FRIENDS_DATA); }, []);
+  // ✨ [Backend] 친구 목록 불러오기 (Supabase)
+  const fetchFriends = async () => {
+    setIsLoading(true);
+    try {
+      // 'friends' 테이블에서 모든 데이터를 가져옴 (id 순으로 정렬)
+      const { data, error } = await supabase
+        .from('friends')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (error) throw error;
+
+      if (data) {
+        // DB의 스네이크케이스(friendly_score)를 카멜케이스(friendlyScore)로 변환 매핑
+        const formattedData: Friend[] = data.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          phone: item.phone,
+          status: item.status,
+          avatar: item.avatar,
+          bg: item.bg, // DB에 컬럼이 없다면 null 처리됨
+          isFavorite: item.is_favorite,
+          friendlyScore: item.friendly_score || 0
+        }));
+        setFriends(formattedData);
+      }
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+      toast.error('친구 목록을 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 컴포넌트 마운트 시 친구 목록 불러오기
+  useEffect(() => {
+    fetchFriends();
+  }, []);
 
   const handlePermissionAllow = () => { 
     localStorage.setItem('grayn_contact_permission', 'granted'); 
@@ -120,10 +157,28 @@ export default function FriendsListPage() {
     toast.success('프로필이 업데이트되었습니다.'); 
   };
   
-  const toggleFavorite = (id: number) => {
-    setFriends(prev => prev.map(f => f.id === id ? { ...f, isFavorite: !f.isFavorite } : f));
+  // ✨ [Backend] 즐겨찾기 토글 (Optimistic Update + DB Update)
+  const toggleFavorite = async (id: number) => {
+    const targetFriend = friends.find(f => f.id === id);
+    if (!targetFriend) return;
+
+    // 1. 화면 먼저 업데이트 (반응 속도 향상)
+    const newStatus = !targetFriend.isFavorite;
+    setFriends(prev => prev.map(f => f.id === id ? { ...f, isFavorite: newStatus } : f));
     if (selectedFriend && selectedFriend.id === id) { 
-      setSelectedFriend(prev => prev ? { ...prev, isFavorite: !prev.isFavorite } : null); 
+      setSelectedFriend(prev => prev ? { ...prev, isFavorite: newStatus } : null); 
+    }
+
+    // 2. 백엔드 업데이트
+    const { error } = await supabase
+      .from('friends')
+      .update({ is_favorite: newStatus })
+      .eq('id', id);
+
+    if (error) {
+      toast.error('변경사항 저장 실패');
+      // 실패 시 롤백 (선택 사항)
+      setFriends(prev => prev.map(f => f.id === id ? { ...f, isFavorite: !newStatus } : f));
     }
   };
 
@@ -139,16 +194,31 @@ export default function FriendsListPage() {
     }
   };
 
-  const handleDeleteConfirm = () => {
-    if (deleteTarget) {
+  // ✨ [Backend] 친구 삭제 (DB Delete)
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      const { error } = await supabase
+        .from('friends')
+        .delete()
+        .eq('id', deleteTarget.id);
+
+      if (error) throw error;
+
       setFriends(prev => prev.filter(f => f.id !== deleteTarget.id));
       setDeleteTarget(null);
       toast.success('친구가 삭제되었습니다.');
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('삭제에 실패했습니다.');
     }
   };
 
-  // ✨ _options로 변경 (TS6133 에러 해결)
+  // ✨ [Backend] 친구 차단 (여기서는 DB에서 삭제로 처리하거나, block 테이블이 필요함. 현재는 리스트에서 숨김 처리)
   const handleBlockConfirm = (friendId: number, _options: { blockMessage: boolean, hideProfile: boolean }) => {
+    // 실제로는 block 테이블에 추가하고 friends 테이블에서 숨기는 로직 필요
+    // 여기서는 UI상 삭제로 구현
     setFriends(prev => prev.filter(f => f.id !== friendId));
     setBlockTarget(null);
     toast.success('차단되었습니다. 차단된 친구 관리에서 확인 가능합니다.');
@@ -162,6 +232,11 @@ export default function FriendsListPage() {
   const handleGoSettings = () => {
     navigate('/main/settings'); 
     setIsSettingsOpen(false);
+  };
+
+  // 친구 추가 완료 시 목록 새로고침
+  const handleFriendAdded = () => {
+    fetchFriends();
   };
 
   const filteredFriends = useMemo(() => {
@@ -256,7 +331,11 @@ export default function FriendsListPage() {
           </AnimatePresence>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
-            {isSynced && searchQuery && filteredFriends.length === 0 ? (
+            {isLoading ? (
+              <div className="flex justify-center items-center h-[50vh] text-[#8E8E93]">
+                <RefreshCw className="w-6 h-6 animate-spin" />
+              </div>
+            ) : isSynced && searchQuery && filteredFriends.length === 0 ? (
                <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] gap-2 animate-fade-in px-5">
                  <Search className="w-12 h-12 opacity-20 mb-2" />
                  <p className="text-base font-medium text-white">검색 결과가 없습니다.</p>
@@ -328,7 +407,7 @@ export default function FriendsListPage() {
       
       <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} initialProfile={myProfile} onSave={handleSaveMyProfile} />
       
-      <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} />
+      <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} onFriendAdded={handleFriendAdded} />
       
       <CreateChatModal isOpen={showCreateChatModal} onClose={() => setShowCreateChatModal(false)} friends={friends} />
       
@@ -363,6 +442,8 @@ export default function FriendsListPage() {
   );
 }
 
+// === Sub Components ===
+
 function FriendItem({ 
   friend, 
   onClick, 
@@ -389,6 +470,7 @@ function FriendItem({
 
   return (
     <div className="relative w-full h-[72px] overflow-hidden border-b border-[#2C2C2E] last:border-none bg-dark-bg">
+      {/* Background Actions */}
       <div 
         className="absolute inset-y-0 right-0 flex h-full z-0"
         style={{ width: `140px` }}
@@ -409,6 +491,7 @@ function FriendItem({
         </button>
       </div>
 
+      {/* Foreground Content */}
       <motion.div
         drag="x"
         dragConstraints={{ left: SWIPE_WIDTH, right: 0 }}
@@ -646,29 +729,34 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: { isOpen:
   );
 }
 
-function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+// ✨ [New] 친구 추가 모달 (검색 및 추가 기능)
+function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; onClose: () => void; onFriendAdded?: () => void }) {
   const [tab, setTab] = useState<'search' | 'sync'>('search');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  
+  // 실제로는 DB에서 검색해야 하지만, 여기서는 추가(Insert) 로직을 구현합니다.
   const [searchResult, setSearchResult] = useState<'none' | 'found' | 'not-found'>('none');
-  const [foundUser, setFoundUser] = useState<Friend | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  useEffect(() => {
-    if (isOpen) {
-      setTab('search');
-      setName('');
-      setPhone('');
-      setSearchResult('none');
-      setIsSyncing(false);
-    }
-  }, [isOpen]);
+  // ✨ [Backend] 친구 직접 추가 (Insert)
+  const handleAddDirectly = async () => {
+    if (!name || !phone) return toast.error('이름과 전화번호를 입력해주세요.');
 
-  const handleSearch = () => { 
-    if(!name || !phone) return toast.error('정보를 입력해주세요'); 
-    const target = MOCK_FRIENDS_DATA.find(f => f.name === name && f.phone === phone); 
-    if (target) { setFoundUser(target); setSearchResult('found'); } 
-    else { setSearchResult('not-found'); } 
+    try {
+      const { error } = await supabase
+        .from('friends')
+        .insert([{ name, phone, friendly_score: 50, is_favorite: false }]);
+
+      if (error) throw error;
+
+      toast.success(`${name}님이 친구로 추가되었습니다.`);
+      if (onFriendAdded) onFriendAdded(); // 부모 컴포넌트(목록) 새로고침
+      onClose();
+    } catch (error) {
+      console.error('Add friend error:', error);
+      toast.error('친구 추가에 실패했습니다.');
+    }
   };
 
   const handleSync = () => {
@@ -676,9 +764,19 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     setTimeout(() => {
       setIsSyncing(false);
       toast.success('연락처가 최신 상태로 동기화되었습니다.');
+      if (onFriendAdded) onFriendAdded();
       onClose();
     }, 1500);
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      setTab('search');
+      setName('');
+      setPhone('');
+      setSearchResult('none');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -702,7 +800,7 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
             onClick={() => setTab('search')} 
             className="flex-1 py-3 text-sm font-bold relative transition-colors"
           >
-            <span className={tab === 'search' ? 'text-white' : 'text-[#8E8E93]'}>ID/전화번호</span>
+            <span className={tab === 'search' ? 'text-white' : 'text-[#8E8E93]'}>직접 입력</span>
             {tab === 'search' && (
               <motion.div layoutId="modal-tab" className="absolute bottom-0 left-0 w-full h-[2px] bg-brand-DEFAULT" />
             )}
@@ -721,79 +819,40 @@ function AddFriendModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
         <div className="p-6 flex-1 overflow-y-auto">
           {tab === 'search' ? (
             <div className="flex flex-col gap-5">
-              {searchResult === 'none' && (
-                <>
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#8E8E93] ml-1">이름</label>
-                      <div className="bg-[#2C2C2E] rounded-xl px-4 py-3 flex items-center">
-                        <UserIcon className="w-5 h-5 text-[#636366] mr-3" />
-                        <input 
-                          type="text" 
-                          value={name} 
-                          onChange={(e) => setName(e.target.value)} 
-                          placeholder="이름 입력" 
-                          className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" 
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#8E8E93] ml-1">휴대폰 번호</label>
-                      <div className="bg-[#2C2C2E] rounded-xl px-4 py-3 flex items-center">
-                        <Phone className="w-5 h-5 text-[#636366] mr-3" />
-                        <input 
-                          type="tel" 
-                          value={phone} 
-                          onChange={(e) => setPhone(e.target.value)} 
-                          placeholder="010-0000-0000" 
-                          className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" 
-                        />
-                      </div>
-                    </div>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#8E8E93] ml-1">이름</label>
+                  <div className="bg-[#2C2C2E] rounded-xl px-4 py-3 flex items-center">
+                    <UserIcon className="w-5 h-5 text-[#636366] mr-3" />
+                    <input 
+                      type="text" 
+                      value={name} 
+                      onChange={(e) => setName(e.target.value)} 
+                      placeholder="이름 입력" 
+                      className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" 
+                    />
                   </div>
-                  <button 
-                    onClick={handleSearch} 
-                    className="w-full h-12 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 mt-2"
-                  >
-                    친구 찾기
-                  </button>
-                </>
-              )}
-
-              {searchResult === 'found' && foundUser && (
-                <div className="flex flex-col items-center py-6 animate-fade-in">
-                  <div className="w-24 h-24 rounded-full bg-[#3A3A3C] mb-4 overflow-hidden border-4 border-[#2C2C2E]">
-                    {foundUser.avatar ? (
-                      <img src={foundUser.avatar} className="w-full h-full object-cover" />
-                    ) : (
-                      <UserIcon className="w-10 h-10 m-auto mt-7 text-[#8E8E93] opacity-50"/>
-                    )}
-                  </div>
-                  <p className="text-xl font-bold text-white mb-6">{foundUser.name}</p>
-                  <button 
-                    onClick={() => { toast.success('친구가 추가되었습니다.'); onClose(); }} 
-                    className="w-full h-12 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover transition-colors"
-                  >
-                    친구 추가
-                  </button>
                 </div>
-              )}
-
-              {searchResult === 'not-found' && (
-                <div className="flex flex-col items-center justify-center py-8 text-center animate-fade-in">
-                  <div className="w-16 h-16 rounded-full bg-[#2C2C2E] flex items-center justify-center mb-4">
-                    <UserIcon className="w-8 h-8 text-[#636366]" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#8E8E93] ml-1">휴대폰 번호</label>
+                  <div className="bg-[#2C2C2E] rounded-xl px-4 py-3 flex items-center">
+                    <Phone className="w-5 h-5 text-[#636366] mr-3" />
+                    <input 
+                      type="tel" 
+                      value={phone} 
+                      onChange={(e) => setPhone(e.target.value)} 
+                      placeholder="010-0000-0000" 
+                      className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" 
+                    />
                   </div>
-                  <p className="text-white font-bold text-lg mb-1">사용자를 찾을 수 없습니다.</p>
-                  <p className="text-xs text-[#8E8E93] mb-6">입력하신 정보가 정확한지 확인해주세요.</p>
-                  <button 
-                    onClick={() => setSearchResult('none')} 
-                    className="px-6 py-2.5 bg-[#2C2C2E] text-white text-sm font-medium rounded-lg hover:bg-[#3A3A3C] transition-colors"
-                  >
-                    다시 검색하기
-                  </button>
                 </div>
-              )}
+              </div>
+              <button 
+                onClick={handleAddDirectly} 
+                className="w-full h-12 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 mt-2"
+              >
+                친구 추가하기
+              </button>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full py-6 text-center animate-fade-in">

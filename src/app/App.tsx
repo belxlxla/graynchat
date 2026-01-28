@@ -1,14 +1,19 @@
-import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AnimatePresence } from 'framer-motion';
 
+// ✨ Auth Context
+import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
+
+// Auth Components & Pages
 import Splash from '../features/auth/components/Splash';
 import LoginPage from '../features/auth/pages/LoginPage';
+import SignUpPage from '../features/auth/pages/SignUpPage'; // ✨ SignUpPage 임포트 확인
 import PhoneAuthPage from '../features/auth/pages/PhoneAuthPage';
 import ProfileSetupPage from '../features/auth/pages/ProfileSetupPage';
 
-// Pages
+// Main Pages
 import FriendsListPage from '../features/chat/pages/FriendsListPage';
 import ChatListPage from '../features/chat/pages/ChatListPage';
 import ChatRoomPage from '../features/chat/pages/ChatRoomPage';
@@ -40,23 +45,54 @@ const Placeholder = ({ title }: { title: string }) => (
   </div>
 );
 
-function App() {
-  const [currentStep, setCurrentStep] = useState<'splash' | 'auth' | 'main'>('splash');
+// 1. 로그인한 사용자만 접근 가능한 라우트 (보호된 라우트)
+function PrivateRoute() {
+  const { user, loading } = useAuth();
+  
+  if (loading) return null; // 로딩 중일 때 빈 화면 (스피너 등)
+  
+  // 유저가 없으면 로그인 페이지로 리다이렉트
+  return user ? <Outlet /> : <Navigate to="/auth/login" replace />;
+}
 
-  if (currentStep === 'splash') return <Splash onFinish={() => setCurrentStep('auth')} />;
-  if (currentStep === 'auth') {
-    return (
-      <div className="app-container bg-dark-bg min-h-screen">
-        <Toaster position="top-center" toastOptions={{ style: { background: '#333', color: '#fff' } }} />
-        <AuthFlow onComplete={() => setCurrentStep('main')} />
-      </div>
-    );
+// 2. 로그인 안 한 사용자만 접근 가능한 라우트 (로그인 페이지 등)
+function PublicRoute() {
+  const { user, loading } = useAuth();
+  
+  if (loading) return null;
+
+  // 이미 로그인했으면 메인으로 리다이렉트
+  return !user ? <Outlet /> : <Navigate to="/main/friends" replace />;
+}
+
+// 3. 앱의 메인 로직
+function AppContent() {
+  const [showSplash, setShowSplash] = useState(true);
+  const { loading } = useAuth();
+
+  // 스플래시 화면 처리
+  if (showSplash) {
+    return <Splash onFinish={() => setShowSplash(false)} />;
+  }
+
+  // 인증 정보 로딩 중일 때 (깜빡임 방지)
+  if (loading) {
+    return <div className="h-screen bg-dark-bg" />;
   }
 
   return (
-    <BrowserRouter>
-      <Toaster position="top-center" toastOptions={{ style: { background: '#333', color: '#fff' } }} />
-      <Routes>
+    <Routes>
+      {/* === Public Routes (로그인 안 했을 때만 접근 가능) === */}
+      <Route element={<PublicRoute />}>
+        <Route path="/auth/login" element={<LoginPage />} />
+        <Route path="/auth/signup" element={<SignUpPage />} /> {/* ✨ 회원가입 경로 추가 */}
+        <Route path="/auth/phone" element={<PhoneAuthPage />} />
+        <Route path="/auth/profile" element={<ProfileSetupPage />} />
+      </Route>
+
+      {/* === Private Routes (로그인 해야만 접근 가능) === */}
+      <Route element={<PrivateRoute />}>
+        {/* 메인 탭 화면 (MainLayout 내부) */}
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />
           <Route path="friends" element={<FriendsListPage />} />
@@ -65,11 +101,11 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* 독립 페이지들 */}
+        {/* 독립 페이지들 (채팅방 등) */}
         <Route path="/chat/room/:chatId" element={<ChatRoomPage />} />
         <Route path="/chat/room/:chatId/settings" element={<ChatRoomSettingsPage />} />
 
-        {/* 설정 페이지들 */}
+        {/* 설정 하위 페이지들 */}
         <Route path="/settings/account" element={<AccountInfoPage />} />
         <Route path="/settings/security" element={<SecurityPage />} />
         <Route path="/settings/security/privacy" element={<PrivacyManagementPage />} />
@@ -86,21 +122,26 @@ function App() {
         <Route path="/settings/help/report/harmful" element={<HarmfulContentReportPage />} />
         <Route path="/settings/help/report/copyright" element={<CopyrightReportPage />} />
         <Route path="/settings/help/report/illegal" element={<IllegalContentReportPage />} /> 
+      </Route>
 
-        <Route path="*" element={<Navigate to="/main/friends" replace />} />
-      </Routes>
-    </BrowserRouter>
+      {/* 잘못된 경로는 홈으로 리다이렉트 */}
+      <Route path="*" element={<Navigate to="/main/friends" replace />} />
+    </Routes>
   );
 }
 
-function AuthFlow({ onComplete }: { onComplete: () => void }) {
-  const [step, setStep] = useState<'login' | 'phone' | 'profile'>('login');
+// 4. 최상위 컴포넌트에서 Provider 감싸기
+function App() {
   return (
-    <AnimatePresence mode="wait">
-      {step === 'login' && <LoginPage key="login" onNextStep={() => setStep('phone')} />}
-      {step === 'phone' && <PhoneAuthPage key="phone" onBackToLogin={() => setStep('login')} onNewUser={() => setStep('profile')} />}
-      {step === 'profile' && <ProfileSetupPage key="profile" onComplete={onComplete} />}
-    </AnimatePresence>
+    <AuthProvider>
+      <BrowserRouter>
+        <Toaster 
+          position="top-center" 
+          toastOptions={{ style: { background: '#333', color: '#fff' } }} 
+        />
+        <AppContent />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

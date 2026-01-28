@@ -1,287 +1,243 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  ChevronLeft, Plus, Send, Image as ImageIcon, Camera, 
-  MapPin, FileText, User as UserIcon, Crop, X, CheckCircle2, Circle,
-  Search, Settings 
-} from 'lucide-react';
+import { ChevronLeft, Send, Plus, MoreHorizontal, Image as ImageIcon, Smile, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { supabase } from '../../../shared/lib/supabaseClient';
+import { useAuth } from '../../auth/contexts/AuthContext'; // ✨ Auth Hook 추가
 
 // --- [Types] ---
 interface Message {
   id: number;
-  text: string;
-  sender: 'me' | 'other';
-  timestamp: string;
-  type: 'text' | 'image' | 'file';
+  room_id: number;
+  sender_id: string; 
+  content: string;
+  created_at: string;
+  is_read: boolean;
 }
 
-// ✨ 멘션용 참여자 데이터
-const PARTICIPANTS = [
-  { id: '1', name: '강민수', avatar: 'https://i.pravatar.cc/150?u=2' },
-  { id: '2', name: '김철수', avatar: 'https://i.pravatar.cc/150?u=4' },
-  { id: '3', name: '박영희', avatar: null },
-];
-
-// --- [Mock Data] ---
-const MOCK_MESSAGES: Message[] = [
-  { id: 1, text: '안녕하세요! 프로젝트 진행 상황 어떠신가요?', sender: 'other', timestamp: '오후 2:30', type: 'text' },
-  { id: 2, text: '거의 다 마무리 되어갑니다.', sender: 'me', timestamp: '오후 2:31', type: 'text' },
-  { id: 3, text: '오, 정말요? 고생 많으셨습니다!', sender: 'other', timestamp: '오후 2:32', type: 'text' },
-  { id: 4, text: '네, 이따가 정리해서 파일 보내드릴게요.', sender: 'me', timestamp: '오후 2:33', type: 'text' },
-  { id: 5, text: '혹시 검색 기능도 추가되었나요?', sender: 'other', timestamp: '오후 2:34', type: 'text' },
-  { id: 6, text: '네, 지금 상단 돋보기 버튼을 누르면 채팅 내용을 검색할 수 있습니다.', sender: 'me', timestamp: '오후 2:35', type: 'text' },
-];
-
 export default function ChatRoomPage() {
+  const { chatId } = useParams(); 
   const navigate = useNavigate();
-  const { chatId } = useParams();
+  const { user } = useAuth(); // ✨ 현재 로그인한 유저 정보 가져오기
   
-  // 데이터 상태
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
-  
-  // UI 상태
-  const [isMenuOpen, setIsMenuOpen] = useState(false); 
-  const [isCaptureMode, setIsCaptureMode] = useState(false); 
-  const [selectedForCapture, setSelectedForCapture] = useState<number[]>([]);
-  
-  // 검색 상태
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [roomTitle, setRoomTitle] = useState('채팅방');
+  const [isLoading, setIsLoading] = useState(true);
 
-  // 멘션 상태
-  const [showMentionList, setShowMentionList] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // 스크롤 하단 고정
   useEffect(() => {
-    if (!isSearchOpen && !isCaptureMode) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, isMenuOpen, isSearchOpen, isCaptureMode]);
+    if (!chatId) return;
 
-  // 입력값 변경 핸들러 (멘션 감지)
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setInputText(value);
+    const fetchInitialData = async () => {
+      try {
+        const { data: roomData } = await supabase
+          .from('chat_rooms')
+          .select('title')
+          .eq('id', chatId)
+          .single();
+        
+        if (roomData) setRoomTitle(roomData.title);
 
-    const words = value.split(' ');
-    const lastWord = words[words.length - 1];
+        const { data: msgData, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('room_id', chatId)
+          .order('created_at', { ascending: true }); 
 
-    if (lastWord.startsWith('@')) {
-      setShowMentionList(true);
-      setMentionQuery(lastWord.slice(1));
-    } else {
-      setShowMentionList(false);
-    }
-  };
-
-  // 멘션 선택 핸들러
-  const handleSelectMention = (name: string) => {
-    const words = inputText.split(' ');
-    words.pop();
-    const newValue = words.join(' ') + (words.length > 0 ? ' ' : '') + `@${name} `;
-    setInputText(newValue);
-    setShowMentionList(false);
-  };
-
-  // 메시지 전송
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-    const newMessage: Message = {
-      id: Date.now(),
-      text: inputText,
-      sender: 'me',
-      timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-      type: 'text',
+        if (error) throw error;
+        setMessages(msgData || []);
+      } catch (error) {
+        console.error('Error loading chat:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    setMessages(prev => [...prev, newMessage]);
-    setInputText('');
-    setShowMentionList(false);
-  };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.nativeEvent.isComposing) return;
-    if (e.key === 'Enter') handleSend();
-  };
+    fetchInitialData();
 
-  const toggleCaptureSelection = (id: number) => {
-    if (selectedForCapture.includes(id)) {
-      setSelectedForCapture(prev => prev.filter(mid => mid !== id));
-    } else {
-      setSelectedForCapture(prev => [...prev, id]);
+    const channel = supabase
+      .channel(`room:${chatId}`) 
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT', 
+          schema: 'public',
+          table: 'messages',
+          filter: `room_id=eq.${chatId}`, 
+        },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          setMessages((prev) => [...prev, newMsg]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [chatId]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || !chatId || !user) return; // ✨ user 체크 추가
+
+    const textToSend = inputText;
+    setInputText(''); 
+
+    try {
+      const { error: msgError } = await supabase
+        .from('messages')
+        .insert({
+          room_id: Number(chatId),
+          sender_id: user.id, // ✨ 진짜 내 ID 사용 ('me' 아님)
+          content: textToSend,
+          is_read: false
+        });
+
+      if (msgError) throw msgError;
+
+      await supabase
+        .from('chat_rooms')
+        .update({ 
+          last_message: textToSend,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', chatId);
+
+    } catch (error) {
+      console.error('Send Error:', error);
+      toast.error('메시지 전송 실패');
+      setInputText(textToSend); 
     }
   };
 
-  const handleSaveCapture = () => {
-    if (selectedForCapture.length === 0) return toast.error('캡처할 대화를 선택해주세요.');
-    toast.success(`${selectedForCapture.length}개의 대화가 저장되었습니다.`);
-    setIsCaptureMode(false);
-    setSelectedForCapture([]);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
   };
-
-  const renderHighlightedText = (text: string) => {
-    if (!searchKeyword.trim()) return text;
-    const regex = new RegExp(`(${searchKeyword})`, 'gi');
-    const parts = text.split(regex);
-    return parts.map((part, i) => 
-      regex.test(part) ? <span key={i} className="bg-[#FFD700] text-black font-bold px-0.5 rounded-sm">{part}</span> : part
-    );
-  };
-
-  const handleGoSettings = () => {
-    navigate(`/chat/room/${chatId}/settings`);
-  };
-
-  // 멘션 필터링
-  const filteredParticipants = PARTICIPANTS.filter(p => p.name.includes(mentionQuery));
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden relative">
-      
-      {/* Header */}
-      <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-30">
+    <div className="flex flex-col h-[100dvh] bg-[#1C1C1E] text-white">
+      <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E]/95 backdrop-blur-md border-b border-[#2C2C2E] shrink-0 z-20 sticky top-0">
         <div className="flex items-center">
           <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
             <ChevronLeft className="w-7 h-7" />
           </button>
-          {!isCaptureMode && (
-            <div className="ml-1 flex flex-col">
-              <span className="font-bold text-base leading-tight">강민수</span>
-              <span className="text-[10px] text-[#8E8E93]">현재 활동 중</span>
-            </div>
-          )}
+          <div className="ml-1">
+            <h1 className="text-base font-bold leading-tight">{roomTitle}</h1>
+            <span className="text-[11px] text-[#8E8E93]">현재 활동 중</span>
+          </div>
         </div>
-        
-        <div className="flex items-center gap-1 pr-2">
-          {isCaptureMode ? (
-            <div className="flex items-center gap-3">
-              <button onClick={() => setIsCaptureMode(false)} className="text-sm text-[#8E8E93]">취소</button>
-              <button onClick={handleSaveCapture} className="text-sm font-bold text-brand-DEFAULT">저장</button>
-            </div>
-          ) : (
-            <>
-              <button onClick={() => { setIsSearchOpen(!isSearchOpen); setSearchKeyword(''); }} className={`p-2 rounded-full transition-colors ${isSearchOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}>
-                <Search className="w-6 h-6" />
-              </button>
-              <button onClick={handleGoSettings} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
-                <Settings className="w-6 h-6" />
-              </button>
-            </>
-          )}
+        <div className="flex items-center gap-1">
+          <button className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
+            <Search className="w-6 h-6" />
+          </button>
+          <button 
+            onClick={() => navigate(`/chat/room/${chatId}/settings`)}
+            className="p-2 text-white hover:text-brand-DEFAULT transition-colors"
+          >
+            <MoreHorizontal className="w-6 h-6" />
+          </button>
         </div>
       </header>
 
-      {/* Search Bar */}
-      <AnimatePresence>
-        {isSearchOpen && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="bg-[#2C2C2E] shrink-0 overflow-hidden z-20 border-b border-black/20">
-            <div className="px-4 py-3 flex items-center gap-2">
-              <div className="flex-1 h-9 bg-dark-bg rounded-xl flex items-center px-3 border border-[#3A3A3C]">
-                <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
-                <input type="text" value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} placeholder="대화 내용 검색" className="w-full bg-transparent text-sm text-white placeholder-[#636366] focus:outline-none" autoFocus />
-                {searchKeyword && <button onClick={() => setSearchKeyword('')}><X className="w-4 h-4 text-[#8E8E93]" /></button>}
-              </div>
-              <button onClick={() => setIsSearchOpen(false)} className="text-xs text-[#8E8E93] px-1 whitespace-nowrap">닫기</button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Message List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3 bg-dark-bg relative" onClick={() => setIsMenuOpen(false)}>
-        {messages.map((msg) => (
-          <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className={`flex items-end gap-2 ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`} onClick={() => isCaptureMode && toggleCaptureSelection(msg.id)}>
-            {isCaptureMode && (
-              <div className="mb-2 shrink-0">
-                {selectedForCapture.includes(msg.id) ? <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
-              </div>
-            )}
-            {msg.sender === 'other' && !isCaptureMode && (
-              <div className="w-8 h-8 rounded-xl bg-[#3A3A3C] overflow-hidden shrink-0">
-                <img src="https://i.pravatar.cc/150?u=2" alt="Other" className="w-full h-full object-cover" />
-              </div>
-            )}
-            {/* ✨ 말풍선 디자인 수정됨: bg-[#EC5022] 적용 */}
-            <div className={`max-w-[70%] px-3.5 py-2 rounded-2xl text-[14px] leading-snug break-words relative ${msg.sender === 'me' ? 'bg-[#EC5022] text-white rounded-br-none' : 'bg-[#2C2C2E] text-[#E5E5EA] rounded-tl-none'} ${isCaptureMode && selectedForCapture.includes(msg.id) ? 'ring-2 ring-white ring-offset-2 ring-offset-dark-bg' : ''}`}>
-              {renderHighlightedText(msg.text)}
-            </div>
-            {!isCaptureMode && <span className="text-[9px] text-[#636366] min-w-fit mb-1">{msg.timestamp}</span>}
-          </motion.div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* 멘션 리스트 팝업 */}
-      <AnimatePresence>
-        {showMentionList && filteredParticipants.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-[70px] left-4 right-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] overflow-hidden shadow-2xl z-40 max-h-[200px] overflow-y-auto custom-scrollbar"
-          >
-            <div className="px-4 py-2 text-xs text-[#8E8E93] font-bold border-b border-[#3A3A3C]">대화상대 멘션</div>
-            {filteredParticipants.map(user => (
-              <button 
-                key={user.id} 
-                onClick={() => handleSelectMention(user.name)}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#3A3A3C] transition-colors text-left"
-              >
-                <div className="w-8 h-8 rounded-full bg-[#3A3A3C] overflow-hidden">
-                  {user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" /> : <UserIcon className="w-4 h-4 m-auto mt-2 text-[#8E8E93]" />}
-                </div>
-                <span className="text-sm text-white font-medium">{user.name}</span>
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Input Area */}
-      {!isCaptureMode && (
-        <div className="shrink-0 z-20 bg-[#1C1C1E] border-t border-[#2C2C2E]">
-          <div className="flex items-center gap-2 p-3">
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={`p-2 rounded-full transition-transform duration-200 ${isMenuOpen ? 'rotate-45 bg-[#2C2C2E]' : ''}`}><Plus className={`w-6 h-6 ${isMenuOpen ? 'text-white' : 'text-[#8E8E93]'}`} /></button>
-            <div className="flex-1 bg-[#2C2C2E] rounded-full h-10 flex items-center px-4">
-              <input 
-                type="text" 
-                value={inputText} 
-                onChange={handleInputChange} 
-                onKeyDown={handleKeyDown} 
-                placeholder="메시지 입력" 
-                className="bg-transparent w-full text-white text-sm placeholder-[#636366] focus:outline-none" 
-              />
-            </div>
-            <button onClick={handleSend} disabled={!inputText.trim()} className={`p-2.5 rounded-full transition-colors ${inputText.trim() ? 'bg-brand-DEFAULT text-white' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5 ml-0.5" /></button>
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+        {isLoading ? (
+          <div className="flex justify-center items-center h-full text-[#8E8E93] text-sm">
+            대화 내용을 불러오는 중...
           </div>
-          <AnimatePresence>
-            {isMenuOpen && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease: "easeInOut" }} className="overflow-hidden bg-[#1C1C1E]">
-                <div className="grid grid-cols-4 gap-y-6 gap-x-4 p-6 pt-2 pb-8">
-                  <MenuIcon icon={<ImageIcon className="w-6 h-6" />} label="앨범" onClick={() => toast('사진첩 접근 (준비중)')} />
-                  <MenuIcon icon={<Camera className="w-6 h-6" />} label="카메라" onClick={() => toast('카메라 실행 (준비중)')} />
-                  <MenuIcon icon={<MapPin className="w-6 h-6" />} label="지도" onClick={() => toast('위치 공유 (준비중)')} />
-                  <MenuIcon icon={<FileText className="w-6 h-6" />} label="파일" onClick={() => toast('파일 전송 (준비중)')} />
-                  <MenuIcon icon={<UserIcon className="w-6 h-6" />} label="연락처" onClick={() => toast('연락처 전송 (준비중)')} />
-                  <MenuIcon icon={<Crop className="w-6 h-6" />} label="캡처" onClick={() => { setIsMenuOpen(false); setIsCaptureMode(true); toast('캡처할 대화를 선택하세요.'); }} />
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col justify-center items-center h-full text-[#8E8E93] opacity-50 gap-2">
+            <div className="w-16 h-16 bg-[#2C2C2E] rounded-full flex items-center justify-center">
+              <Smile className="w-8 h-8" />
+            </div>
+            <p className="text-sm">대화를 시작해보세요!</p>
+          </div>
+        ) : (
+          messages.map((msg, index) => {
+            const isMe = msg.sender_id === user?.id; // ✨ 내 ID와 비교
+            const showProfile = !isMe && (index === 0 || messages[index - 1].sender_id !== msg.sender_id);
+
+            return (
+              <motion.div 
+                key={msg.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}
+              >
+                {!isMe && (
+                  <div className={`w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 shrink-0 overflow-hidden ${!showProfile ? 'invisible' : ''}`}>
+                    <img src={`https://i.pravatar.cc/150?u=${msg.sender_id}`} className="w-full h-full object-cover" />
+                  </div>
+                )}
+                
+                <div className={`max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                  {!isMe && showProfile && (
+                    <span className="text-[11px] text-[#8E8E93] mb-1 ml-1">상대방</span>
+                  )}
+                  <div 
+                    className={`px-4 py-2.5 text-[15px] leading-relaxed break-words shadow-sm ${
+                      isMe 
+                        ? 'bg-brand-DEFAULT text-white rounded-[20px] rounded-tr-none' 
+                        : 'bg-[#2C2C2E] text-white rounded-[20px] rounded-tl-none border border-[#3A3A3C]'
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+                  <span className="text-[10px] text-[#636366] mt-1 px-1">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </div>
               </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
-    </div>
-  );
-}
+            );
+          })
+        )}
+        <div ref={scrollRef} />
+      </div>
 
-function MenuIcon({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="flex flex-col items-center gap-2 group">
-      <div className="w-14 h-14 rounded-2xl bg-[#2C2C2E] flex items-center justify-center text-[#E5E5EA] group-active:scale-95 group-active:bg-[#3A3A3C] transition-all">{icon}</div>
-      <span className="text-xs text-[#8E8E93]">{label}</span>
-    </button>
+      <div className="shrink-0 bg-[#1C1C1E] border-t border-[#2C2C2E] p-3 pb-safe">
+        <div className="flex items-end gap-2">
+          <button className="p-2.5 text-[#8E8E93] hover:text-white bg-[#2C2C2E] rounded-full transition-colors shrink-0">
+            <Plus className="w-5 h-5" />
+          </button>
+          
+          <div className="flex-1 bg-[#2C2C2E] rounded-[24px] min-h-[44px] flex items-center px-4 py-2 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="메시지 보내기"
+              className="w-full bg-transparent text-white text-[15px] placeholder-[#636366] focus:outline-none resize-none max-h-[100px] py-1 custom-scrollbar"
+              rows={1}
+              style={{ height: 'auto', minHeight: '24px' }}
+            />
+          </div>
+
+          <button 
+            onClick={handleSendMessage}
+            disabled={!inputText.trim()}
+            className={`p-2.5 rounded-full shrink-0 transition-all ${
+              inputText.trim() 
+                ? 'bg-brand-DEFAULT text-white shadow-lg shadow-brand-DEFAULT/20' 
+                : 'bg-[#2C2C2E] text-[#636366]'
+            }`}
+          >
+            <Send className="w-5 h-5 fill-current" />
+          </button>
+        </div>
+      </div>
+
+    </div>
   );
 }
