@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Send, Plus, MoreHorizontal, 
   Image as ImageIcon, Smile, Search, Camera, 
-  FileText, X, Download, ChevronUp, ChevronDown, AtSign, User as UserIcon, ChevronRight 
+  FileText, X, Download, ChevronRight, ChevronUp, ChevronDown, AtSign, User as UserIcon 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -95,10 +95,8 @@ export default function ChatRoomPage() {
   const handleSearchMove = (direction: 'up' | 'down') => {
     if (searchResults.length === 0) return;
     let nextIndex = direction === 'up' ? currentSearchIndex - 1 : currentSearchIndex + 1;
-    
     if (nextIndex < 0) nextIndex = searchResults.length - 1;
     if (nextIndex >= searchResults.length) nextIndex = 0;
-    
     setCurrentSearchIndex(nextIndex);
     const targetId = searchResults[nextIndex];
     messageRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -267,7 +265,17 @@ export default function ChatRoomPage() {
           ) : (
             <motion.div key="header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between w-full">
               <div className="flex items-center">
-                <button onClick={() => navigate(-1)} className="p-2 hover:text-brand-DEFAULT transition-colors"><ChevronLeft className="w-7 h-7" /></button>
+                {/* ✨ [수정] 뒤로가기 버튼 로직 강화: 명시적 경로 이동 */}
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigate('/main/chats');
+                  }} 
+                  className="p-2 hover:text-brand-DEFAULT transition-colors active:opacity-50"
+                >
+                  <ChevronLeft className="w-7 h-7" />
+                </button>
                 <div className="ml-1 flex flex-col justify-center">
                   <h1 className="text-base font-bold">{roomTitle}</h1>
                   {friendlyScore !== null && <div className="flex items-center gap-1.5 mt-0.5"><span className="text-[10px] text-[#8E8E93]">AI 친밀도</span><div className={`w-1.5 h-1.5 rounded-full ${friendlyScore >= 80 ? 'bg-[#30D158]' : friendlyScore >= 40 ? 'bg-[#FFD60A]' : 'bg-[#FF453A]'}`} /><span className={`text-[11px] font-bold ${friendlyScore >= 80 ? 'text-[#30D158]' : friendlyScore >= 40 ? 'text-[#FFD60A]' : 'text-[#FF453A]'}`}>{friendlyScore}</span></div>}
