@@ -670,7 +670,7 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
                     </>
                 )}
             </motion.div>
-        </ModalBackdrop>
+        </ModalBackdrop> 
     );
 }
 
