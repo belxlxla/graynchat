@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Search, UserX, X, Loader2, Check, Ban, Unlock } from 'lucide-react';
+import { ChevronLeft, Search, UserX, X, Loader2, Check, Ban, Unlock, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
+// ✨ Supabase 클라이언트 임포트
+import { supabase } from '../../../shared/lib/supabaseClient';
 
 // === [Types] ===
 interface BlockedUser {
@@ -10,77 +12,124 @@ interface BlockedUser {
   name: string;
   phone: string;
   avatar: string | null;
-  isProfileHidden: boolean; // '메시지 차단, 프로필 비공개' 설정 여부
+  isProfileHidden: boolean; 
 }
-
-// === [Mock Data] ===
-const MOCK_BLOCKED_USERS: BlockedUser[] = [
-  { id: '1', name: '김스팸', phone: '010-1234-5678', avatar: null, isProfileHidden: false },
-  { id: '2', name: '박광고', phone: '010-9876-5432', avatar: 'https://i.pravatar.cc/150?u=spam', isProfileHidden: true },
-  { id: '3', name: '이전남친', phone: '010-5555-4444', avatar: null, isProfileHidden: false },
-  { id: '4', name: '대출권유', phone: '010-1111-2222', avatar: null, isProfileHidden: false },
-];
 
 export default function BlockedFriendsPage() {
   const navigate = useNavigate();
 
   // === States ===
-  const [users, setUsers] = useState<BlockedUser[]>(MOCK_BLOCKED_USERS);
+  const [users, setUsers] = useState<BlockedUser[]>([]);
+  const [isLoading, setIsLoading] = useState(true); 
   const [searchQuery, setSearchQuery] = useState('');
   
-  // 모달 관리
   const [selectedUser, setSelectedUser] = useState<BlockedUser | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoadingAction, setIsLoadingAction] = useState(false); // 로딩 상태
+  const [isLoadingAction, setIsLoadingAction] = useState(false); 
+
+  // ✨ [수정] 차단된 유저 목록 가져오기 로직 강화
+  const fetchBlockedUsers = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('friends')
+        .select('id, name, phone, avatar, hide_profile, is_blocked')
+        .eq('is_blocked', true) // SQL에서 업데이트를 완료했다면 이 쿼리가 정확히 작동합니다.
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      if (data) {
+        const formattedData: BlockedUser[] = data.map((item: any) => ({
+          id: item.id.toString(),
+          name: item.name,
+          phone: item.phone,
+          avatar: item.avatar,
+          isProfileHidden: item.hide_profile || false 
+        }));
+        setUsers(formattedData);
+      }
+    } catch (error: any) {
+      console.error('Fetch Blocked Users Error:', error);
+      if (error.code === '42703') {
+        toast.error('DB 설정을 확인해주세요.');
+      } else {
+        toast.error('차단 목록을 불러오지 못했습니다.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBlockedUsers();
+  }, []);
 
   // === Handlers ===
 
-  // 1. 관리 모달 열기
   const openManageModal = (user: BlockedUser) => {
     setSelectedUser(user);
     setIsModalOpen(true);
     setIsLoadingAction(false);
   };
 
-  // 2. 메시지 차단, 프로필 비공개 설정
-  const handleToggleProfileHide = () => {
-    if (!selectedUser) return;
-    
-    // 이미 설정되어 있다면 아무 동작 안함 (또는 해제 로직)
-    if (selectedUser.isProfileHidden) return;
+  // ✨ [수정] 설정 적용 시 로컬 상태를 즉시 반영하도록 수정
+  const handleToggleProfileHide = async () => {
+    if (!selectedUser || selectedUser.isProfileHidden) return;
 
     setIsLoadingAction(true);
+    try {
+      const { error } = await supabase
+        .from('friends')
+        .update({ hide_profile: true })
+        .eq('id', selectedUser.id);
 
-    // 로딩 시뮬레이션 (1초)
-    setTimeout(() => {
+      if (error) throw error;
+
+      // 1. 전체 리스트 상태 업데이트
       setUsers(prev => prev.map(u => 
         u.id === selectedUser.id ? { ...u, isProfileHidden: true } : u
       ));
-      // 모달 내부 상태도 업데이트 (즉시 반영)
+      // 2. 모달 내 선택된 유저 상태 업데이트
       setSelectedUser(prev => prev ? { ...prev, isProfileHidden: true } : null);
       
-      setIsLoadingAction(false);
       toast.success('설정이 적용되었습니다.');
-    }, 1000);
+    } catch (e) {
+      toast.error('설정 저장에 실패했습니다.');
+    } finally {
+      setIsLoadingAction(false);
+    }
   };
 
-  // 3. 차단 해제
-  const handleUnblock = () => {
+  // ✨ [수정] 차단 해제 시 즉시 리스트에서 제거되도록 순서 조정
+  const handleUnblock = async () => {
     if (!selectedUser) return;
 
-    setIsModalOpen(false);
-    
-    // 리스트에서 제거 애니메이션을 위해 약간의 딜레이 후 상태 업데이트
-    setTimeout(() => {
+    const loadingToast = toast.loading('차단 해제 중...');
+    try {
+      const { error } = await supabase
+        .from('friends')
+        .update({ is_blocked: false, hide_profile: false })
+        .eq('id', selectedUser.id);
+
+      if (error) throw error;
+
+      // 성공 시 즉시 모달 닫고 리스트에서 필터링
+      setIsModalOpen(false);
       setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
-      toast.success(`${selectedUser.name}님 차단이 해제되어 친구목록으로 이동하였습니다.`);
+      
+      toast.dismiss(loadingToast);
+      toast.success(`${selectedUser.name}님 차단이 해제되었습니다.`);
       setSelectedUser(null);
-    }, 200);
+    } catch (e) {
+      toast.dismiss(loadingToast);
+      toast.error('차단 해제에 실패했습니다.');
+    }
   };
 
-  // 검색 필터링
   const filteredUsers = users.filter(user => 
-    user.name.includes(searchQuery) || user.phone.includes(searchQuery)
+    user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    user.phone.includes(searchQuery)
   );
 
   return (
@@ -118,53 +167,58 @@ export default function BlockedFriendsPage() {
 
         {/* Count & List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pb-10">
-          <p className="text-xs font-bold text-[#8E8E93] mb-3">
-            친구 {filteredUsers.length}명
-          </p>
+          {isLoading ? (
+            <div className="py-20 flex justify-center">
+              <RefreshCw className="w-8 h-8 animate-spin text-brand-DEFAULT" />
+            </div>
+          ) : (
+            <>
+              <p className="text-xs font-bold text-[#8E8E93] mb-3">
+                차단된 친구 {filteredUsers.length}명
+              </p>
 
-          <div className="space-y-4">
-            <AnimatePresence>
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => (
-                  <motion.div 
-                    key={user.id}
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Avatar */}
-                      <div className="w-11 h-11 rounded-full bg-[#3A3A3C] overflow-hidden flex items-center justify-center border border-[#3A3A3C]">
-                        {user.avatar ? (
-                          <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <UserX className="w-5 h-5 text-[#8E8E93]" />
-                        )}
-                      </div>
-                      {/* Info */}
-                      <div>
-                        <p className="text-[15px] font-bold text-white">{user.name}</p>
-                        <p className="text-[12px] text-[#8E8E93]">{user.phone}</p>
-                      </div>
+              <div className="space-y-4">
+                <AnimatePresence>
+                  {filteredUsers.length > 0 ? (
+                    filteredUsers.map((user) => (
+                      <motion.div 
+                        key={user.id}
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-full bg-[#3A3A3C] overflow-hidden flex items-center justify-center border border-[#3A3A3C]">
+                            {user.avatar ? (
+                              <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <UserX className="w-5 h-5 text-[#8E8E93]" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-[15px] font-bold text-white">{user.name}</p>
+                            <p className="text-[12px] text-[#8E8E93]">{user.phone}</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => openManageModal(user)}
+                          className="px-3.5 py-1.5 bg-[#2C2C2E] hover:bg-[#3A3A3C] rounded-lg text-xs font-medium text-[#E5E5EA] border border-[#3A3A3C] transition-colors"
+                        >
+                          관리
+                        </button>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <div className="py-20 text-center text-[#8E8E93]">
+                      차단한 친구가 없습니다.
                     </div>
-                    {/* Manage Button */}
-                    <button 
-                      onClick={() => openManageModal(user)}
-                      className="px-3.5 py-1.5 bg-[#2C2C2E] hover:bg-[#3A3A3C] rounded-lg text-xs font-medium text-[#E5E5EA] border border-[#3A3A3C] transition-colors"
-                    >
-                      관리
-                    </button>
-                  </motion.div>
-                ))
-              ) : (
-                <div className="py-20 text-center text-[#8E8E93]">
-                  차단한 친구가 없습니다.
-                </div>
-              )}
-            </AnimatePresence>
-          </div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -190,11 +244,9 @@ export default function BlockedFriendsPage() {
               </div>
 
               <div className="space-y-3">
-                
-                {/* 1. 메시지 차단, 프로필 비공개 버튼 */}
                 <button 
                   onClick={handleToggleProfileHide}
-                  disabled={selectedUser.isProfileHidden} // 이미 설정됨
+                  disabled={selectedUser.isProfileHidden || isLoadingAction}
                   className={`w-full h-14 flex items-center justify-between px-5 rounded-2xl transition-all ${
                     selectedUser.isProfileHidden 
                       ? 'bg-brand-DEFAULT/10 border border-brand-DEFAULT text-brand-DEFAULT cursor-default' 
@@ -206,10 +258,9 @@ export default function BlockedFriendsPage() {
                     <span className="font-medium">메시지 차단, 프로필 비공개</span>
                   </div>
                   
-                  {/* Loading / Check Logic */}
                   <div className="w-6 h-6 flex items-center justify-center">
                     {isLoadingAction ? (
-                      <Loader2 className="w-5 h-5 animate-spin text-[#8E8E93]" />
+                      <Loader2 className="w-5 h-5 animate-spin text-brand-DEFAULT" />
                     ) : selectedUser.isProfileHidden ? (
                       <Check className="w-5 h-5 text-brand-DEFAULT" />
                     ) : (
@@ -218,7 +269,6 @@ export default function BlockedFriendsPage() {
                   </div>
                 </button>
 
-                {/* 2. 차단 해제 버튼 */}
                 <button 
                   onClick={handleUnblock}
                   className="w-full h-14 flex items-center gap-3 px-5 bg-[#2C2C2E] hover:bg-[#3A3A3C] rounded-2xl text-white transition-colors"

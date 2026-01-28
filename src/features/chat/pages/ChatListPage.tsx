@@ -54,14 +54,12 @@ export default function ChatListPage() {
       if (error) throw error;
 
       if (rooms) {
-        // 1:1 채팅인 경우 상대방 정보를 가져오기 위해 ID 추출
         const individualChatIds = rooms
           .filter(r => r.type === 'individual' || !r.type)
           .map(r => r.id);
 
         let friendsData: Friend[] = [];
         if (individualChatIds.length > 0) {
-          // friends 테이블에서 실제 가입/등록된 아바타 정보를 가져옵니다.
           const { data: profiles } = await supabase
             .from('friends')
             .select('id, name, avatar')
@@ -71,14 +69,12 @@ export default function ChatListPage() {
 
         const formattedData: ChatRoom[] = rooms.map((room: any) => {
           const isGroup = room.type === 'group';
-          // 실제 DB의 프로필 데이터와 매칭
           const matchedProfile = !isGroup ? friendsData?.find(f => f.id === room.id) : null;
           
           return {
             id: room.id.toString(),
             type: room.type || 'individual',
             title: isGroup ? room.title : (matchedProfile?.name || room.title || '알 수 없는 사용자'),
-            // ✨ matchedProfile.avatar를 우선적으로 연동하여 실제 설정한 사진이 나오게 함
             avatar: !isGroup && matchedProfile ? matchedProfile.avatar : (room.avatar || null),
             membersCount: room.members_count || (isGroup ? 3 : 1),
             lastMessage: room.last_message || '대화를 시작해보세요!',
@@ -234,7 +230,6 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: { data: ChatRoom; 
       </div>
 
       <motion.div drag="x" dragConstraints={{ left: SWIPE_WIDTH, right: 0 }} onDragEnd={async (_, info) => { if (info.offset.x < -50) await controls.start({ x: SWIPE_WIDTH }); else await controls.start({ x: 0 }); }} animate={controls} onClick={() => navigate(`/chat/room/${data.id}`)} className="relative w-full h-full bg-dark-bg flex items-center px-4 z-10 cursor-pointer active:bg-white/5 transition-colors">
-        {/* ✨ 연동된 아바타 이미지가 출력되는 부분 */}
         <div className="w-[52px] h-[52px] rounded-[20px] bg-[#3A3A3C] mr-4 flex items-center justify-center overflow-hidden border border-[#2C2C2E]">
           {data.avatar ? <img src={data.avatar} className="w-full h-full object-cover" alt="" /> : (isGroup ? <Users className="w-6 h-6 text-[#8E8E93]" /> : <UserIcon className="w-6 h-6 text-[#8E8E93]" />)}
         </div>
@@ -252,7 +247,20 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: { data: ChatRoom; 
 
 function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: boolean; onClose: () => void; friends: Friend[]; onCreated?: (id: string) => void; }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  useEffect(() => { if (isOpen) setSelectedIds([]); }, [isOpen]);
+  const [searchTerm, setSearchTerm] = useState(''); // ✨ 이름 검색 상태 추가
+
+  useEffect(() => { 
+    if (isOpen) {
+      setSelectedIds([]);
+      setSearchTerm(''); 
+    }
+  }, [isOpen]);
+
+  // ✨ 검색어에 따른 친구 필터링
+  const filteredFriends = useMemo(() => {
+    return friends.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [friends, searchTerm]);
+
   const handleCreate = async () => { 
     if (selectedIds.length === 0) return toast.error('상대를 선택해주세요.'); 
     try {
@@ -263,22 +271,64 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
       if (onCreated) onCreated(roomId.toString()); 
     } catch (error) { toast.error('생성 실패'); }
   };
+
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onClick={e => e.stopPropagation()} className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl border border-[#2C2C2E] shadow-2xl h-[500px] flex flex-col">
-        <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4"><span /> <h3 className="text-white font-bold">대화상대 선택</h3> <button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button></div>
-        <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-          {friends.map(f => (
-            <div key={f.id} onClick={() => setSelectedIds(prev => prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id])} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ${selectedIds.includes(f.id) ? 'bg-brand-DEFAULT/10' : ''}`}>
-              <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">{f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" alt=""/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}</div>
-              <p className="flex-1 text-sm font-medium">{f.name}</p>
-              {selectedIds.includes(f.id) ? <CheckCircle2 className="text-brand-DEFAULT w-5 h-5" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
-            </div>
-          ))}
+      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onClick={e => e.stopPropagation()} className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl border border-[#2C2C2E] shadow-2xl h-[540px] flex flex-col overflow-hidden">
+        <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4 shrink-0">
+          <span /> 
+          <h3 className="text-white font-bold">대화상대 선택</h3> 
+          <button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button>
         </div>
-        <div className="p-4 border-t border-[#2C2C2E] bg-[#1C1C1E]"><button onClick={handleCreate} disabled={selectedIds.length === 0} className="w-full h-12 rounded-xl bg-brand-DEFAULT font-bold text-white transition-all disabled:opacity-30">채팅 시작하기 ({selectedIds.length})</button></div>
+
+        {/* ✨ [수정] 친구 이름 검색바 추가 */}
+        <div className="px-4 py-3 bg-[#1C1C1E] border-b border-[#2C2C2E]">
+          <div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2">
+            <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
+            <input 
+              type="text" 
+              placeholder="이름으로 검색" 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none" 
+            />
+            {searchTerm && <button onClick={() => setSearchTerm('')}><X className="w-4 h-4 text-[#8E8E93]" /></button>}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-[#1C1C1E]">
+          {filteredFriends.length > 0 ? (
+            filteredFriends.map(f => (
+              <div 
+                key={f.id} 
+                onClick={() => setSelectedIds(prev => prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id])} 
+                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${selectedIds.includes(f.id) ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}
+              >
+                <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
+                  {f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" alt=""/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}
+                </div>
+                <p className={`flex-1 text-sm font-medium ${selectedIds.includes(f.id) ? 'text-brand-DEFAULT' : 'text-white'}`}>{f.name}</p>
+                {selectedIds.includes(f.id) ? <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/10" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
+              </div>
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-[#636366] py-10">
+              <p className="text-sm">검색 결과가 없습니다.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-[#2C2C2E] bg-[#1C1C1E] shrink-0">
+          <button 
+            onClick={handleCreate} 
+            disabled={selectedIds.length === 0} 
+            className="w-full h-12 rounded-xl bg-brand-DEFAULT font-bold text-white transition-all disabled:opacity-30 disabled:grayscale"
+          >
+            채팅 시작하기 ({selectedIds.length})
+          </button>
+        </div>
       </motion.div>
     </div>
   );
