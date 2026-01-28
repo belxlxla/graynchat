@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Mail, Lock, CheckCircle2, Loader2 } from 'lucide-react';
+import { ChevronLeft, Mail, Lock, User, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
@@ -12,81 +12,122 @@ import ProfileSetupPage from './ProfileSetupPage';
 export default function SignUpPage() {
   const navigate = useNavigate();
 
-  // 단계 관리: 'account'(계정정보) -> 'phone'(휴대폰인증) -> 'profile'(프로필설정)
+  // 단계 관리
   const [step, setStep] = useState<'account' | 'phone' | 'profile'>('account');
   const [isLoading, setIsLoading] = useState(false);
 
   // 계정 정보 임시 저장
   const [accountData, setAccountData] = useState({
+    name: '',
     email: '',
     password: '',
     confirmPassword: '',
   });
 
-  const [userId, setUserId] = useState<string | null>(null);
-
-  // 1. 계정 정보 입력 핸들러
+  // 1. 입력 핸들러
   const handleAccountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setAccountData({ ...accountData, [e.target.name]: e.target.value });
   };
 
-  // 2. 계정 생성 (Supabase Auth) -> 성공 시 핸드폰 인증으로 이동
+  // 2. 계정 생성 (Supabase Auth)
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!accountData.email || !accountData.password) return toast.error('모든 정보를 입력해주세요.');
+    // 유효성 검사
+    if (!accountData.name) return toast.error('이름을 입력해주세요.');
+    if (!accountData.email || !accountData.password) return toast.error('이메일과 비밀번호를 입력해주세요.');
     if (accountData.password !== accountData.confirmPassword) return toast.error('비밀번호가 일치하지 않습니다.');
     if (accountData.password.length < 6) return toast.error('비밀번호는 6자리 이상이어야 합니다.');
 
     setIsLoading(true);
 
     try {
-      // Supabase 회원가입 시도
+      // A. Supabase Auth 회원가입 시도
       const { data, error } = await supabase.auth.signUp({
         email: accountData.email,
         password: accountData.password,
+        options: {
+          data: {
+            full_name: accountData.name, 
+          }
+        }
       });
 
+      // 에러가 있으면 catch 블록으로 이동
       if (error) throw error;
 
+      // 성공 시 처리
       if (data.user) {
-        setUserId(data.user.id);
-        toast.success('계정이 생성되었습니다. 본인 인증을 진행해주세요.');
+        // B. Public Users 테이블에 초기 정보 저장 시도
+        const { error: dbError } = await supabase
+          .from('users')
+          .insert([
+            {
+              id: data.user.id,
+              email: accountData.email,
+              name: accountData.name,
+              avatar: null,
+              status_message: '반가워요!'
+            }
+          ]);
+
+        if (dbError) {
+          // DB 권한 문제나 기타 에러가 있어도, 계정 생성이 성공했다면 다음 단계로 진행합니다.
+          // 프로필 설정 단계에서 다시 시도할 수 있습니다.
+          console.warn('DB Insert Warning:', dbError.message);
+        }
+
+        toast.success('계정이 생성되었습니다.');
         setStep('phone'); // 다음 단계로 이동
+      } else if (!data.session) {
+        // 이메일 인증이 켜져있을 경우
+        toast('이메일 인증 링크를 보냈습니다. 확인해주세요.', { icon: '📧' });
       }
+      
     } catch (error: any) {
       console.error('Signup Error:', error);
-      toast.error(error.message || '회원가입에 실패했습니다.');
+      
+      // ✨ [에러 처리 강화] 429 Too Many Requests 처리
+      if (error.status === 429 || error.message?.includes('rate limit')) {
+        toast.error(
+          '가입 요청 횟수를 초과했습니다.\n잠시 후(약 15분~1시간) 다시 시도해주세요.', 
+          { duration: 5000, icon: '⏳' }
+        );
+      } else if (error.message?.includes('registered')) {
+        toast.error('이미 가입된 이메일입니다.');
+      } else {
+        toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 3. 핸드폰 인증 완료 핸들러
+  // 3. 핸드폰 인증 완료
   const handlePhoneVerified = () => {
     toast.success('본인 인증이 완료되었습니다.');
-    setStep('profile'); // 프로필 설정 단계로 이동
+    setStep('profile');
   };
 
-  // 4. 프로필 설정 완료 (최종 가입 완료)
+  // 4. 프로필 설정 완료 (최종)
   const handleProfileCompleted = () => {
-    toast.success('회원가입이 완료되었습니다!');
-    navigate('/main/friends'); // 메인으로 이동
+    toast.success('회원가입이 모두 완료되었습니다!');
+    navigate('/main/friends');
   };
 
   // === 렌더링 ===
 
-  // 2단계: 핸드폰 인증 페이지
+  // Step 2: 핸드폰 인증
   if (step === 'phone') {
     return (
       <PhoneAuthPage 
-        onBackToLogin={() => setStep('account')} // 뒤로가기 시 계정 입력으로
+        onBackToLogin={() => setStep('account')} 
         onNewUser={handlePhoneVerified} 
       />
     );
   }
 
-  // 3단계: 프로필 설정 페이지
+  // Step 3: 프로필 설정
   if (step === 'profile') {
     return (
       <ProfileSetupPage 
@@ -95,7 +136,7 @@ export default function SignUpPage() {
     );
   }
 
-  // 1단계: 계정 정보 입력 (기본 화면)
+  // Step 1: 계정 입력 (기본)
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6">
       <header className="h-14 flex items-center shrink-0 mb-6">
@@ -108,12 +149,29 @@ export default function SignUpPage() {
       <div className="flex-1 flex flex-col justify-center">
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-brand-DEFAULT mb-2">계정 정보 입력</h2>
-            <p className="text-[#8E8E93] text-sm">로그인에 사용할 이메일과 비밀번호를 입력해주세요.</p>
+            <h2 className="text-2xl font-bold text-brand-DEFAULT mb-2">계정 만들기</h2>
+            <p className="text-[#8E8E93] text-sm">서비스 이용을 위한 계정을 생성합니다.</p>
           </div>
 
           <form className="space-y-5" onSubmit={handleCreateAccount}>
-            {/* Email */}
+            
+            {/* 이름 */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
+              <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
+                <User className="w-5 h-5 text-[#636366] mr-3" />
+                <input 
+                  name="name"
+                  type="text"
+                  value={accountData.name}
+                  onChange={handleAccountChange}
+                  placeholder="실명 또는 닉네임"
+                  className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]"
+                />
+              </div>
+            </div>
+
+            {/* 이메일 */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
@@ -129,7 +187,7 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* Password */}
+            {/* 비밀번호 */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
@@ -145,7 +203,7 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* Confirm Password */}
+            {/* 비밀번호 확인 */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호 확인</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">

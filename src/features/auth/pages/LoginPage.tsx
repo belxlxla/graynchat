@@ -4,10 +4,8 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
-// 로고 이미지
 import GraynLogo from '../../../assets/grayn_logo.svg'; 
 
-// ✨ 수정됨: 'kakao' 제거
 type Provider = 'google' | 'apple' | 'naver';
 
 export default function LoginPage() {
@@ -17,7 +15,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // 이메일 로그인 핸들러
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return toast.error('이메일과 비밀번호를 입력해주세요.');
@@ -43,12 +40,9 @@ export default function LoginPage() {
     }
   };
 
-  // 소셜 로그인 핸들러
   const handleSocialLogin = async (provider: Provider) => {
     if (provider === 'naver') {
-      toast('네이버 로그인은 현재 준비 중입니다.', {
-        icon: '🚧',
-      });
+      toast('네이버 로그인은 현재 준비 중입니다.', { icon: '🚧' });
       return;
     }
 
@@ -74,7 +68,6 @@ export default function LoginPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center">
       
-      {/* 1. Logo & Title */}
       <div className="flex flex-col items-center mb-8">
         <motion.div 
           initial={{ scale: 0.8, opacity: 0 }}
@@ -82,7 +75,6 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="w-24 h-24 mb-4"
         >
-          {/* ✨ 수정됨: invert 클래스 제거 (원본 색상 그대로 표시) */}
           <img src={GraynLogo} alt="Grayn" className="w-full h-full object-contain" />
         </motion.div>
         <motion.h1 
@@ -91,7 +83,7 @@ export default function LoginPage() {
           transition={{ delay: 0.2 }}
           className="text-2xl font-bold text-white tracking-tight"
         >
-          Grayn에 오신 것을 환영합니다
+          GRAYN에 오신 것을 환영합니다
         </motion.h1>
         <motion.p 
           initial={{ y: 10, opacity: 0 }}
@@ -99,11 +91,10 @@ export default function LoginPage() {
           transition={{ delay: 0.3 }}
           className="text-[#8E8E93] text-sm mt-2"
         >
-          나만의 AI 비서와 친구들을 만나보세요.
+          그레인으로 친구들을 만나보세요.
         </motion.p>
       </div>
 
-      {/* 2. Login Form */}
       <motion.form 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -148,7 +139,6 @@ export default function LoginPage() {
         </button>
       </motion.form>
 
-      {/* 3. Divider */}
       <motion.div 
         initial={{ opacity: 0 }} 
         animate={{ opacity: 1 }} 
@@ -160,14 +150,12 @@ export default function LoginPage() {
         <div className="h-[1px] bg-[#3A3A3C] flex-1" />
       </motion.div>
 
-      {/* 4. Social Login Buttons */}
       <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.6 }}
         className="flex gap-4 justify-center w-full max-w-sm mx-auto"
       >
-        {/* Google */}
         <button 
           onClick={() => handleSocialLogin('google')}
           className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg"
@@ -181,7 +169,6 @@ export default function LoginPage() {
           </svg>
         </button>
 
-        {/* ✨ 수정됨: 올바른 'N' 모양 경로 적용 */}
         <button 
           onClick={() => handleSocialLogin('naver')}
           className="w-12 h-12 bg-[#03C75A] rounded-full flex items-center justify-center hover:bg-[#02B350] transition-colors shadow-lg"
@@ -192,7 +179,6 @@ export default function LoginPage() {
           </svg>
         </button>
 
-        {/* Apple */}
         <button 
           onClick={() => handleSocialLogin('apple')}
           className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg"
@@ -204,7 +190,6 @@ export default function LoginPage() {
         </button>
       </motion.div>
 
-      {/* 5. Footer Links */}
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -220,7 +205,10 @@ export default function LoginPage() {
             회원가입
           </button>
         </p>
-        <button className="text-[#636366] text-xs mt-4 hover:text-[#8E8E93] transition-colors">
+        <button 
+          onClick={() => navigate('/auth/recovery')} // ✨ 여기 링크 연결됨
+          className="text-[#636366] text-xs mt-4 hover:text-[#8E8E93] transition-colors"
+        >
           로그인에 문제가 있나요?
         </button>
       </motion.div>

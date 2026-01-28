@@ -9,9 +9,10 @@ import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
 // Auth Components & Pages
 import Splash from '../features/auth/components/Splash';
 import LoginPage from '../features/auth/pages/LoginPage';
-import SignUpPage from '../features/auth/pages/SignUpPage'; // ✨ SignUpPage 임포트 확인
+import SignUpPage from '../features/auth/pages/SignUpPage'; 
 import PhoneAuthPage from '../features/auth/pages/PhoneAuthPage';
 import ProfileSetupPage from '../features/auth/pages/ProfileSetupPage';
+import RecoveryPage from '../features/auth/pages/RecoveryPage'; // ✨ 추가된 페이지
 
 // Main Pages
 import FriendsListPage from '../features/chat/pages/FriendsListPage';
@@ -85,9 +86,10 @@ function AppContent() {
       {/* === Public Routes (로그인 안 했을 때만 접근 가능) === */}
       <Route element={<PublicRoute />}>
         <Route path="/auth/login" element={<LoginPage />} />
-        <Route path="/auth/signup" element={<SignUpPage />} /> {/* ✨ 회원가입 경로 추가 */}
+        <Route path="/auth/signup" element={<SignUpPage />} />
         <Route path="/auth/phone" element={<PhoneAuthPage />} />
         <Route path="/auth/profile" element={<ProfileSetupPage />} />
+        <Route path="/auth/recovery" element={<RecoveryPage />} /> {/* ✨ 경로 연결됨 */}
       </Route>
 
       {/* === Private Routes (로그인 해야만 접근 가능) === */}
