@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Send, Plus, MoreHorizontal, 
   Image as ImageIcon, Smile, Search, Camera, 
-  FileText, X, Download, ChevronUp, ChevronDown, AtSign, User as UserIcon 
+  FileText, X, Download, ChevronUp, ChevronDown, AtSign, User as UserIcon, ChevronRight 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -37,8 +37,6 @@ const getFileType = (content: string) => {
     if (['txt', 'log', 'md', 'json'].includes(ext || '')) return 'text-file';
     return 'file';
   }
-  const urlRegex = /^(http|https):\/\/[^ "]+$/;
-  if (urlRegex.test(content)) return 'link';
   return 'text';
 };
 
@@ -97,8 +95,10 @@ export default function ChatRoomPage() {
   const handleSearchMove = (direction: 'up' | 'down') => {
     if (searchResults.length === 0) return;
     let nextIndex = direction === 'up' ? currentSearchIndex - 1 : currentSearchIndex + 1;
+    
     if (nextIndex < 0) nextIndex = searchResults.length - 1;
     if (nextIndex >= searchResults.length) nextIndex = 0;
+    
     setCurrentSearchIndex(nextIndex);
     const targetId = searchResults[nextIndex];
     messageRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -221,7 +221,7 @@ export default function ChatRoomPage() {
       return (
         <div className="flex items-center gap-0 p-1.5 rounded-2xl max-w-[280px] bg-[#2C2C2E] border border-[#3A3A3C]">
           <div onClick={() => window.open(msg.content, '_blank')} className="flex-1 flex items-center gap-3 p-2 cursor-pointer hover:bg-white/5 rounded-xl transition-colors">
-            <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] flex items-center justify-center shrink-0 border border-white/5">{type === 'pdf' ? <FileText className="w-5 h-5 text-[#EC5022]" /> : <FileText className="w-5 h-5 text-[#0A84FF]" />}</div>
+            <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] flex items-center justify-center shrink-0 border border-white/5"><FileText className="w-5 h-5 text-[#EC5022]" /></div>
             <div className="flex-1 min-w-0 mr-1"><p className="text-[14px] text-white truncate font-medium">{getFileName(msg.content)}</p><p className="text-[10px] text-[#8E8E93] uppercase tracking-wide">{type.replace('-file','').toUpperCase()}</p></div>
           </div>
           <div className="h-8 w-[1px] bg-white/10 mx-1" /><button onClick={() => { const a = document.createElement('a'); a.href = msg.content; a.download = getFileName(msg.content); a.click(); }} className="p-3 text-[#8E8E93] hover:text-brand-DEFAULT transition-all"><Download className="w-5 h-5" /></button>
@@ -287,7 +287,7 @@ export default function ChatRoomPage() {
             const isMe = msg.sender_id === user?.id;
             const showProfile = !isSearching && !isMe && (index === 0 || messages[index - 1].sender_id !== msg.sender_id);
             return (
-              <motion.div key={msg.id} ref={el => messageRefs.current[msg.id] = el} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
+              <motion.div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
                 {!isMe && <div className={`w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 shrink-0 overflow-hidden ${!showProfile ? 'invisible' : ''}`}><img src={roomMembers.find(f => f.id === Number(msg.sender_id))?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} className="w-full h-full object-cover" alt="" /></div>}
                 <div className={`max-w-[85%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                   {!isMe && showProfile && <span className="text-[11px] text-[#8E8E93] mb-1 ml-1">상대방</span>}
@@ -366,7 +366,7 @@ function ImageViewerModal({ isOpen, initialIndex, images, onClose }: { isOpen: b
       {index < images.length - 1 && <button onClick={() => p(1)} className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/50 hover:text-white bg-black/20 hover:bg-black/40 rounded-full z-20 hidden md:block transition-all"><ChevronRight className="w-8 h-8" /></button>}
       <div className="flex-1 flex items-center justify-center relative w-full h-full">
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
-          <motion.img key={index} src={images[index]} custom={direction} variants={{ enter: (d: number) => ({ x: d > 0 ? 600 : -600, opacity: 0, scale: 0.9 }), center: { x: 0, opacity: 1, scale: 1 }, exit: (d: number) => ({ x: d < 0 ? 600 : -600, opacity: 0, scale: 0.9 }) }} initial="enter" animate="center" exit="exit" transition={{ type: "spring", stiffness: 350, damping: 35 }} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.7} onDragEnd={handleDragEnd} className="absolute max-w-full max-h-full object-contain touch-none cursor-grab active:cursor-grabbing" />
+          <motion.img key={index} src={images[index]} custom={direction} variants={{ enter: (d: number) => ({ x: d > 0 ? 600 : -600, opacity: 0, scale: 0.9 }), center: { x: 0, opacity: 1, scale: 1 }, exit: (d: number) => ({ x: d < 0 ? 600 : -600, opacity: 0, scale: 0.9 }) }} initial="enter" animate="center" exit="exit" transition={{ type: "spring", stiffness: 350, damping: 35 }} drag="x" dragConstraints={{ left: 0, right: 0 }} dragElastic={0.7} onDragEnd={handleDragEnd} className="absolute max-w-full max-h-full object-contain touch-none cursor-grab active:cursor-grabbing" alt="" />
         </AnimatePresence>
       </div>
     </div>
