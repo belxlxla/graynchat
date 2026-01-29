@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { 
   ChevronLeft, ChevronRight, 
-  UserCog, Smartphone, Lock 
+  UserCog, ShieldCheck, Lock 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -11,10 +11,12 @@ export default function SecurityPage() {
   const handleMenuClick = (menu: string) => {
     if (menu === '개인정보 관리') {
       navigate('/settings/security/privacy');
-    } else if (menu === '기기 연결 관리') {
-      navigate('/settings/security/devices');
+    } else if (menu === '보안 설정') {
+      // ✨ 신규 보안 상세 페이지(AccountSecurityPage)로 연결되는 정확한 경로
+      // App.tsx에서 설정한 경로와 일치해야 합니다.
+      navigate('/settings/security/account');
     } else if (menu === '화면 잠금') {
-      navigate('/settings/security/lock'); // ✨ 연결됨
+      navigate('/settings/security/lock'); 
     } else {
       toast(`${menu} 기능은 준비 중입니다.`);
     }
@@ -51,9 +53,10 @@ export default function SecurityPage() {
           {/* Section 2: 보안 */}
           <Section label="보안">
             <ListItem 
-              icon={<Smartphone className="w-5 h-5 text-[#8E8E93]" />} 
-              label="기기 연결 관리" 
-              onClick={() => handleMenuClick('기기 연결 관리')} 
+              // ✨ 아이콘을 ShieldCheck로 유지
+              icon={<ShieldCheck className="w-5 h-5 text-[#8E8E93]" />} 
+              label="보안 설정" 
+              onClick={() => handleMenuClick('보안 설정')} 
             />
             <div className="h-[1px] bg-[#3A3A3C] mx-4" />
             <ListItem 
@@ -74,8 +77,8 @@ export default function SecurityPage() {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-2">{label}</h3>
+    <div className="mb-4">
+      <h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-2 uppercase tracking-wider">{label}</h3>
       <div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C]">
         {children}
       </div>
@@ -97,17 +100,17 @@ function ListItem({
   return (
     <button 
       onClick={onClick}
-      className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group"
+      className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group text-left"
     >
       <div className="flex items-center gap-3">
         <div className="w-5 h-5 flex justify-center items-center">
           {icon}
         </div>
-        <span className="text-[15px] text-white">{label}</span>
+        <span className="text-[15px] text-white font-medium">{label}</span>
       </div>
       <div className="flex items-center gap-2">
         {value && <span className="text-[13px] text-[#8E8E93]">{value}</span>}
-        <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
+        <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93] transition-colors" />
       </div>
     </button>
   );
