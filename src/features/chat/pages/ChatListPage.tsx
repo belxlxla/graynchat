@@ -25,6 +25,7 @@ interface ChatRoom {
 
 interface Friend {
   id: number;
+  friend_user_id: string; // 매칭을 위해 추가
   name: string;
   avatar: string | null;
 }
@@ -58,23 +59,29 @@ export default function ChatListPage() {
       if (error) throw error;
 
       if (rooms) {
-        const individualChatIds = rooms
+        // ✨ 에러 수정: 1:1 채팅방 ID에서 상대방의 UUID만 추출
+        const friendUUIDs = rooms
           .filter(r => r.type === 'individual' || !r.type)
-          .map(r => r.id);
+          .map(r => r.id.split('_').find((id: string) => id !== user.id))
+          .filter(Boolean);
 
         let friendsData: Friend[] = [];
-        if (individualChatIds.length > 0) {
+        if (friendUUIDs.length > 0) {
+          // ✨ 에러 수정: 'id'(bigint)가 아닌 'friend_user_id'(text/uuid) 컬럼으로 조회
           const { data: profiles } = await supabase
             .from('friends')
-            .select('id, name, avatar')
+            .select('id, friend_user_id, name, avatar')
             .eq('user_id', user.id)
-            .in('id', individualChatIds);
+            .in('friend_user_id', friendUUIDs);
           if (profiles) friendsData = profiles;
         }
 
         const formattedData: ChatRoom[] = rooms.map((room: any) => {
           const isGroup = room.type === 'group';
-          const matchedProfile = !isGroup ? friendsData?.find(f => f.id === room.id) : null;
+          
+          // ✨ 매칭 로직 수정
+          const friendIdFromRoom = !isGroup ? room.id.split('_').find((id: string) => id !== user.id) : null;
+          const matchedProfile = !isGroup ? friendsData?.find(f => f.friend_user_id === friendIdFromRoom) : null;
           
           return {
             id: room.id.toString(),
@@ -102,7 +109,7 @@ export default function ChatListPage() {
     try {
       const { data, error } = await supabase
         .from('friends')
-        .select('id, name, avatar')
+        .select('id, friend_user_id, name, avatar')
         .eq('user_id', user.id)
         .order('name', { ascending: true });
       
@@ -268,7 +275,14 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
     if (selectedIds.length === 0 || !user) return toast.error('상대를 선택해주세요.'); 
     try {
       const isGroup = selectedIds.length > 1;
-      const roomId = isGroup ? Date.now() : selectedIds[0];
+      // 1:1 채팅인 경우 uuid_uuid 형식을 유지하기 위해 수정
+      let roomId = "";
+      if (!isGroup) {
+        roomId = [user.id, friends.find(f => f.id === selectedIds[0])?.friend_user_id].sort().join("_");
+      } else {
+        roomId = `group_${Date.now()}`;
+      }
+      
       const title = isGroup ? `나 외 ${selectedIds.length}명` : friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
       
       await supabase.from('chat_rooms').upsert([{ 
@@ -281,7 +295,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
         members_count: selectedIds.length + 1 
       }]);
       
-      if (onCreated) onCreated(roomId.toString()); 
+      if (onCreated) onCreated(roomId); 
     } catch (error) { toast.error('생성 실패'); }
   };
 

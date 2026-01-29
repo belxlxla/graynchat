@@ -14,6 +14,7 @@ import { supabase } from '../../../shared/lib/supabaseClient';
 // === [Types] ===
 interface Friend {
   id: number;
+  friend_user_id: string; 
   name: string;
   phone: string;
   status: string | null;
@@ -111,6 +112,7 @@ export default function FriendsListPage() {
       if (data) {
         const formattedData: Friend[] = data.map((item: any) => ({
           id: item.id,
+          friend_user_id: item.friend_user_id || '', 
           name: item.name,
           phone: item.phone,
           status: item.status,
@@ -183,19 +185,28 @@ export default function FriendsListPage() {
   };
 
   const handleEnterChat = async (friend: Friend) => {
+    const loadingToast = toast.loading("채팅방 연결 중...");
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user || !friend.friend_user_id) {
+        toast.dismiss(loadingToast);
+        return toast.error("채팅방 정보를 불러올 수 없습니다.");
+      }
+
+      // 1:1 채팅방 ID 생성 (알파벳 순 정렬하여 유일값 유지)
+      const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
+
       const { data: existingRoom, error: searchError } = await supabase
         .from('chat_rooms')
         .select('id')
-        .eq('type', 'individual')
-        .eq('id', friend.id)
+        .eq('id', sharedRoomId)
         .maybeSingle();
 
       if (searchError) throw searchError;
 
       if (!existingRoom) {
         const { error: insertError } = await supabase.from('chat_rooms').upsert([{ 
-          id: friend.id,
+          id: sharedRoomId,
           title: friend.name,
           type: 'individual',
           last_message: '새로운 대화를 시작해보세요!',
@@ -206,11 +217,13 @@ export default function FriendsListPage() {
         if (insertError) throw insertError;
       }
 
+      toast.dismiss(loadingToast);
       setSelectedFriend(null); 
-      navigate(`/chat/room/${friend.id}`); 
-    } catch (e) {
+      navigate(`/chat/room/${sharedRoomId}`); 
+    } catch (e: any) {
+      toast.dismiss(loadingToast);
       console.error("Chat Enter Error:", e);
-      toast.error("채팅방에 입장할 수 없습니다.");
+      toast.error("채팅방 입장에 실패했습니다.");
     }
   };
 
@@ -364,7 +377,6 @@ export default function FriendsListPage() {
               <div className="flex justify-center items-center h-[50vh] text-[#8E8E93]"><RefreshCw className="w-6 h-6 animate-spin" /></div>
             ) : (
               <>
-                {/* ✨ 내 프로필 영역 - 검색 중이 아닐 때 무조건 노출 */}
                 {!searchQuery && (
                   <div className="px-5">
                       <div onClick={() => setShowEditProfileModal(true)} className="py-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-2 transition-colors">
@@ -380,7 +392,6 @@ export default function FriendsListPage() {
                   </div>
                 )}
 
-                {/* ✨ 친구 목록 영역 - 비어 있을 경우 전용 UI 노출 */}
                 {friends.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-[40vh] text-[#8E8E93] px-10 text-center">
                         <UserIcon className="w-12 h-12 opacity-20 mb-4" />
@@ -543,18 +554,23 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
 
+      const cleanPhone = phone.replace(/[^0-9]/g, '');
+
+      // 중복 사용자가 있을 경우 최신 사용자를 1명만 가져오도록 최적화
       const { data: targetUser, error: searchError } = await supabase
         .from('users')
-        .select('*')
+        .select('id, name, avatar, status_message, phone')
         .eq('name', name.trim())
-        .eq('phone', phone.replace(/[^0-9]/g, '')) 
+        .eq('phone', cleanPhone)
+        .order('last_friends_sync', { ascending: false }) 
+        .limit(1)
         .maybeSingle();
 
       if (searchError) throw searchError;
 
       if (!targetUser) {
         toast.dismiss(loadingToast);
-        return toast.error('그레인에 가입된 사용자가 아닙니다.');
+        return toast.error('가입된 사용자를 찾을 수 없습니다.');
       }
 
       if (targetUser.id === session.user.id) {
@@ -566,7 +582,7 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
         .from('friends')
         .select('id')
         .eq('user_id', session.user.id)
-        .eq('phone', targetUser.phone)
+        .eq('friend_user_id', targetUser.id)
         .maybeSingle();
 
       if (alreadyFriend) {
@@ -576,6 +592,7 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
 
       const { error: insertError } = await supabase.from('friends').insert([{ 
         user_id: session.user.id,
+        friend_user_id: targetUser.id,
         name: targetUser.name, 
         phone: targetUser.phone, 
         avatar: targetUser.avatar, 
@@ -591,10 +608,10 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
       toast.success(`${targetUser.name}님을 친구로 추가했습니다.`); 
       onFriendAdded?.(); 
       onClose(); 
-    } catch (error) { 
-      console.error(error);
+    } catch (error: any) { 
+      console.error("Friend Add Final Error:", error);
       toast.dismiss(loadingToast);
-      toast.error('친구 추가 중 오류가 발생했습니다.'); 
+      toast.error('친구 추가에 실패했습니다.');
     } finally {
       setIsSearching(false);
     }
@@ -625,7 +642,7 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
     const navigate = useNavigate();
     const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
     const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
-    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]); 
     const [searchTerm, setSearchTerm] = useState('');
     
     useEffect(() => {
@@ -639,7 +656,7 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
         );
     }, [friends, searchTerm]);
 
-    const toggleSelection = (id: number) => { 
+    const toggleSelection = (id: string) => { 
         if (chatType === 'individual') { 
             setSelectedIds([id]); 
         } else { 
@@ -655,12 +672,21 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
         if (selectedIds.length === 0) return toast.error('대화 상대를 선택해주세요.'); 
         
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.user) return;
+
             const isGroup = chatType === 'group' || selectedIds.length > 1;
-            const roomId = isGroup ? Math.floor(Date.now() / 1000) : selectedIds[0];
+            let roomId = "";
+
+            if (!isGroup) {
+                roomId = [session.user.id, selectedIds[0]].sort().join("_");
+            } else {
+                roomId = `group_${Date.now()}`;
+            }
             
             const title = isGroup 
                 ? `나 외 ${selectedIds.length}명` 
-                : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
+                : (friends.find(f => f.friend_user_id === selectedIds[0])?.name || '새 대화');
 
             const { error } = await supabase.from('chat_rooms').upsert([{ 
                 id: roomId,
@@ -729,9 +755,9 @@ function CreateChatModal({ isOpen, onClose, friends }: { isOpen: boolean; onClos
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
                             {filteredFriends.length > 0 ? (
                                 filteredFriends.map(friend => { 
-                                    const isSelected = selectedIds.includes(friend.id); 
+                                    const isSelected = selectedIds.includes(friend.friend_user_id); 
                                     return (
-                                        <div key={friend.id} onClick={() => toggleSelection(friend.id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}>
+                                        <div key={friend.id} onClick={() => toggleSelection(friend.friend_user_id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}>
                                             <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
                                                 {friend.avatar ? <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}
                                             </div>
