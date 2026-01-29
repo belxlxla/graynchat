@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import { 
@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
+// ✨ 인증 컨텍스트 임포트
+import { useAuth } from '../../auth/contexts/AuthContext';
 
 // --- [Types] ---
 interface ChatRoom {
@@ -30,6 +32,7 @@ interface Friend {
 
 export default function ChatListPage() {
   const navigate = useNavigate();
+  const { user } = useAuth(); // ✨ 현재 로그인한 유저 세션 가져오기
   
   const [chats, setChats] = useState<ChatRoom[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,12 +46,16 @@ export default function ChatListPage() {
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // ✨ [연동 수정] 채팅방 목록 불러오기 및 실제 유저 프로필 이미지 매칭
-  const fetchChats = async () => {
+  // ✨ [필터링 강화] 내 user_id와 매핑된 채팅방만 불러오기
+  const fetchChats = useCallback(async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
     try {
       const { data: rooms, error } = await supabase
         .from('chat_rooms')
         .select('*')
+        .eq('user_id', user.id) // ✨ 핵심: 내 채팅방만 필터링
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -60,9 +67,11 @@ export default function ChatListPage() {
 
         let friendsData: Friend[] = [];
         if (individualChatIds.length > 0) {
+          // 내 친구 목록에서도 user_id가 매칭되어야 함
           const { data: profiles } = await supabase
             .from('friends')
             .select('id, name, avatar')
+            .eq('user_id', user.id) // 친구도 내 친구만
             .in('id', individualChatIds);
           if (profiles) friendsData = profiles;
         }
@@ -90,13 +99,15 @@ export default function ChatListPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
-  const fetchFriends = async () => {
+  const fetchFriends = useCallback(async () => {
+    if (!user) return;
     try {
       const { data, error } = await supabase
         .from('friends')
         .select('id, name, avatar')
+        .eq('user_id', user.id) // 친구 목록도 내꺼만
         .order('name', { ascending: true });
       
       if (error) throw error;
@@ -104,31 +115,34 @@ export default function ChatListPage() {
     } catch (error) {
       console.error('Fetch Friends Error:', error);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     fetchChats();
     fetchFriends();
-  }, []);
+  }, [fetchChats, fetchFriends]);
 
   const handleLeaveChat = async (id: string) => {
+    if (!user) return;
     if (confirm('채팅방을 나가시겠습니까?')) { 
+      // 내 방만 삭제되도록 보안 검증 포함
+      await supabase.from('chat_rooms').delete().match({ id, user_id: user.id });
       setChats(prev => prev.filter(chat => chat.id !== id));
-      await supabase.from('chat_rooms').delete().eq('id', id);
       toast.success('채팅방을 나갔습니다.');
     }
   };
 
   const handleMarkAsRead = async (id: string) => {
+    if (!user) return;
     setChats(prev => prev.map(chat => chat.id === id ? { ...chat, unreadCount: 0 } : chat));
-    await supabase.from('chat_rooms').update({ unread_count: 0 }).eq('id', id);
+    await supabase.from('chat_rooms').update({ unread_count: 0 }).match({ id, user_id: user.id });
   };
 
   const handleSaveTitle = async (newTitle: string) => {
-    if (editingChat) {
+    if (editingChat && user) {
       setChats(prev => prev.map(c => c.id === editingChat.id ? { ...c, title: newTitle } : c));
       setIsEditModalOpen(false);
-      await supabase.from('chat_rooms').update({ title: newTitle }).eq('id', editingChat.id);
+      await supabase.from('chat_rooms').update({ title: newTitle }).match({ id: editingChat.id, user_id: user.id });
       toast.success('이름이 변경되었습니다.');
     }
   };
@@ -246,8 +260,9 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: { data: ChatRoom; 
 }
 
 function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: boolean; onClose: () => void; friends: Friend[]; onCreated?: (id: string) => void; }) {
+  const { user } = useAuth(); // ✨ 유저 정보 사용
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [searchTerm, setSearchTerm] = useState(''); // ✨ 이름 검색 상태 추가
+  const [searchTerm, setSearchTerm] = useState(''); 
 
   useEffect(() => { 
     if (isOpen) {
@@ -256,18 +271,28 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
     }
   }, [isOpen]);
 
-  // ✨ 검색어에 따른 친구 필터링
   const filteredFriends = useMemo(() => {
     return friends.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [friends, searchTerm]);
 
   const handleCreate = async () => { 
-    if (selectedIds.length === 0) return toast.error('상대를 선택해주세요.'); 
+    if (selectedIds.length === 0 || !user) return toast.error('상대를 선택해주세요.'); 
     try {
       const isGroup = selectedIds.length > 1;
       const roomId = isGroup ? Date.now() : selectedIds[0];
       const title = isGroup ? `나 외 ${selectedIds.length}명` : friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
-      await supabase.from('chat_rooms').upsert([{ id: roomId, title, type: isGroup ? 'group' : 'individual', last_message: '대화를 시작해보세요!', unread_count: 0, members_count: selectedIds.length + 1 }]);
+      
+      // ✨ 생성 시 user_id를 포함하여 내 방임을 명시
+      await supabase.from('chat_rooms').upsert([{ 
+        id: roomId, 
+        user_id: user.id, // ✨ 소유권 추가
+        title, 
+        type: isGroup ? 'group' : 'individual', 
+        last_message: '대화를 시작해보세요!', 
+        unread_count: 0, 
+        members_count: selectedIds.length + 1 
+      }]);
+      
       if (onCreated) onCreated(roomId.toString()); 
     } catch (error) { toast.error('생성 실패'); }
   };
@@ -283,7 +308,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
           <button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button>
         </div>
 
-        {/* ✨ [수정] 친구 이름 검색바 추가 */}
         <div className="px-4 py-3 bg-[#1C1C1E] border-b border-[#2C2C2E]">
           <div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2">
             <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
