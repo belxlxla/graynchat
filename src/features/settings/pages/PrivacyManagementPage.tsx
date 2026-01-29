@@ -77,29 +77,22 @@ export default function PrivacyManagementPage() {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
-        // A. Supabase RPC 함수 호출 (수정된 안전한 함수 호출)
         const { error } = await supabase.rpc('delete_user_all_data', { 
           target_user_id: session.user.id 
         });
         
-        // 테이블이 없더라도 함수 자체는 에러 없이 실행되도록 SQL을 수정했으므로
-        // 심각한 시스템 에러가 아니면 무시하고 다음 단계 진행
         if (error) {
             console.warn("RPC Warning:", error.message);
         }
 
-        // B. Supabase 로그아웃
         await supabase.auth.signOut();
       }
 
-      // C. LocalStorage 완전 초기화 (모든 보안 키 포함)
       localStorage.clear();
 
       toast.dismiss(loadingToast);
       toast.success('모든 데이터가 성공적으로 파기되었습니다.');
 
-      // D. UX: 초기 화면으로 강제 이동 (스플래시 -> 로그인 순서)
-      // 새로고침을 동반하여 모든 메모리 상의 상태를 비움
       window.location.href = '/'; 
       
     } catch (error) {
@@ -258,14 +251,15 @@ function ToggleItem({
   );
 }
 
+// ✨ 정밀 정렬된 Switch 컴포넌트
 function Switch({ checked, onChange }: { checked: boolean, onChange: () => void }) {
   return (
     <button 
       onClick={onChange}
-      className={`w-[50px] h-[28px] rounded-full p-1 transition-colors duration-300 ease-in-out ${checked ? 'bg-brand-DEFAULT' : 'bg-[#48484A]'}`}
+      className={`relative w-[48px] h-[26px] rounded-full transition-colors duration-300 ease-in-out ${checked ? 'bg-brand-DEFAULT' : 'bg-[#48484A]'}`}
     >
       <motion.div 
-        className="w-5 h-5 bg-white rounded-full shadow-md"
+        className="absolute top-[3px] left-[3px] w-[20px] h-[20px] bg-white rounded-full shadow-sm"
         animate={{ x: checked ? 22 : 0 }}
         transition={{ type: "spring", stiffness: 500, damping: 30 }}
       />
