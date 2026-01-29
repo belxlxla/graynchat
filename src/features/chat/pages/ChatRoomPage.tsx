@@ -6,7 +6,6 @@ import {
   ImageIcon, Smile, Search, Camera, 
   FileText, X, Download, ChevronRight, ChevronUp, ChevronDown, AtSign, User as UserIcon,
   UserPlus, Ban, Unlock, ShieldAlert, ExternalLink
-  // ✨ 에러 수정: 사용하지 않는 AlertCircle, Info 임포트 제거
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -67,7 +66,6 @@ export default function ChatRoomPage() {
 
   const [isFriend, setIsFriend] = useState<boolean>(true);
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
-  // ✨ 에러 수정: 선언 후 읽지 않는 targetFriendData 상태 제거
 
   const [showUrlWarning, setShowUrlWarning] = useState(false);
   const [pendingUrl, setPendingUrl] = useState('');
@@ -136,18 +134,18 @@ export default function ChatRoomPage() {
     try {
       const parsedChatId = Number(chatId);
       
-      // ✨ 에러 수정: 사용하지 않는 friendError 변수 제거
+      // ✨ 수정: 내 user_id와 연결된 친구 데이터만 조회
       const { data: friendRecord } = await supabase
         .from('friends')
         .select('id, name, avatar, friendly_score, is_blocked')
         .eq('id', isNaN(parsedChatId) ? -1 : parsedChatId)
+        .eq('user_id', user.id) // 내 데이터인지 확인
         .maybeSingle();
 
       if (friendRecord) {
         setRoomTitle(friendRecord.name);
         setFriendlyScore(friendRecord.friendly_score);
         setRoomMembers([{ id: friendRecord.id, name: friendRecord.name, avatar: friendRecord.avatar }]);
-        // ✨ 에러 수정: targetFriendData 설정문 제거
         
         setIsFriend(true);
         setIsBlocked(!!friendRecord.is_blocked);
@@ -155,11 +153,24 @@ export default function ChatRoomPage() {
         setIsFriend(false);
         setIsBlocked(false);
         
-        const { data: roomData } = await supabase.from('chat_rooms').select('title').eq('id', chatId).maybeSingle();
+        // ✨ 수정: 내 user_id와 연결된 채팅방만 제목 조회
+        const { data: roomData } = await supabase
+          .from('chat_rooms')
+          .select('title')
+          .eq('id', chatId)
+          .eq('user_id', user.id) // 내 데이터인지 확인
+          .maybeSingle();
+          
         setRoomTitle(roomData?.title || '알 수 없는 사용자');
       }
 
-      const { data: msgData, error: msgError } = await supabase.from('messages').select('*').eq('room_id', chatId).order('created_at', { ascending: true }); 
+      // 메시지는 room_id로 가져오되, RLS 정책에 의해 내 방인 경우만 조회됨
+      const { data: msgData, error: msgError } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', chatId)
+        .order('created_at', { ascending: true }); 
+      
       if (msgError) throw msgError;
       setMessages(msgData || []);
       
@@ -189,7 +200,7 @@ export default function ChatRoomPage() {
     try {
       const { error } = await supabase.from('friends').upsert({
         id: Number(chatId),
-        user_id: user.id,
+        user_id: user.id, // 소유권 할당
         name: roomTitle,
         is_blocked: false,
         friendly_score: 50 
@@ -205,10 +216,15 @@ export default function ChatRoomPage() {
   };
 
   const handleUnblock = async () => {
-    if (!chatId) return;
+    if (!chatId || !user) return;
     const unblockToast = toast.loading('차단 해제 중...');
     try {
-      const { error } = await supabase.from('friends').update({ is_blocked: false }).eq('id', chatId);
+      // ✨ 수정: 내 계정에서 해당 친구 아이디만 업데이트하도록 보강
+      const { error } = await supabase
+        .from('friends')
+        .update({ is_blocked: false })
+        .match({ id: chatId, user_id: user.id }); // 내 데이터인지 확인
+        
       if (error) throw error;
       setIsBlocked(false);
       toast.success('차단이 해제되었습니다.', { id: unblockToast });
@@ -248,10 +264,31 @@ export default function ChatRoomPage() {
     setIsMenuOpen(false);
     setShowMentionList(false);
     try {
-      await supabase.from('chat_rooms').upsert({ id: Number(chatId), title: roomTitle, last_message: textToSend, updated_at: new Date().toISOString() });
-      const { data: newMsg } = await supabase.from('messages').insert({ room_id: Number(chatId), sender_id: user.id, content: textToSend, is_read: false }).select().single();
+      // ✨ 수정: 내 계정 소유의 채팅방 정보 업데이트 (user_id 포함)
+      await supabase.from('chat_rooms').upsert({ 
+        id: Number(chatId), 
+        user_id: user.id, // 소유권 명시
+        title: roomTitle, 
+        last_message: textToSend, 
+        updated_at: new Date().toISOString() 
+      });
+      
+      const { data: newMsg } = await supabase
+        .from('messages')
+        .insert({ 
+          room_id: Number(chatId), 
+          sender_id: user.id, 
+          content: textToSend, 
+          is_read: false 
+        })
+        .select()
+        .single();
+        
       if (newMsg) setMessages((prev) => [...prev, newMsg]);
-    } catch (error) { toast.error('전송 실패'); setInputText(textToSend); }
+    } catch (error) { 
+      toast.error('전송 실패'); 
+      setInputText(textToSend); 
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -262,12 +299,36 @@ export default function ChatRoomPage() {
       const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`; 
       const { error: uploadError } = await supabase.storage.from('chat-uploads').upload(`${chatId}/${fileName}`, file);
       if (uploadError) throw uploadError;
+      
       const { data: { publicUrl } } = supabase.storage.from('chat-uploads').getPublicUrl(`${chatId}/${fileName}`);
-      await supabase.from('chat_rooms').upsert({ id: Number(chatId), title: roomTitle, last_message: '파일을 보냈습니다.', updated_at: new Date().toISOString() });
-      const { data: newMsg } = await supabase.from('messages').insert({ room_id: Number(chatId), sender_id: user.id, content: publicUrl, is_read: false }).select().single();
+      
+      // ✨ 수정: 채팅방 업데이트 시 소유권 포함
+      await supabase.from('chat_rooms').upsert({ 
+        id: Number(chatId), 
+        user_id: user.id, // 소유권 명시
+        title: roomTitle, 
+        last_message: '파일을 보냈습니다.', 
+        updated_at: new Date().toISOString() 
+      });
+      
+      const { data: newMsg } = await supabase
+        .from('messages')
+        .insert({ 
+          room_id: Number(chatId), 
+          sender_id: user.id, 
+          content: publicUrl, 
+          is_read: false 
+        })
+        .select()
+        .single();
+        
       if (newMsg) setMessages((prev) => [...prev, newMsg]);
       toast.success('전송 완료', { id: uploadToast });
-    } catch { toast.error('실패'); } finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
+    } catch { 
+      toast.error('실패'); 
+    } finally { 
+      if (fileInputRef.current) fileInputRef.current.value = ''; 
+    }
   };
 
   const handleLinkClick = (url: string, e: React.MouseEvent) => {
