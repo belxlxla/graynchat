@@ -58,13 +58,11 @@ export default function RecoveryPage() {
       toast.error('정보를 올바르게 입력해주세요.');
       return;
     }
-    
     setIsVerifying(true);
     setTimer(180);
     toast.success('인증번호가 발송되었습니다.');
   };
 
-  // 3. 인증 확인
   const handleVerify = async () => {
     if (verifyCode !== '000000') {
       toast.error('인증번호가 일치하지 않습니다.');
@@ -74,7 +72,6 @@ export default function RecoveryPage() {
     const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
 
     try {
-      // public.users 테이블에서 이메일 조회
       const { data, error } = await supabase
         .from('users')
         .select('email')
@@ -90,13 +87,7 @@ export default function RecoveryPage() {
       }
 
       setFoundEmail(data.email);
-
-      if (type === 'id') {
-        setStep('id-result');
-      } else {
-        setStep('reset-pw'); 
-      }
-      
+      setStep(type === 'id' ? 'id-result' : 'reset-pw');
       toast.success('본인 인증이 완료되었습니다.');
     } catch (err) {
       console.error('Verify Error:', err);
@@ -104,16 +95,15 @@ export default function RecoveryPage() {
     }
   };
 
-  // 4. 비밀번호 즉시 재설정 완료 (RPC 연동)
   const handleResetPassword = async () => {
-    if (!foundEmail) return toast.error('이메일 정보가 없습니다.');
+    if (!foundEmail) return toast.error('사용자 이메일을 찾을 수 없습니다.');
     if (newPassword.length < 6) return toast.error('비밀번호는 6자리 이상이어야 합니다.');
     if (newPassword !== confirmPassword) return toast.error('비밀번호가 일치하지 않습니다.');
 
-    const loadingToast = toast.loading('비밀번호를 변경하고 있습니다...');
+    const loadingToast = toast.loading('비밀번호를 안전하게 변경 중입니다...');
 
     try {
-      // ✨ [해결] SQL로 생성한 reset_password_admin_rpc 함수를 호출합니다.
+      // ✨ [수정] RPC 호출 시 파라미터 이름을 SQL과 정확히 일치시킴
       const { error } = await supabase.rpc('reset_password_admin_rpc', {
         target_email: foundEmail,
         new_password: newPassword
@@ -121,23 +111,22 @@ export default function RecoveryPage() {
 
       if (error) throw error;
       
-      toast.success('비밀번호가 즉시 변경되었습니다.', { id: loadingToast });
+      toast.success('비밀번호가 변경되었습니다. 다시 로그인해 주세요.', { id: loadingToast });
       
-      // 변경 성공 후 1초 뒤 로그인 페이지로 이동
+      // 성공 시 1.5초 후 로그인 페이지로 이동
       setTimeout(() => {
         navigate('/auth/login');
-      }, 1000);
+      }, 1500);
 
     } catch (err: any) {
-      console.error('Password Reset Error:', err);
-      toast.error('비밀번호 변경에 실패했습니다. SQL 설정을 확인해 주세요.', { id: loadingToast });
+      console.error('Reset Failure:', err);
+      toast.error('비밀번호 변경에 실패했습니다.\nSQL 설정을 다시 확인해 주세요.', { id: loadingToast });
     }
   };
 
   const maskEmail = (email: string) => {
     if (!email) return "";
     const [local, domain] = email.split('@');
-    if (local.length <= 2) return `${local}***@${domain}`;
     return `${local.slice(0, 2)}${'*'.repeat(local.length - 2)}@${domain}`;
   };
 
@@ -159,78 +148,38 @@ export default function RecoveryPage() {
 
       <div className="flex-1 flex flex-col">
         <AnimatePresence mode="wait">
-          
           {step === 'select' && (
-            <motion.div 
-              key="select"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="flex flex-col gap-4 mt-10"
-            >
-              <button 
-                onClick={() => handleSelectType('id')}
-                className="flex items-center p-6 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:border-brand-DEFAULT transition-all group text-left"
-              >
+            <motion.div key="select" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex flex-col gap-4 mt-10">
+              <button onClick={() => handleSelectType('id')} className="flex items-center p-6 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:border-brand-DEFAULT transition-all group text-left">
                 <div className="w-12 h-12 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center text-brand-DEFAULT mr-4 group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors">
                   <Search className="w-6 h-6" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white mb-1">아이디 찾기</h3>
-                  <p className="text-sm text-[#8E8E93]">가입된 이메일 주소를 찾습니다.</p>
-                </div>
+                <div><h3 className="text-lg font-bold text-white mb-1">아이디 찾기</h3><p className="text-sm text-[#8E8E93]">가입된 이메일 주소를 찾습니다.</p></div>
               </button>
-
-              <button 
-                onClick={() => handleSelectType('pw')}
-                className="flex items-center p-6 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:border-brand-DEFAULT transition-all group text-left"
-              >
+              <button onClick={() => handleSelectType('pw')} className="flex items-center p-6 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:border-brand-DEFAULT transition-all group text-left">
                 <div className="w-12 h-12 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center text-brand-DEFAULT mr-4 group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors">
                   <Lock className="w-6 h-6" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white mb-1">비밀번호 찾기</h3>
-                  <p className="text-sm text-[#8E8E93]">새로운 비밀번호로 변경합니다.</p>
-                </div>
+                <div><h3 className="text-lg font-bold text-white mb-1">비밀번호 찾기</h3><p className="text-sm text-[#8E8E93]">새로운 비밀번호로 변경합니다.</p></div>
               </button>
             </motion.div>
           )}
 
           {step === 'verify' && (
-            <motion.div 
-              key="verify"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="flex flex-col gap-6"
-            >
-              <div className="text-center mb-4">
-                <ShieldCheck className="w-12 h-12 text-brand-DEFAULT mx-auto mb-4" />
-                <h2 className="text-xl font-bold text-white">본인 인증</h2>
-                <p className="text-[#8E8E93] text-sm mt-1">회원 정보 확인을 위해 정보를 입력해주세요.</p>
-              </div>
-
-              <div className={`space-y-4 transition-opacity ${isVerifying ? 'opacity-50 pointer-events-none' : ''}`}>
+            <motion.div key="verify" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-6">
+              <div className="text-center mb-4"><ShieldCheck className="w-12 h-12 text-brand-DEFAULT mx-auto mb-4" /><h2 className="text-xl font-bold text-white">본인 인증</h2></div>
+              <div className={`space-y-4 ${isVerifying ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div className="grid grid-cols-4 gap-2">
-                  {CARRIERS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setCarrier(c)}
-                      className={`h-12 rounded-xl text-xs font-medium border ${carrier === c ? 'bg-brand-DEFAULT border-brand-DEFAULT text-white' : 'bg-[#2C2C2E] border-transparent text-[#8E8E93]'}`}
-                    >
-                      {c}
-                    </button>
-                  ))}
+                  {CARRIERS.map(c => (<button key={c} onClick={() => setCarrier(c)} className={`h-12 rounded-xl text-xs font-medium border ${carrier === c ? 'bg-brand-DEFAULT border-brand-DEFAULT text-white' : 'bg-[#2C2C2E] border-transparent text-[#8E8E93]'}`}>{c}</button>))}
                 </div>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="이름" className="w-full h-12 bg-[#2C2C2E] rounded-xl px-4 text-white focus:outline-none" />
-                <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="휴대폰 번호 (- 없이 입력)" className="w-full h-12 bg-[#2C2C2E] rounded-xl px-4 text-white focus:outline-none" />
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="이름" className="w-full h-12 bg-[#2C2C2E] rounded-xl px-4 text-white focus:outline-none border border-transparent focus:border-brand-DEFAULT" />
+                <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="휴대폰 번호" className="w-full h-12 bg-[#2C2C2E] rounded-xl px-4 text-white focus:outline-none border border-transparent focus:border-brand-DEFAULT" />
                 <button onClick={handleSendCode} disabled={!carrier || !name || !phoneNumber} className="w-full h-12 bg-brand-DEFAULT rounded-xl text-white font-bold disabled:opacity-50">인증번호 전송</button>
               </div>
-
               {isVerifying && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pt-4 border-t border-[#3A3A3C]">
                   <div className="relative">
-                    <input type="number" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} placeholder="인증번호 6자리" className="w-full h-12 bg-[#2C2C2E] rounded-xl px-4 text-white focus:outline-none" />
+                    <input type="number" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} placeholder="인증번호 6자리" className="w-full h-12 bg-[#2C2C2E] rounded-xl px-4 text-white focus:outline-none border border-brand-DEFAULT" />
                     <span className="absolute right-4 top-3.5 text-brand-DEFAULT text-sm font-mono">{displayTime}</span>
                   </div>
                   <button onClick={handleVerify} className="w-full h-12 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-colors">인증 확인</button>
@@ -240,78 +189,28 @@ export default function RecoveryPage() {
           )}
 
           {step === 'id-result' && (
-            <motion.div 
-              key="id-result"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex flex-col items-center text-center mt-10"
-            >
-              <div className="w-20 h-20 bg-brand-DEFAULT/20 rounded-full flex items-center justify-center mb-6 text-brand-DEFAULT">
-                <Mail className="w-10 h-10" />
-              </div>
+            <motion.div key="id-result" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center text-center mt-10">
+              <div className="w-20 h-20 bg-brand-DEFAULT/20 rounded-full flex items-center justify-center mb-6 text-brand-DEFAULT"><Mail className="w-10 h-10" /></div>
               <h2 className="text-xl font-bold text-white mb-2">회원님의 아이디를 찾았습니다.</h2>
-              <div className="bg-[#2C2C2E] px-8 py-4 rounded-xl mt-4 mb-8 border border-[#3A3A3C]">
-                <span className="text-lg font-mono text-white tracking-wide">{maskEmail(foundEmail)}</span>
-              </div>
-              
-              <div className="w-full space-y-3">
-                <button 
-                  onClick={() => navigate('/auth/login')}
-                  className="w-full h-14 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover transition-colors"
-                >
-                  로그인하러 가기
-                </button>
-                <button 
-                  onClick={() => { setType('pw'); setStep('reset-pw'); }}
-                  className="w-full h-14 bg-[#2C2C2E] text-[#8E8E93] font-bold rounded-xl hover:bg-[#3A3A3C] transition-colors"
-                >
-                  비밀번호 찾기
-                </button>
-              </div>
+              <div className="bg-[#2C2C2E] px-8 py-4 rounded-xl mt-4 mb-8 border border-[#3A3A3C]"><span className="text-lg font-mono text-white tracking-wide">{maskEmail(foundEmail)}</span></div>
+              <button onClick={() => navigate('/auth/login')} className="w-full h-14 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover transition-colors">로그인하러 가기</button>
             </motion.div>
           )}
 
           {step === 'reset-pw' && (
-            <motion.div 
-              key="reset-pw"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="flex flex-col gap-6"
-            >
-              <div className="text-center mb-4">
-                <Lock className="w-12 h-12 text-white mx-auto mb-4" />
-                <h2 className="text-xl font-bold text-white">비밀번호 재설정</h2>
-                <p className="text-[#8E8E93] text-sm mt-1">새로운 비밀번호를 입력해주세요.</p>
-              </div>
-
+            <motion.div key="reset-pw" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col gap-6">
+              <div className="text-center mb-4"><Lock className="w-12 h-12 text-white mx-auto mb-4" /><h2 className="text-xl font-bold text-white">비밀번호 재설정</h2></div>
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#8E8E93] ml-1">새 비밀번호</label>
-                  <div className="flex items-center bg-[#2C2C2E] rounded-xl px-4 py-3 border border-[#3A3A3C] focus-within:border-brand-DEFAULT">
-                    <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6자 이상 입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
-                  </div>
+                <div className="flex items-center bg-[#2C2C2E] rounded-xl px-4 py-3 border border-[#3A3A3C] focus-within:border-brand-DEFAULT">
+                  <Lock className="w-5 h-5 text-[#636366] mr-3" /><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="6자 이상 입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호 확인</label>
-                  <div className="flex items-center bg-[#2C2C2E] rounded-xl px-4 py-3 border border-[#3A3A3C] focus-within:border-brand-DEFAULT">
-                    <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="비밀번호 재입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
-                  </div>
+                <div className="flex items-center bg-[#2C2C2E] rounded-xl px-4 py-3 border border-[#3A3A3C] focus-within:border-brand-DEFAULT">
+                  <Lock className="w-5 h-5 text-[#636366] mr-3" /><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="비밀번호 재입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
                 </div>
               </div>
-
-              <button 
-                onClick={handleResetPassword}
-                className="w-full h-14 bg-brand-DEFAULT text-white font-bold rounded-xl mt-4 hover:bg-brand-hover transition-colors shadow-lg flex items-center justify-center gap-2"
-              >
-                비밀번호 즉시 변경
-                <ArrowRight className="w-5 h-5" />
-              </button>
+              <button onClick={handleResetPassword} className="w-full h-14 bg-brand-DEFAULT text-white font-bold rounded-xl mt-4 hover:bg-brand-hover transition-colors shadow-lg flex items-center justify-center gap-2">비밀번호 즉시 변경 <ArrowRight className="w-5 h-5" /></button>
             </motion.div>
           )}
-
         </AnimatePresence>
       </div>
     </div>
