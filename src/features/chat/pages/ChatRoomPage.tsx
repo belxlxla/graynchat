@@ -130,20 +130,12 @@ export default function ChatRoomPage() {
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  // ✨ [해결] 친구 상태 판별 핵심 로직 (에러 발생 포인트 수정)
   const fetchInitialData = async () => {
     if (!chatId || !user) return;
     try {
-      // 1. 룸 ID(uuid1_uuid2)에서 상대방의 UUID만 정확히 추출
       const friendUUID = chatId.split('_').find(id => id !== user.id);
-      
-      if (!friendUUID) {
-         setRoomTitle('대화방');
-         setIsLoading(false);
-         return;
-      }
+      if (!friendUUID) throw new Error("Invalid Room ID");
 
-      // 2. friends 테이블에서 id(숫자)가 아닌 friend_user_id(문자열 UUID)를 기준으로 검색 (400에러 해결)
       const { data: friendRecord, error: friendError } = await supabase
         .from('friends')
         .select('*')
@@ -154,7 +146,6 @@ export default function ChatRoomPage() {
       if (friendError) throw friendError;
 
       if (friendRecord) {
-        // [케이스 1] 친구 목록에 있음
         setRoomTitle(friendRecord.name);
         setFriendlyScore(friendRecord.friendly_score);
         setRoomMembers([{ 
@@ -167,11 +158,9 @@ export default function ChatRoomPage() {
         setIsFriend(true);
         setIsBlocked(!!friendRecord.is_blocked);
       } else {
-        // [케이스 2] 친구 목록에 없음 (미등록 또는 삭제됨)
         setIsFriend(false);
         setIsBlocked(false);
 
-        // 상대방의 실제 프로필 이름을 users 테이블에서 조회
         const { data: userData } = await supabase
           .from('users')
           .select('name')
@@ -181,7 +170,6 @@ export default function ChatRoomPage() {
         setRoomTitle(userData?.name || '알 수 없는 사용자');
       }
 
-      // 3. 메시지 로드
       const { data: msgData, error: msgError } = await supabase
         .from('messages')
         .select('*')
@@ -233,7 +221,7 @@ export default function ChatRoomPage() {
       
       setIsFriend(true);
       toast.success(`${targetUser?.name || roomTitle}님을 친구로 추가했습니다.`, { id: addToast });
-      fetchInitialData(); // 즉시 상태 갱신하여 경고창 제거
+      fetchInitialData();
     } catch {
       toast.error('친구 추가 실패', { id: addToast });
     }
@@ -254,7 +242,7 @@ export default function ChatRoomPage() {
       if (error) throw error;
       setIsBlocked(false);
       toast.success('차단이 해제되었습니다.', { id: unblockToast });
-      fetchInitialData(); // 즉시 상태 갱신하여 경고창 제거
+      fetchInitialData();
     } catch {
       toast.error('해제 실패', { id: unblockToast });
     }
@@ -524,8 +512,41 @@ function MenuButton({ icon, label, onClick }: { icon: React.ReactNode, label: st
 function ImageViewerModal({ isOpen, initialIndex, images, onClose }: { isOpen: boolean, initialIndex: number, images: string[], onClose: () => void }) {
   const [index, setIndex] = useState(initialIndex);
   const [direction, setDirection] = useState(0);
-  useEffect(() => { if (isOpen) setIndex(initialIndex); }, [isOpen, initialIndex]);
-  const p = (d: number) => { const n = index + d; if (n >= 0 && n < images.length) { setDirection(d); setIndex(n); } };
+  
+  useEffect(() => { 
+    if (isOpen) setIndex(initialIndex); 
+  }, [isOpen, initialIndex]);
+
   if (!isOpen || images.length === 0) return null;
-  return (<div className="fixed inset-0 z-[100] flex flex-col justify-center overflow-hidden bg-black/98 backdrop-blur-2xl"><div className="absolute top-0 left-0 w-full p-4 flex justify-between z-20"><span className="text-white/80 font-mono text-sm bg-black/40 px-3 py-1 rounded-full">{index + 1} / {images.length}</span><button onClick={onClose} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"><X className="w-6 h-6" /></button></div><div className="flex-1 flex items-center justify-center relative w-full h-full"><AnimatePresence initial={false} custom={direction} mode="popLayout"><motion.img key={index} src={images[index]} custom={direction} variants={{ enter: (d: number) => ({ x: d > 0 ? 600 : -600, opacity: 0 }), center: { x: 0, opacity: 1 }, exit: (d: number) => ({ x: d < 0 ? 600 : -600, opacity: 0 }) }} initial="enter" animate="center" exit="exit" className="absolute max-w-full max-h-full object-contain" /></AnimatePresence></div></div>);
+
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col justify-center overflow-hidden bg-black/98 backdrop-blur-2xl">
+      <div className="absolute top-0 left-0 w-full p-4 flex justify-between z-20">
+        <span className="text-white/80 font-mono text-sm bg-black/40 px-3 py-1 rounded-full">
+          {index + 1} / {images.length}
+        </span>
+        <button onClick={onClose} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors">
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+      <div className="flex-1 flex items-center justify-center relative w-full h-full">
+        <AnimatePresence initial={false} custom={direction} mode="popLayout">
+          <motion.img 
+            key={index} 
+            src={images[index]} 
+            custom={direction} 
+            variants={{ 
+              enter: (d: number) => ({ x: d > 0 ? 600 : -600, opacity: 0 }), 
+              center: { x: 0, opacity: 1 }, 
+              exit: (d: number) => ({ x: d < 0 ? 600 : -600, opacity: 0 }) 
+            }} 
+            initial="enter" 
+            animate="center" 
+            exit="exit" 
+            className="absolute max-w-full max-h-full object-contain" 
+          />
+        </AnimatePresence>
+      </div>
+    </div>
+  );
 }
