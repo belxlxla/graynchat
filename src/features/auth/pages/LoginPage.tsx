@@ -26,7 +26,17 @@ export default function LoginPage() {
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        // ✨ 상세 에러 처리 로직 추가
+        if (error.message.includes('Email not confirmed')) {
+          toast.error('이메일 인증이 완료되지 않았습니다. 메일함을 확인해주세요.');
+        } else if (error.message.includes('Invalid login credentials')) {
+          toast.error('이메일 또는 비밀번호가 일치하지 않습니다.');
+        } else {
+          toast.error(error.message || '로그인에 실패했습니다.');
+        }
+        throw error;
+      }
 
       if (data.user) {
         toast.success(`${data.user.user_metadata.name || '회원'}님 환영합니다!`);
@@ -34,7 +44,6 @@ export default function LoginPage() {
       }
     } catch (error: any) {
       console.error('Login Error:', error);
-      toast.error('로그인에 실패했습니다. 정보를 확인해주세요.');
     } finally {
       setIsLoading(false);
     }
@@ -206,7 +215,7 @@ export default function LoginPage() {
           </button>
         </p>
         <button 
-          onClick={() => navigate('/auth/recovery')} // ✨ 여기 링크 연결됨
+          onClick={() => navigate('/auth/recovery')}
           className="text-[#636366] text-xs mt-4 hover:text-[#8E8E93] transition-colors"
         >
           로그인에 문제가 있나요?
