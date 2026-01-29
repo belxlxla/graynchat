@@ -371,8 +371,8 @@ function LogoutModal({ isOpen, onClose, onConfirm }: any) {
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
-        <div className="p-8"><div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#FF453A]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
-        <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#FF453A] font-bold">로그아웃</button></div>
+        <div className="p-8"><div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#EC5022]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
+        <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#EC5022] font-bold">로그아웃</button></div>
       </motion.div>
     </div>
   );
