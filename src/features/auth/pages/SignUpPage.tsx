@@ -30,7 +30,7 @@ export default function SignUpPage() {
     marketing: false,    // 맞춤형 광고 안내 (선택)
   });
 
-  // ✨ 약관별 노션 링크 (나중에 이 부분의 URL만 수정하면 됩니다)
+  // 약관별 노션 링크
   const policyLinks: Record<string, string> = {
     service: 'https://www.notion.so',
     location: 'https://www.notion.so',
@@ -64,7 +64,7 @@ export default function SignUpPage() {
     setAgreedTerms(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // ✨ 약관 상세 보기 핸들러
+  // 약관 상세 보기 핸들러
   const handleOpenPolicy = (key: string) => {
     const url = policyLinks[key];
     if (url) {
@@ -92,23 +92,35 @@ export default function SignUpPage() {
 
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // 1. Supabase Auth 계정 생성
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: accountData.email,
         password: accountData.password,
-        options: { data: { full_name: accountData.name } }
+        options: { 
+          data: { 
+            full_name: accountData.name 
+          } 
+        }
       });
 
-      if (error) throw error;
+      if (signUpError) throw signUpError;
 
       if (data.user) {
-        await supabase.from('users').upsert([{
+        // 2. public.users 테이블에 추가 데이터 저장 (또는 업데이트)
+        // 만약 트리거가 이미 생성했다면 그 위에 약관 동의 여부를 덮어씌웁니다.
+        const { error: upsertError } = await supabase.from('users').upsert({
           id: data.user.id,
           email: accountData.email,
           name: accountData.name,
           status_message: '반가워요!',
           is_terms_agreed: true,
-          is_marketing_agreed: agreedTerms.marketing
-        }]);
+          is_marketing_agreed: agreedTerms.marketing,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'id'
+        });
+
+        if (upsertError) throw upsertError;
 
         toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
         navigate('/auth/phone'); 
@@ -117,7 +129,12 @@ export default function SignUpPage() {
       }
     } catch (error: any) {
       console.error('Signup Error:', error);
-      toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
+      // 구체적인 에러 메시지 처리
+      if (error.message.includes('users')) {
+        toast.error('데이터베이스 저장 중 오류가 발생했습니다. SQL 설정을 확인해 주세요.');
+      } else {
+        toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -150,7 +167,6 @@ export default function SignUpPage() {
           </div>
 
           <form className="space-y-5" onSubmit={handleCreateAccount}>
-            {/* 입력 필드 섹션 */}
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
@@ -182,7 +198,6 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* 약관 동의 섹션 */}
             <div className="pt-4 space-y-4">
               <div className="flex items-center justify-between p-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] cursor-pointer" onClick={handleAllAgree}>
                 <div className="flex items-center gap-3">
@@ -202,7 +217,6 @@ export default function SignUpPage() {
                         {term.label} <span className={term.required ? 'text-brand-DEFAULT' : 'text-[#636366]'}>({term.required ? '필수' : '선택'})</span>
                       </span>
                     </div>
-                    {/* ✨ 화살표 클릭 시 노션 페이지 연결 */}
                     <button 
                       type="button" 
                       onClick={() => handleOpenPolicy(term.key)}
