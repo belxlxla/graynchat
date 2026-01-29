@@ -59,18 +59,17 @@ export default function FriendsSettingsPage() {
       if (!session?.user) return;
 
       // [기능 1] 브라우저 연락처 API 접근 (실제 주소록 데이터 가져오기 시도)
-      let contacts: any[] = [];
+      // ✨ 빌드 에러 해결: 선언 후 사용하지 않는 contacts 변수 제거
       if ('contacts' in navigator && 'select' in (navigator as any).contacts) {
         try {
           // OS 주소록 권한 요청 및 데이터 획득 (이름, 번호)
-          contacts = await (navigator as any).contacts.select(['name', 'tel'], { multiple: true });
+          await (navigator as any).contacts.select(['name', 'tel'], { multiple: true });
         } catch (e) { console.warn("Contact access denied"); }
       }
 
       // [기능 2] Supabase RPC 또는 API를 통한 매칭 작업
       // 1. 내 연락처 번호들을 서버로 보내서 그레인 가입자 필터링
       // 2. 나를 친추했거나 내가 친추한 사람 리스트 업데이트
-      // (현재는 fetchFriends 로직을 시뮬레이션하여 DB 업데이트 호출)
       const now = new Date().toISOString();
       const { error: updateError } = await supabase
         .from('users')
