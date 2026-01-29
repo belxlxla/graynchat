@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Lock, Delete, AlertTriangle, Mail, ScanFace, ShieldAlert } from 'lucide-react';
+// ✨ 빌드 오류 수정을 위해 사용하지 않는 'Lock' 아이콘 임포트 제거
+import { Delete, AlertTriangle, Mail, ScanFace, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
@@ -49,7 +50,7 @@ export default function AppLockOverlay() {
     }
   }, [failCount, getLockSettings, unlockApp]);
 
-  // ✨ 핵심: 앱 구동 시점 및 가시성 변경 감지
+  // ✨ 앱 구동 시점 및 가시성 변경 감지
   useEffect(() => {
     const { isLockEnabled, isBioEnabled } = getLockSettings();
     
@@ -78,7 +79,6 @@ export default function AppLockOverlay() {
   const handlePress = async (num: number) => {
     if (failCount >= 10) return;
     if (pin.length < 4) {
-      // 보안 노이즈 (촌스러운 글로우 제거, 단순 불투명도 변화)
       const randomNoises = [num];
       while(randomNoises.length < 3) {
         const r = Math.floor(Math.random() * 10);
@@ -116,18 +116,16 @@ export default function AppLockOverlay() {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-[#0A0A0B] flex flex-col items-center justify-between py-24 px-8 select-none">
-      {/* 정갈한 상단 영역 */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center text-center z-10">
         <div className={`w-20 h-20 rounded-[28px] flex items-center justify-center mb-6 border transition-colors duration-300 ${isError ? 'bg-[#FF453A]/10 border-[#FF453A]/30' : 'bg-[#1C1C1E] border-white/5 shadow-xl'}`}>
           <ShieldAlert size={36} className={isError ? "text-[#FF453A]" : "text-brand-DEFAULT"} />
         </div>
-        <h2 className="text-xl font-bold text-white tracking-widest uppercase tracking-tighter">Security</h2>
+        <h2 className="text-xl font-bold text-white tracking-widest uppercase">Security</h2>
         <p className={`text-[13px] mt-2 transition-colors duration-300 ${isError ? "text-[#FF453A] font-bold" : "text-[#636366]"}`}>
           {isError ? "암호가 올바르지 않습니다" : `입력 오류 횟수 (${failCount}/10)`}
         </p>
       </motion.div>
 
-      {/* 입력 도트 (글로우 제거) */}
       <motion.div animate={isError ? { x: [-5, 5, -5, 5, 0] } : {}} transition={{ duration: 0.4 }} className="flex gap-8 z-10">
         {[...Array(4)].map((_, i) => (
           <motion.div 
@@ -141,7 +139,6 @@ export default function AppLockOverlay() {
         ))}
       </motion.div>
 
-      {/* 키패드 (글로우 제거, 단순 피드백) */}
       <div className="w-full max-w-[300px] grid grid-cols-3 gap-y-10 z-10">
         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
           <div key={n} className={`${n === 0 ? 'col-start-2' : ''} flex justify-center`}>
@@ -165,7 +162,6 @@ export default function AppLockOverlay() {
         </div>
       </div>
 
-      {/* 하단 생체인증 버튼 */}
       <div className="h-10 z-10">
         {getLockSettings().isBioEnabled && !isError && (
           <button onClick={triggerBiometric} className="flex items-center gap-2 px-6 py-2 bg-[#1C1C1E] border border-white/5 rounded-xl text-brand-DEFAULT font-bold text-xs active:scale-95 transition-all">
@@ -174,7 +170,6 @@ export default function AppLockOverlay() {
         )}
       </div>
 
-      {/* 10회 실패 제한 모달 */}
       <AnimatePresence>
         {showBlockedModal && (
           <div className="fixed inset-0 z-[10000] flex items-center justify-center px-8">

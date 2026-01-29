@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Smartphone, Laptop, MapPin, Clock, 
-  ShieldCheck, Globe, LogOut, AlertTriangle, RefreshCw
+  ShieldCheck, LogOut, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';

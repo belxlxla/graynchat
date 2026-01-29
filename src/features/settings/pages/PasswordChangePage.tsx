@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+// ✨ 에러 수정: 사용하지 않는 Lock, CheckCircle2, ExternalLink 임포트 제거
+import { ChevronLeft, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
@@ -11,7 +12,7 @@ export default function PasswordChangePage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Form States
-  const [currentPassword, setCurrentPassword] = useState('');
+  // ✨ 에러 수정: 읽기 작업이 없는 currentPassword 변수와 setter 제거
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -100,7 +101,6 @@ export default function PasswordChangePage() {
         </div>
 
         <div className="space-y-6">
-          {/* 현재 비밀번호 (기존 비번 확인 과정은 로그인을 통해 검증되거나 재인증 필요) */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-[#636366] ml-1 uppercase tracking-widest">New Password</label>
             <div className="relative">

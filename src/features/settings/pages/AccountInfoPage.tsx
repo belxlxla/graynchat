@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, ChevronRight, 
-  Camera, User, Mail, Phone, Globe, LogOut, 
+  Camera, User, Phone, Globe, LogOut, 
   Trash2, Image as ImageIcon, X, Search, CheckCircle2, Circle
+  // ✨ 에러 수정: 사용하지 않는 'Mail' 임포트 제거
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -117,7 +118,6 @@ export default function AccountInfoPage() {
           phone: formatPhoneNumber(rawPhone)
         });
         
-        // ✨ 차단 국가 리스트 동기화
         setBlockedCountries(dbData.blocked_countries || []);
       }
     } catch (err) {
@@ -129,7 +129,6 @@ export default function AccountInfoPage() {
     fetchUserData();
   }, [fetchUserData]);
 
-  // ✨ 차단 국가 저장 로직
   const handleSaveBlockedCountries = async (list: string[]) => {
     if (!user) return;
     const loadingToast = toast.loading('보안 설정 적용 중...');

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion'; // ✨ 에러 수정: 사용하지 않는 AnimatePresence 제거
 import { 
-  ChevronLeft, ChevronRight, ShieldCheck, 
-  Key, History, Smartphone, AlertTriangle 
+  ChevronLeft, ChevronRight, 
+  Key, History, Smartphone 
+  // ✨ 에러 수정: 사용하지 않는 ShieldCheck, AlertTriangle 임포트 제거
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -14,7 +15,7 @@ export default function AccountSecurityPage() {
   // === States ===
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [securityScore, setSecurityScore] = useState(65);
-  const [isLoading, setIsLoading] = useState(true);
+  // ✨ 에러 수정: 사용하지 않는 isLoading 상태 제거
 
   useEffect(() => {
     const fetchSecurityStatus = async () => {
@@ -31,7 +32,6 @@ export default function AccountSecurityPage() {
           setSecurityScore(data.is_2fa_enabled ? 85 : 65);
         }
       }
-      setIsLoading(false);
     };
     fetchSecurityStatus();
   }, []);
@@ -108,7 +108,6 @@ export default function AccountSecurityPage() {
                 onClick={() => navigate('/settings/security/2fa')}
               />
               <div className="h-[1px] bg-[#2C2C2E] mx-5" />
-              {/* ✨ 비밀번호 변경 페이지로 이동 연동 */}
               <SecurityItem 
                 icon={<Key className="w-5 h-5" />}
                 title="비밀번호 변경"

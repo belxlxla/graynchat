@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Mail, Smartphone, CheckCircle2, 
-  X, AlertTriangle, ShieldCheck, ArrowRight 
+  AlertTriangle, ShieldCheck 
+  // ✨ 에러 수정: 사용하지 않는 X, ArrowRight 임포트 제거
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -13,7 +14,7 @@ export default function TwoFactorAuthPage() {
   const [isEnabled, setIsEnabled] = useState(false);
   const [method, setMethod] = useState<'email' | 'phone'>('email');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  // ✨ 에러 수정: 사용하지 않는 isLoading 상태 제거
 
   useEffect(() => {
     const loadStatus = async () => {
@@ -25,7 +26,6 @@ export default function TwoFactorAuthPage() {
           setMethod(data.mfa_method || 'email');
         }
       }
-      setIsLoading(false);
     };
     loadStatus();
   }, []);
@@ -109,7 +109,6 @@ export default function TwoFactorAuthPage() {
         </div>
       </div>
 
-      {/* 해제 경고 커스텀 다크 모달 */}
       <AnimatePresence>
         {showConfirmModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center px-8">

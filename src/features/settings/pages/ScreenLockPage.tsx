@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect,} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Lock, Fingerprint, KeyRound, Delete, X, ScanFace, AlertTriangle, ShieldCheck } from 'lucide-react';
