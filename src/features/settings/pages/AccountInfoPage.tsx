@@ -94,7 +94,7 @@ export default function AccountInfoPage() {
   const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null); 
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-  // ✨ 크롭 관련 상태 추가
+  // ✨ 크롭 관련 상태
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
@@ -140,7 +140,6 @@ export default function AccountInfoPage() {
 
   useEffect(() => { fetchUserData(); }, [fetchUserData]);
 
-  // ✨ 파일 선택 시 크롭 모달 열기
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
     if (e.target.files && e.target.files.length > 0) {
       const reader = new FileReader();
@@ -155,7 +154,6 @@ export default function AccountInfoPage() {
     }
   };
 
-  // ✨ 크롭된 이미지 업로드 및 저장
   const handleCropSave = async () => {
     if (!tempImageSrc || !croppedAreaPixels || !user) return;
     const loadingToast = toast.loading('사진 업로드 중...');
@@ -285,12 +283,11 @@ export default function AccountInfoPage() {
         )}
       </AnimatePresence>
 
-      {/* ✨ 크롭 편집 모달 추가 */}
       <AnimatePresence>
         {isCropOpen && tempImageSrc && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black flex flex-col">
             <div className="h-16 flex items-center justify-between px-5 bg-black/80 backdrop-blur-md z-10 sticky top-0">
-              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2"><X className="w-7 h-7 text-white" /></button>
+              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2 text-white"><X className="w-7 h-7" /></button>
               <span className="font-bold text-lg text-white">이미지 편집</span>
               <button onClick={handleCropSave} className="px-5 py-2 bg-brand-DEFAULT rounded-full font-black text-sm text-white shadow-lg active:scale-95 transition-all">완료</button>
             </div>
@@ -373,9 +370,9 @@ function LogoutModal({ isOpen, onClose, onConfirm }: any) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
-        <div className="p-8"><div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#EC5022]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
-        <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#EC5022] font-bold">로그아웃</button></div>
+      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
+        <div className="p-8"><div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#FF453A]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
+        <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#FF453A] font-bold">로그아웃</button></div>
       </motion.div>
     </div>
   );

@@ -64,18 +64,17 @@ export default function RecoveryPage() {
     toast.success('인증번호가 발송되었습니다.');
   };
 
-  // 3. 인증 확인 (실제 DB 연동 및 아이디 찾기 기능 수정)
+  // 3. 인증 확인 (아이디 찾기 로직 수정)
   const handleVerify = async () => {
     if (verifyCode !== '000000') {
       toast.error('인증번호가 일치하지 않습니다.');
       return;
     }
 
-    const cleanPhone = phoneNumber.replace(/-/g, '');
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
 
     try {
-      // ✨ [연동 수정] public.users 테이블에서 이름과 번호로 이메일 조회
-      // 이메일이 찾아지지 않는다면 name이나 phone 저장 형식이 다른 것일 수 있습니다.
+      // ✨ 아이디 찾기 안 되는 문제 수정: trim() 및 정확한 데이터 대조
       const { data, error } = await supabase
         .from('users')
         .select('email')
@@ -95,7 +94,7 @@ export default function RecoveryPage() {
       if (type === 'id') {
         setStep('id-result');
       } else {
-        setStep('reset-pw'); // 비밀번호 변경 단계로 즉시 이동
+        setStep('reset-pw'); 
       }
       
       toast.success('본인 인증이 완료되었습니다.');
@@ -105,38 +104,27 @@ export default function RecoveryPage() {
     }
   };
 
-  // 4. 비밀번호 즉시 재설정 완료 (링크 발송 대신 직접 변경)
+  // 4. 비밀번호 즉시 재설정 완료 (RPC 함수 호출)
   const handleResetPassword = async () => {
     if (newPassword.length < 6) return toast.error('비밀번호는 6자리 이상이어야 합니다.');
     if (newPassword !== confirmPassword) return toast.error('비밀번호가 일치하지 않습니다.');
 
-    const loadingToast = toast.loading('비밀번호를 변경하고 있습니다...');
+    const loadingToast = toast.loading('비밀번호를 즉시 변경하고 있습니다...');
 
     try {
-      /**
-       * ✨ [로직 수정] 
-       * 일반적인 Supabase 클라이언트에서 타인의 비번을 즉시 바꾸려면 
-       * Admin API(service_role)가 필요합니다. 
-       * 하지만 현재 인증 로직상 '인증됨'으로 간주하고 비밀번호를 강제 업데이트하기 위해
-       * Supabase Auth의 비밀번호 변경 API를 호출합니다.
-       */
-      const { error } = await supabase.auth.updateUser({ 
-        password: newPassword 
+      // ✨ 링크 없이 바로 변경하기 위해 미리 만들어둔 SQL RPC 함수 호출
+      const { error } = await supabase.rpc('reset_password_admin_rpc', {
+        target_email: foundEmail,
+        new_password: newPassword
       });
 
-      if (error) {
-        // 만약 세션이 없어 에러가 난다면, 사용자 가입 이메일로 임시 로그인을 시도하거나 
-        // 관리자용 Edge Function을 호출해야 합니다.
-        // 여기서는 가장 직접적인 방식인 updateUser를 시도합니다.
-        throw error;
-      }
+      if (error) throw error;
       
-      toast.success('비밀번호가 즉시 변경되었습니다.', { id: loadingToast });
+      toast.success('비밀번호가 즉시 변경되었습니다. 새로운 비밀번호로 로그인해주세요.', { id: loadingToast });
       navigate('/auth/login');
     } catch (err: any) {
       console.error('Reset Error:', err);
-      // 보안상 이유로 직접 변경이 막혀있을 경우에 대한 안내
-      toast.error('비밀번호를 변경할 수 있는 권한이 없습니다. 다시 시도해 주세요.', { id: loadingToast });
+      toast.error('비밀번호 변경에 실패했습니다. 잠시 후 다시 시도해 주세요.', { id: loadingToast });
     }
   };
 
@@ -178,7 +166,7 @@ export default function RecoveryPage() {
                 onClick={() => handleSelectType('id')}
                 className="flex items-center p-6 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:border-brand-DEFAULT transition-all group text-left"
               >
-                <div className="w-12 h-12 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center text-brand-DEFAULT mr-4 group-hover:bg-brand-DEFAULT transition-colors">
+                <div className="w-12 h-12 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center text-brand-DEFAULT mr-4 group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors">
                   <Search className="w-6 h-6" />
                 </div>
                 <div>
@@ -191,7 +179,7 @@ export default function RecoveryPage() {
                 onClick={() => handleSelectType('pw')}
                 className="flex items-center p-6 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:border-brand-DEFAULT transition-all group text-left"
               >
-                <div className="w-12 h-12 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center text-brand-DEFAULT mr-4 group-hover:bg-brand-DEFAULT transition-colors">
+                <div className="w-12 h-12 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center text-brand-DEFAULT mr-4 group-hover:bg-brand-DEFAULT group-hover:text-white transition-colors">
                   <Lock className="w-6 h-6" />
                 </div>
                 <div>
