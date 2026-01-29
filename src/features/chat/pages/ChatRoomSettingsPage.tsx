@@ -345,7 +345,7 @@ export default function ChatRoomSettingsPage() {
           </Section>
 
           <div className="space-y-3 pt-4">
-            <button onClick={() => setIsLeaveModalOpen(true)} className="w-full py-4 bg-[#2C2C2E] text-[#FF453A] font-medium rounded-2xl flex items-center justify-center gap-2 hover:bg-[#3A3A3C] transition-colors border border-[#3A3A3C]">
+            <button onClick={() => setIsLeaveModalOpen(true)} className="w-full py-4 bg-[#2C2C2E] text-[#EC5022] font-medium rounded-2xl flex items-center justify-center gap-2 hover:bg-[#3A3A3C] transition-colors border border-[#3A3A3C]">
               <LogOut className="w-5 h-5" />채팅방 나가기
             </button>
           </div>
@@ -409,13 +409,13 @@ function LeaveChatModal({ isOpen, onClose, onConfirm }: { isOpen: boolean, onClo
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
         <div className="p-6">
-          <div className="w-12 h-12 bg-[#FF453A]/20 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle className="w-6 h-6 text-[#FF453A]" /></div>
+          <div className="w-12 h-12 bg-[#EC5022]/20 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle className="w-6 h-6 text-[#EC5022]" /></div>
           <h3 className="text-white font-bold text-lg mb-2">채팅방 나가기</h3>
           <p className="text-[#8E8E93] text-sm leading-relaxed">대화 내용이 삭제되며<br/>목록에서 사라집니다.</p>
         </div>
         <div className="flex border-t border-[#3A3A3C] h-12">
           <button onClick={onClose} className="flex-1 text-[#8E8E93] font-medium text-[16px] hover:bg-[#2C2C2E] border-r border-[#3A3A3C]">취소</button>
-          <button onClick={onConfirm} className="flex-1 text-[#FF453A] font-bold text-[16px] hover:bg-[#2C2C2E]">나가기</button>
+          <button onClick={onConfirm} className="flex-1 text-[#EC5022] font-bold text-[16px] hover:bg-[#2C2C2E]">나가기</button>
         </div>
       </motion.div>
     </div>

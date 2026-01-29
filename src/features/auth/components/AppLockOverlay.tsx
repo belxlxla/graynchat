@@ -117,11 +117,11 @@ export default function AppLockOverlay() {
   return (
     <div className="fixed inset-0 z-[9999] bg-[#0A0A0B] flex flex-col items-center justify-between py-24 px-8 select-none">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center text-center z-10">
-        <div className={`w-20 h-20 rounded-[28px] flex items-center justify-center mb-6 border transition-colors duration-300 ${isError ? 'bg-[#FF453A]/10 border-[#FF453A]/30' : 'bg-[#1C1C1E] border-white/5 shadow-xl'}`}>
-          <ShieldAlert size={36} className={isError ? "text-[#FF453A]" : "text-brand-DEFAULT"} />
+        <div className={`w-20 h-20 rounded-[28px] flex items-center justify-center mb-6 border transition-colors duration-300 ${isError ? 'bg-[#EC5022]/10 border-[#FF453A]/30' : 'bg-[#1C1C1E] border-white/5 shadow-xl'}`}>
+          <ShieldAlert size={36} className={isError ? "text-[#EC5022]" : "text-brand-DEFAULT"} />
         </div>
         <h2 className="text-xl font-bold text-white tracking-widest uppercase">Security</h2>
-        <p className={`text-[13px] mt-2 transition-colors duration-300 ${isError ? "text-[#FF453A] font-bold" : "text-[#636366]"}`}>
+        <p className={`text-[13px] mt-2 transition-colors duration-300 ${isError ? "text-[#EC5022] font-bold" : "text-[#636366]"}`}>
           {isError ? "암호가 올바르지 않습니다" : `입력 오류 횟수 (${failCount}/10)`}
         </p>
       </motion.div>
@@ -132,7 +132,7 @@ export default function AppLockOverlay() {
             key={i} 
             animate={{ 
               scale: i < pin.length ? 1.2 : 1, 
-              backgroundColor: i < pin.length ? (isError ? "#FF453A" : "#FFFFFF") : "#2C2C2E" 
+              backgroundColor: i < pin.length ? (isError ? "#EC5022" : "#FFFFFF") : "#2C2C2E" 
             }} 
             className="w-3 h-3 rounded-full" 
           />
@@ -175,8 +175,8 @@ export default function AppLockOverlay() {
           <div className="fixed inset-0 z-[10000] flex items-center justify-center px-8">
             <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-[#1C1C1E] border border-[#2C2C2E] p-10 rounded-[32px] text-center w-full max-w-[340px] shadow-2xl">
-              <div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <AlertTriangle size={32} className="text-[#FF453A]" />
+              <div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={32} className="text-[#EC5022]" />
               </div>
               <h3 className="text-xl font-bold text-white mb-3">접속 차단됨</h3>
               <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-10">비밀번호 10회 입력 오류로 인하여<br/>사용자 보호를 위해 접속이 영구 차단되었습니다.</p>

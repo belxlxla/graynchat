@@ -82,7 +82,7 @@ export default function Splash({ onFinish }: SplashProps) {
         variants={itemVariants}
         className="mt-4 text-dark-text-secondary text-sm tracking-wider font-medium"
       >
-        Connect beyond the gray.
+        CONNECT BEYOND THE GRAYN.
       </motion.p>
     </motion.div>
   );

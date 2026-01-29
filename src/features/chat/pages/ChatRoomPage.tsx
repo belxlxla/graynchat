@@ -447,7 +447,7 @@ export default function ChatRoomPage() {
           >
             <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 gap-4">
               <div className="flex items-center gap-4 w-full sm:w-auto">
-                <div className={`w-12 h-12 rounded-[20px] flex items-center justify-center shrink-0 border border-white/5 ${isBlocked ? 'bg-[#FF453A]/10 text-[#FF453A]' : 'bg-brand-DEFAULT/10 text-brand-DEFAULT'}`}>
+                <div className={`w-12 h-12 rounded-[20px] flex items-center justify-center shrink-0 border border-white/5 ${isBlocked ? 'bg-[#EC5022]/10 text-[#EC5022]' : 'bg-brand-DEFAULT/10 text-brand-DEFAULT'}`}>
                   {isBlocked ? <Ban className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
                 </div>
                 <div className="flex-1">
@@ -477,7 +477,7 @@ export default function ChatRoomPage() {
                     </button>
                     <button 
                       onClick={() => toast('신고가 접수되었습니다.')}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#3A3A3C] hover:bg-[#48484A] px-5 py-2.5 rounded-2xl text-[13px] font-bold text-[#FF453A] active:scale-95 transition-all border border-white/5"
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#3A3A3C] hover:bg-[#48484A] px-5 py-2.5 rounded-2xl text-[13px] font-bold text-[#EC5022] active:scale-95 transition-all border border-white/5"
                     >
                       차단/신고
                     </button>
@@ -609,8 +609,8 @@ function UrlWarningModal({ isOpen, url, onClose }: { isOpen: boolean, url: strin
         exit={{ scale: 0.9, opacity: 0, y: 20 }}
         className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] border border-[#3A3A3C] rounded-[40px] p-8 text-center shadow-2xl"
       >
-        <div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-          <ShieldAlert className="w-8 h-8 text-[#FF453A]" />
+        <div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <ShieldAlert className="w-8 h-8 text-[#EC5022]" />
         </div>
         <h3 className="text-xl font-bold text-white mb-3">주의하세요!</h3>
         <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">

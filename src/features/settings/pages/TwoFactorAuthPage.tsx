@@ -102,7 +102,7 @@ export default function TwoFactorAuthPage() {
 
           <button 
             onClick={handleToggle2FA}
-            className={`w-full py-5 rounded-3xl font-black text-lg transition-all active:scale-[0.98] shadow-2xl ${isEnabled ? 'bg-[#2C2C2E] text-[#FF453A] border border-[#FF453A]/20' : 'bg-brand-DEFAULT text-white shadow-brand-DEFAULT/20'}`}
+            className={`w-full py-5 rounded-3xl font-black text-lg transition-all active:scale-[0.98] shadow-2xl ${isEnabled ? 'bg-[#2C2C2E] text-[#EC5022] border border-[#EC5022]/20' : 'bg-brand-DEFAULT text-white shadow-brand-DEFAULT/20'}`}
           >
             {isEnabled ? '2단계 인증 해제하기' : '2단계 인증 사용하기'}
           </button>
@@ -114,8 +114,8 @@ export default function TwoFactorAuthPage() {
           <div className="fixed inset-0 z-[100] flex items-center justify-center px-8">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setShowConfirmModal(false)} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] border border-[#2C2C2E] rounded-[40px] p-8 text-center shadow-[0_40px_100px_rgba(0,0,0,0.8)]">
-              <div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <AlertTriangle size={32} className="text-[#FF453A]" />
+              <div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertTriangle size={32} className="text-[#EC5022]" />
               </div>
               <h3 className="text-xl font-bold text-white mb-3 tracking-tight">보안 등급이 낮아집니다</h3>
               <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">
@@ -123,7 +123,7 @@ export default function TwoFactorAuthPage() {
               </p>
               <div className="flex gap-3">
                 <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-4 bg-[#2C2C2E] text-white font-bold rounded-2xl active:scale-95 transition-all">취소</button>
-                <button onClick={() => update2FA(false, method)} className="flex-1 py-4 bg-[#FF453A] text-white font-bold rounded-2xl active:scale-95 transition-all">해제하기</button>
+                <button onClick={() => update2FA(false, method)} className="flex-1 py-4 bg-[#EC5022] text-white font-bold rounded-2xl active:scale-95 transition-all">해제하기</button>
               </div>
             </motion.div>
           </div>

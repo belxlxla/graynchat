@@ -81,7 +81,7 @@ export default function SignUpPage() {
               <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                 <User className="w-5 h-5 text-[#636366] mr-3" />
-                <input name="name" type="text" value={accountData.name} onChange={handleAccountChange} placeholder="실명 또는 닉네임" className="bg-transparent text-white text-sm w-full focus:outline-none" />
+                <input name="name" type="text" value={accountData.name} onChange={handleAccountChange} placeholder="실명으로 입력해 주세요" className="bg-transparent text-white text-sm w-full focus:outline-none" />
               </div>
             </div>
             <div className="space-y-1.5">

@@ -107,7 +107,7 @@ export default function PhoneAuthPage({ onBackToLogin, onNewUser }: PhoneAuthPag
         <AnimatePresence>
           {step === 'verify' && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 -mt-4">
-              <div className={`relative bg-[#2C2C2E] rounded-xl border ${codeError ? 'border-[#FF453A]' : 'border-transparent'}`}>
+              <div className={`relative bg-[#2C2C2E] rounded-xl border ${codeError ? 'border-[#EC5022]' : 'border-transparent'}`}>
                 <input type="number" value={verifyCode} onChange={e => { setVerifyCode(e.target.value.slice(0, 6)); setCodeError(false); }} placeholder="000000" className="w-full h-14 bg-transparent px-4 text-lg outline-none" />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-DEFAULT text-sm font-mono">{displayTime}</span>
               </div>

@@ -80,7 +80,7 @@ export default function ReportCenterPage() {
           
           <div className="space-y-4">
             <ReportItem 
-              icon={<Siren className="w-5 h-5 text-[#FF453A]" />}
+              icon={<Siren className="w-5 h-5 text-[#EC5022]" />}
               title="유해 정보 신고하기"
               desc="음란, 불법 게시물을 발견하셨나요? 여러분의 제보로 더 깨끗한 서비스를 만들어가도록 노력하겠습니다."
               onClick={() => handleReportClick('harmful')}

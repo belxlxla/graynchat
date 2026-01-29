@@ -73,7 +73,7 @@ export default function CopyrightReportPage() {
 
           {/* 3. Caution Section */}
           <section>
-            <h3 className="text-[15px] font-bold text-[#FF453A] mb-4 flex items-center gap-2">
+            <h3 className="text-[15px] font-bold text-[#EC5022] mb-4 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               유의사항
             </h3>

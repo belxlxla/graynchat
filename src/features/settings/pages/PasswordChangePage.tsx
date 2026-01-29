@@ -130,7 +130,7 @@ export default function PasswordChangePage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="새 비밀번호 다시 입력"
               className={`w-full bg-[#1C1C1E] border rounded-2xl px-5 py-4 focus:outline-none transition-all ${
-                confirmPassword && newPassword !== confirmPassword ? 'border-[#FF453A]' : 'border-[#2C2C2E] focus:border-brand-DEFAULT'
+                confirmPassword && newPassword !== confirmPassword ? 'border-[#EC5022]' : 'border-[#2C2C2E] focus:border-brand-DEFAULT'
               }`}
               required
             />
@@ -139,7 +139,7 @@ export default function PasswordChangePage() {
                 <motion.p 
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-xs text-[#FF453A] ml-1 mt-1 font-medium"
+                  className="text-xs text-[#EC5022] ml-1 mt-1 font-medium"
                 >
                   비밀번호가 일치하지 않습니다.
                 </motion.p>

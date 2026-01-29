@@ -175,7 +175,7 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
             </div>
 
             <div className="space-y-2">
-              <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">Status Message</label>
+              <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">상태 메시지</label>
               <input 
                 type="text" 
                 value={statusMessage} 

@@ -227,7 +227,7 @@ ${files.map((f, i) => f.file ? `${i + 1}. ${f.file.name}` : `${i + 1}. (파일 �
           
           <div>
             <h2 className="text-lg font-bold text-white mb-1">불법촬영물 등 유통 신고 및 삭제요청서</h2>
-            <p className="text-[12px] text-[#FF453A]">* 표시 항목은 필수사항입니다.</p>
+            <p className="text-[12px] text-[#EC5022]">* 표시 항목은 필수사항입니다.</p>
           </div>
 
           {/* 1. 신고 대상 */}
@@ -235,7 +235,7 @@ ${files.map((f, i) => f.file ? `${i + 1}. ${f.file.name}` : `${i + 1}. (파일 �
             {reportList.map((item, index) => (
               <div key={item.id} className="mb-4 p-4 bg-[#2C2C2E] rounded-xl border border-[#3A3A3C] relative">
                 {index > 0 && (
-                  <button onClick={() => removeReportRow(item.id)} className="absolute top-2 right-2 p-1 text-[#FF453A]">
+                  <button onClick={() => removeReportRow(item.id)} className="absolute top-2 right-2 p-1 text-[#EC5022]">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 )}
@@ -347,7 +347,7 @@ ${files.map((f, i) => f.file ? `${i + 1}. ${f.file.name}` : `${i + 1}. (파일 �
                         placeholder="인증번호 입력"
                         className="w-full h-10 bg-[#2C2C2E] border border-[#3A3A3C] rounded-lg px-3 text-sm text-white focus:border-brand-DEFAULT outline-none" 
                       />
-                      <span className="absolute right-3 top-3 text-xs text-[#FF453A] font-mono">{formatTime(timer)}</span>
+                      <span className="absolute right-3 top-3 text-xs text-[#EC5022] font-mono">{formatTime(timer)}</span>
                     </div>
                     <button onClick={verifyCode} className="w-20 h-10 bg-brand-DEFAULT text-white rounded-lg text-sm font-bold">확인</button>
                   </div>
@@ -464,7 +464,7 @@ ${files.map((f, i) => f.file ? `${i + 1}. ${f.file.name}` : `${i + 1}. (파일 �
             <p className="text-[13px] text-white font-medium mb-2">
               전기통신사업법 제 22조의5 제1항에 따라 위와같이 신고, 삭제 요청을 합니다.
             </p>
-            <p className="text-[12px] text-[#FF453A] mb-8 flex gap-1 items-start">
+            <p className="text-[12px] text-[#EC5022] mb-8 flex gap-1 items-start">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               허위신고일 경우, 신고자의 서비스 활동이 영구적으로 제한될 수 있으니 유의하여 신중하게 신고해 주시기 바랍니다.
             </p>

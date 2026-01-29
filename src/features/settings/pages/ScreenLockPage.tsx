@@ -174,10 +174,10 @@ export default function ScreenLockPage() {
           </div>
 
           {/* ✨ 요청하신 주의 문구 유지 */}
-          <div className="px-2 py-4 bg-[#FF453A]/5 rounded-2xl border border-[#FF453A]/10">
+          <div className="px-2 py-4 bg-[#EC5022]/5 rounded-2xl border border-[#EC5022]/10">
             <div className="flex gap-3">
-              <AlertTriangle size={18} className="text-[#FF453A] shrink-0" />
-              <p className="text-[12px] text-[#FF453A]/90 leading-relaxed">
+              <AlertTriangle size={18} className="text-[#EC5022] shrink-0" />
+              <p className="text-[12px] text-[#EC5022]/90 leading-relaxed">
                 <span className="font-bold">주의:</span> 암호를 분실한 경우 계정 보호를 위해 앱을 재설치해야 하며, 이 과정에서 모든 대화 내용이 초기화됩니다.
               </p>
             </div>
