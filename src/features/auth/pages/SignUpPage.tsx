@@ -24,6 +24,7 @@ export default function SignUpPage() {
     service: false,      // 이용약관 (필수)
     location: false,     // 위치기반서비스 이용약관 (필수)
     privacy: false,      // 개인정보처리방침 (필수)
+    sensitive: false,    // 민감정보 수집 및 이용 동의 (필수) ✨ 추가
     operation: false,    // 운영정책 (필수)
     youth: false,        // 청소년보호정책 (필수)
     marketing: false,    // 맞춤형 광고 안내 (선택)
@@ -40,6 +41,7 @@ export default function SignUpPage() {
       service: !isAllChecked,
       location: !isAllChecked,
       privacy: !isAllChecked,
+      sensitive: !isAllChecked,
       operation: !isAllChecked,
       youth: !isAllChecked,
       marketing: !isAllChecked,
@@ -56,6 +58,7 @@ export default function SignUpPage() {
     return agreedTerms.service && 
            agreedTerms.location && 
            agreedTerms.privacy && 
+           agreedTerms.sensitive && // ✨ 추가
            agreedTerms.operation && 
            agreedTerms.youth;
   }, [agreedTerms]);
@@ -66,7 +69,7 @@ export default function SignUpPage() {
     if (!accountData.email || !accountData.password) return toast.error('이메일과 비밀번호를 입력해주세요.');
     if (accountData.password !== accountData.confirmPassword) return toast.error('비밀번호가 일치하지 않습니다.');
     if (accountData.password.length < 6) return toast.error('비밀번호는 6자리 이상이어야 합니다.');
-    if (!isRequiredAgreed) return toast.error('필수 약관에 동기해 주세요.');
+    if (!isRequiredAgreed) return toast.error('필수 약관에 동의해 주세요.');
 
     setIsLoading(true);
     try {
@@ -106,6 +109,7 @@ export default function SignUpPage() {
     { key: 'service', label: '이용약관', required: true },
     { key: 'location', label: '위치기반서비스 이용약관', required: true },
     { key: 'privacy', label: '개인정보처리방침', required: true },
+    { key: 'sensitive', label: '민감정보 수집 및 이용 동의', required: true }, // ✨ 추가
     { key: 'operation', label: '운영정책', required: true },
     { key: 'youth', label: '청소년보호정책', required: true },
     { key: 'marketing', label: '맞춤형 광고 안내', required: false },
