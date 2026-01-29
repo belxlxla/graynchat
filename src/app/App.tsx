@@ -26,6 +26,10 @@ import PrivacyManagementPage from '../features/settings/pages/PrivacyManagementP
 import AccountSecurityPage from '../features/settings/pages/AccountSecurityPage';
 import DeviceManagementPage from '../features/settings/pages/DeviceManagementPage';
 import ScreenLockPage from '../features/settings/pages/ScreenLockPage';
+import TwoFactorAuthPage from '../features/settings/pages/TwoFactorAuthPage';
+
+// ✨ 신규: 비밀번호 변경 페이지 임포트
+import PasswordChangePage from '../features/settings/pages/PasswordChangePage';
 
 // ✨ New Component
 import AppLockOverlay from '../features/auth/components/AppLockOverlay';
@@ -98,6 +102,11 @@ function AppContent() {
         <Route path="/settings/security" element={<SecurityPage />} />
         <Route path="/settings/security/privacy" element={<PrivacyManagementPage />} />
         <Route path="/settings/security/account" element={<AccountSecurityPage />} />
+        <Route path="/settings/security/2fa" element={<TwoFactorAuthPage />} />
+        
+        {/* ✨ 비밀번호 변경 경로 추가 */}
+        <Route path="/settings/security/password" element={<PasswordChangePage />} />
+        
         <Route path="/settings/security/manage" element={<DeviceManagementPage />} />
         <Route path="/settings/security/lock" element={<ScreenLockPage />} />
 
@@ -122,7 +131,6 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Toaster position="top-center" toastOptions={{ style: { background: '#333', color: '#fff', borderRadius: '12px' } }} />
-        {/* ✨ 최상위에 배치하여 전역 잠금 수행 */}
         <AppLockOverlay /> 
         <AppContent />
       </BrowserRouter>
