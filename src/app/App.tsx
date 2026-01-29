@@ -84,9 +84,9 @@ function AppContent() {
       </Route>
 
       <Route element={<PrivateRoute />}>
-        {/* ✨ 가입 절차 경로를 PrivateRoute 내부로 이동하여 튕김 현상 방지 */}
-        <Route path="/auth/phone" element={<PhoneAuthPage onBackToLogin={() => window.history.back()} onNewUser={() => {}} />} />
-        <Route path="/auth/profile" element={<ProfileSetupPage onComplete={() => {}} />} />
+        {/* ✨ Props 전달 에러 해결: 컴포넌트가 이제 인터페이스를 통해 이 값들을 수용합니다. */}
+        <Route path="/auth/phone" element={<PhoneAuthPage onBackToLogin={() => window.history.back()} onNewUser={() => window.location.href='/auth/profile'} />} />
+        <Route path="/auth/profile" element={<ProfileSetupPage onComplete={() => window.location.href='/main/friends'} />} />
 
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />

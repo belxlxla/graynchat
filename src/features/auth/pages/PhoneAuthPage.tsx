@@ -6,7 +6,15 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
 
-export default function PhoneAuthPage() {
+// ✨ Props 인터페이스 추가 (App.tsx와의 호환성)
+interface PhoneAuthPageProps {
+  onBackToLogin?: () => void;
+  onNewUser?: () => void;
+}
+
+const CARRIERS = ['SKT', 'KT', 'LG U+', '알뜰폰'];
+
+export default function PhoneAuthPage({ onBackToLogin, onNewUser }: PhoneAuthPageProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [carrier, setCarrier] = useState('');
@@ -27,6 +35,16 @@ export default function PhoneAuthPage() {
     return () => clearInterval(interval);
   }, [step, timer]);
 
+  const handleBack = () => {
+    if (step === 'verify') {
+      setStep('input');
+      setVerifyCode('');
+      setCodeError(false);
+    } else {
+      setShowQuitAlert(true);
+    }
+  };
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/[^0-9]/g, '');
     let formatted = '';
@@ -38,7 +56,8 @@ export default function PhoneAuthPage() {
   };
 
   const handleSendCode = () => {
-    if (!carrier || phoneNumber.replace(/-/g, '').length < 10) {
+    const plainPhone = phoneNumber.replace(/-/g, '');
+    if (!carrier || plainPhone.length < 10) {
       toast.error('입력한 정보가 올바르지 않습니다.');
       setPhoneError(true);
       return;
@@ -50,10 +69,19 @@ export default function PhoneAuthPage() {
   const handleVerify = async () => {
     if (verifyCode === '000000' && user) {
       try {
-        await supabase.from('users').update({ phone: phoneNumber.replace(/-/g, '') }).eq('id', user.id);
+        await supabase
+          .from('users')
+          .update({ phone: phoneNumber.replace(/-/g, '') })
+          .eq('id', user.id);
+        
         toast.success('인증 성공!');
-        // ✨ [핵심 수정] 새로고침(window.location)이 아닌 navigate 사용 (스플래시 방지)
-        navigate('/auth/profile');
+        
+        // ✨ 부모로부터 받은 onNewUser가 있으면 실행, 없으면 직접 이동
+        if (onNewUser) {
+          onNewUser();
+        } else {
+          navigate('/auth/profile');
+        }
       } catch (e) {
         toast.error('저장 실패');
       }
@@ -78,7 +106,7 @@ export default function PhoneAuthPage() {
         <div className={`space-y-6 ${step === 'verify' ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="grid grid-cols-4 gap-2">
             {['SKT', 'KT', 'LG U+', '알뜰폰'].map(c => (
-              <button key={c} onClick={() => setCarrier(c)} className={`h-12 rounded-xl text-xs border ${carrier === c ? 'bg-brand-DEFAULT border-brand-DEFAULT' : 'bg-[#2C2C2E] border-transparent'}`}>{c}</button>
+              <button key={c} onClick={() => setCarrier(c)} className={`h-12 rounded-xl text-xs border ${carrier === c ? 'bg-brand-DEFAULT border-brand-DEFAULT text-white' : 'bg-[#2C2C2E] border-transparent'}`}>{c}</button>
             ))}
           </div>
           <div className={`bg-[#2C2C2E] rounded-xl border ${phoneError ? 'border-[#EC5022]' : 'border-transparent'}`}>
@@ -104,7 +132,11 @@ export default function PhoneAuthPage() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowQuitAlert(false)} />
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-[#1C1C1E] w-full max-w-[320px] rounded-2xl p-6 text-center border border-[#2C2C2E]">
               <h3 className="text-white text-lg font-bold mb-6">가입을 중단하시겠습니까?</h3>
-              <div className="flex gap-3"><button onClick={() => setShowQuitAlert(false)} className="flex-1 h-12 rounded-xl bg-[#2C2C2E] text-[#8E8E93]">취소</button><button onClick={() => navigate('/auth/login')} className="flex-1 h-12 rounded-xl bg-brand-DEFAULT text-white font-bold">중단</button></div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowQuitAlert(false)} className="flex-1 h-12 rounded-xl bg-[#2C2C2E] text-[#8E8E93]">계속하기</button>
+                {/* ✨ 부모로부터 받은 onBackToLogin 실행 */}
+                <button onClick={() => onBackToLogin ? onBackToLogin() : navigate('/auth/login')} className="flex-1 h-12 rounded-xl bg-brand-DEFAULT text-white font-bold">중단</button>
+              </div>
             </motion.div>
           </div>
         )}
