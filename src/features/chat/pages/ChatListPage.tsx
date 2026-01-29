@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
-// ✨ 인증 컨텍스트 임포트
 import { useAuth } from '../../auth/contexts/AuthContext';
 
 // --- [Types] ---
@@ -32,7 +31,7 @@ interface Friend {
 
 export default function ChatListPage() {
   const navigate = useNavigate();
-  const { user } = useAuth(); // ✨ 현재 로그인한 유저 세션 가져오기
+  const { user } = useAuth();
   
   const [chats, setChats] = useState<ChatRoom[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,16 +45,14 @@ export default function ChatListPage() {
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // ✨ [필터링 강화] 내 user_id와 매핑된 채팅방만 불러오기
   const fetchChats = useCallback(async () => {
     if (!user) return;
-    
     setIsLoading(true);
     try {
       const { data: rooms, error } = await supabase
         .from('chat_rooms')
         .select('*')
-        .eq('user_id', user.id) // ✨ 핵심: 내 채팅방만 필터링
+        .eq('user_id', user.id)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -67,11 +64,10 @@ export default function ChatListPage() {
 
         let friendsData: Friend[] = [];
         if (individualChatIds.length > 0) {
-          // 내 친구 목록에서도 user_id가 매칭되어야 함
           const { data: profiles } = await supabase
             .from('friends')
             .select('id, name, avatar')
-            .eq('user_id', user.id) // 친구도 내 친구만
+            .eq('user_id', user.id)
             .in('id', individualChatIds);
           if (profiles) friendsData = profiles;
         }
@@ -107,7 +103,7 @@ export default function ChatListPage() {
       const { data, error } = await supabase
         .from('friends')
         .select('id, name, avatar')
-        .eq('user_id', user.id) // 친구 목록도 내꺼만
+        .eq('user_id', user.id)
         .order('name', { ascending: true });
       
       if (error) throw error;
@@ -125,9 +121,8 @@ export default function ChatListPage() {
   const handleLeaveChat = async (id: string) => {
     if (!user) return;
     if (confirm('채팅방을 나가시겠습니까?')) { 
-      // 내 방만 삭제되도록 보안 검증 포함
-      await supabase.from('chat_rooms').delete().match({ id, user_id: user.id });
       setChats(prev => prev.filter(chat => chat.id !== id));
+      await supabase.from('chat_rooms').delete().match({ id, user_id: user.id });
       toast.success('채팅방을 나갔습니다.');
     }
   };
@@ -171,15 +166,9 @@ export default function ChatListPage() {
           </span>
         </div>
         <div className="flex gap-1 relative">
-           <button 
-             onClick={() => setIsSearching(!isSearching)} 
-             className={`p-2 transition-colors ${isSearching ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}
-           >
-             <Search className="w-6 h-6" />
-           </button>
+           <button onClick={() => setIsSearching(!isSearching)} className={`p-2 transition-colors ${isSearching ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}><Search className="w-6 h-6" /></button>
            <button onClick={() => setIsCreateChatOpen(true)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors"><Plus className="w-6 h-6" /></button>
            <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className={`p-2 transition-colors ${isSettingsOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}><Settings className="w-6 h-6" /></button>
-
            <AnimatePresence>
              {isSettingsOpen && (
                <>
@@ -260,9 +249,9 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: { data: ChatRoom; 
 }
 
 function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: boolean; onClose: () => void; friends: Friend[]; onCreated?: (id: string) => void; }) {
-  const { user } = useAuth(); // ✨ 유저 정보 사용
+  const { user } = useAuth();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [searchTerm, setSearchTerm] = useState(''); 
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => { 
     if (isOpen) {
@@ -282,10 +271,9 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
       const roomId = isGroup ? Date.now() : selectedIds[0];
       const title = isGroup ? `나 외 ${selectedIds.length}명` : friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
       
-      // ✨ 생성 시 user_id를 포함하여 내 방임을 명시
       await supabase.from('chat_rooms').upsert([{ 
         id: roomId, 
-        user_id: user.id, // ✨ 소유권 추가
+        user_id: user.id,
         title, 
         type: isGroup ? 'group' : 'individual', 
         last_message: '대화를 시작해보세요!', 
@@ -307,51 +295,26 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
           <h3 className="text-white font-bold">대화상대 선택</h3> 
           <button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button>
         </div>
-
         <div className="px-4 py-3 bg-[#1C1C1E] border-b border-[#2C2C2E]">
           <div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2">
             <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
-            <input 
-              type="text" 
-              placeholder="이름으로 검색" 
-              value={searchTerm} 
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none" 
-            />
+            <input type="text" placeholder="이름으로 검색" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none" />
             {searchTerm && <button onClick={() => setSearchTerm('')}><X className="w-4 h-4 text-[#8E8E93]" /></button>}
           </div>
         </div>
-
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-[#1C1C1E]">
-          {filteredFriends.length > 0 ? (
-            filteredFriends.map(f => (
-              <div 
-                key={f.id} 
-                onClick={() => setSelectedIds(prev => prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id])} 
-                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${selectedIds.includes(f.id) ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}
-              >
-                <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
-                  {f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" alt=""/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}
-                </div>
-                <p className={`flex-1 text-sm font-medium ${selectedIds.includes(f.id) ? 'text-brand-DEFAULT' : 'text-white'}`}>{f.name}</p>
-                {selectedIds.includes(f.id) ? <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/10" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
+          {filteredFriends.map(f => (
+            <div key={f.id} onClick={() => setSelectedIds(prev => prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id])} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${selectedIds.includes(f.id) ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}>
+              <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
+                {f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" alt=""/> : <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}
               </div>
-            ))
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-[#636366] py-10">
-              <p className="text-sm">검색 결과가 없습니다.</p>
+              <p className={`flex-1 text-sm font-medium ${selectedIds.includes(f.id) ? 'text-brand-DEFAULT' : 'text-white'}`}>{f.name}</p>
+              {selectedIds.includes(f.id) ? <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/10" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
             </div>
-          )}
+          ))}
         </div>
-
         <div className="p-4 border-t border-[#2C2C2E] bg-[#1C1C1E] shrink-0">
-          <button 
-            onClick={handleCreate} 
-            disabled={selectedIds.length === 0} 
-            className="w-full h-12 rounded-xl bg-brand-DEFAULT font-bold text-white transition-all disabled:opacity-30 disabled:grayscale"
-          >
-            채팅 시작하기 ({selectedIds.length})
-          </button>
+          <button onClick={handleCreate} disabled={selectedIds.length === 0} className="w-full h-12 rounded-xl bg-brand-DEFAULT font-bold text-white transition-all disabled:opacity-30 disabled:grayscale">채팅 시작하기 ({selectedIds.length})</button>
         </div>
       </motion.div>
     </div>
@@ -366,7 +329,7 @@ function EditTitleModal({ isOpen, onClose, currentTitle, onSave }: { isOpen: boo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={e => e.stopPropagation()} className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] rounded-2xl p-6 border border-[#2C2C2E]">
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={e => e.stopPropagation()} className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] rounded-2xl p-6 border border-[#3A3A3C]">
         <h3 className="text-white font-bold text-lg mb-4 text-center">이름 변경</h3>
         <input ref={inputRef} type="text" value={text} onChange={e => setText(e.target.value)} className="w-full bg-[#2C2C2E] text-white p-3 rounded-xl mb-6 focus:outline-none" />
         <div className="flex gap-3"><button onClick={onClose} className="flex-1 h-11 rounded-xl bg-[#3A3A3C] text-white">취소</button><button onClick={() => onSave(text)} className="flex-1 h-11 rounded-xl bg-brand-DEFAULT text-white font-bold">확인</button></div>

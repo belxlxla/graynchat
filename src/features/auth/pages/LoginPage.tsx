@@ -17,21 +17,30 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return toast.error('이메일과 비밀번호를 입력해주세요.');
+    
+    // 입력값 유효성 검사 및 공백 제거
+    const targetEmail = email.trim();
+    const targetPassword = password.trim();
+
+    if (!targetEmail || !targetPassword) {
+      return toast.error('이메일과 비밀번호를 입력해주세요.');
+    }
 
     setIsLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: targetEmail,
+        password: targetPassword,
       });
 
       if (error) {
-        // ✨ 상세 에러 처리 로직 추가
+        // ✨ 에러 메시지에 따른 상세 처리
         if (error.message.includes('Email not confirmed')) {
           toast.error('이메일 인증이 완료되지 않았습니다. 메일함을 확인해주세요.');
         } else if (error.message.includes('Invalid login credentials')) {
           toast.error('이메일 또는 비밀번호가 일치하지 않습니다.');
+        } else if (error.status === 400) {
+          toast.error('잘못된 요청입니다. 계정 정보를 다시 확인해주세요.');
         } else {
           toast.error(error.message || '로그인에 실패했습니다.');
         }
@@ -39,7 +48,9 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        toast.success(`${data.user.user_metadata.name || '회원'}님 환영합니다!`);
+        // 유저 메타데이터에서 이름 가져오기 시도
+        const userName = data.user.user_metadata?.name || data.user.user_metadata?.full_name || '회원';
+        toast.success(`${userName}님 환영합니다!`);
         navigate('/main/friends');
       }
     } catch (error: any) {

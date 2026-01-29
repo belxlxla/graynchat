@@ -5,18 +5,10 @@ import { ChevronLeft, Mail, Lock, User, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
-// Sub Pages
-import PhoneAuthPage from './PhoneAuthPage';
-import ProfileSetupPage from './ProfileSetupPage';
-
 export default function SignUpPage() {
   const navigate = useNavigate();
-
-  // 단계 관리
-  const [step, setStep] = useState<'account' | 'phone' | 'profile'>('account');
   const [isLoading, setIsLoading] = useState(false);
 
-  // 계정 정보 임시 저장
   const [accountData, setAccountData] = useState({
     name: '',
     email: '',
@@ -24,91 +16,49 @@ export default function SignUpPage() {
     confirmPassword: '',
   });
 
-  // 1. 입력 핸들러
   const handleAccountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setAccountData({ ...accountData, [e.target.name]: e.target.value });
   };
 
-  // 2. 계정 생성 (Supabase Auth)
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 유효성 검사
     if (!accountData.name) return toast.error('이름을 입력해주세요.');
     if (!accountData.email || !accountData.password) return toast.error('이메일과 비밀번호를 입력해주세요.');
     if (accountData.password !== accountData.confirmPassword) return toast.error('비밀번호가 일치하지 않습니다.');
     if (accountData.password.length < 6) return toast.error('비밀번호는 6자리 이상이어야 합니다.');
 
     setIsLoading(true);
-
     try {
-      // A. Supabase Auth 회원가입 시도
       const { data, error } = await supabase.auth.signUp({
         email: accountData.email,
         password: accountData.password,
-        options: {
-          data: {
-            full_name: accountData.name, 
-          }
-        }
+        options: { data: { full_name: accountData.name } }
       });
 
       if (error) throw error;
 
       if (data.user) {
-        const { error: dbError } = await supabase
-          .from('users')
-          .insert([
-            {
-              id: data.user.id,
-              email: accountData.email,
-              name: accountData.name,
-              avatar: null,
-              status_message: '반가워요!'
-            }
-          ]);
+        // public.users 테이블에 기본 데이터 생성
+        await supabase.from('users').upsert([{
+          id: data.user.id,
+          email: accountData.email,
+          name: accountData.name,
+          status_message: '반가워요!'
+        }]);
 
-        if (dbError) {
-          console.warn('DB Insert Warning:', dbError.message);
-        }
-
-        toast.success('계정이 생성되었습니다.');
-        setStep('phone'); 
+        toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
+        // ✨ [핵심 수정] 내부 step 변경이 아닌 실제 라우터 주소로 이동 (튕김 방지)
+        navigate('/auth/phone'); 
       } else if (!data.session) {
         toast('이메일 인증 링크를 보냈습니다. 확인해주세요.', { icon: '📧' });
       }
-      
     } catch (error: any) {
       console.error('Signup Error:', error);
-      if (error.status === 429 || error.message?.includes('rate limit')) {
-        toast.error('가입 요청 횟수를 초과했습니다.\n잠시 후 다시 시도해주세요.', { duration: 5000, icon: '⏳' });
-      } else if (error.message?.includes('registered')) {
-        toast.error('이미 가입된 이메일입니다.');
-      } else {
-        toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
-      }
+      toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
   };
-
-  const handlePhoneVerified = () => {
-    toast.success('본인 인증이 완료되었습니다.');
-    setStep('profile');
-  };
-
-  const handleProfileCompleted = () => {
-    toast.success('회원가입이 모두 완료되었습니다!');
-    navigate('/main/friends');
-  };
-
-  if (step === 'phone') {
-    return <PhoneAuthPage onBackToLogin={() => setStep('account')} onNewUser={handlePhoneVerified} />;
-  }
-
-  if (step === 'profile') {
-    return <ProfileSetupPage onComplete={handleProfileCompleted} />;
-  }
 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6">
@@ -131,35 +81,32 @@ export default function SignUpPage() {
               <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                 <User className="w-5 h-5 text-[#636366] mr-3" />
-                <input name="name" type="text" value={accountData.name} onChange={handleAccountChange} placeholder="실명 또는 닉네임" className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" />
+                <input name="name" type="text" value={accountData.name} onChange={handleAccountChange} placeholder="실명 또는 닉네임" className="bg-transparent text-white text-sm w-full focus:outline-none" />
               </div>
             </div>
-
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                 <Mail className="w-5 h-5 text-[#636366] mr-3" />
-                <input name="email" type="email" value={accountData.email} onChange={handleAccountChange} placeholder="example@grayn.com" className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" />
+                <input name="email" type="email" value={accountData.email} onChange={handleAccountChange} placeholder="example@grayn.com" className="bg-transparent text-white text-sm w-full focus:outline-none" />
               </div>
             </div>
-
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                 <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                <input name="password" type="password" value={accountData.password} onChange={handleAccountChange} placeholder="6자리 이상 입력" className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" />
+                <input name="password" type="password" value={accountData.password} onChange={handleAccountChange} placeholder="6자리 이상 입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
               </div>
             </div>
-
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호 확인</label>
               <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                 <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                <input name="confirmPassword" type="password" value={accountData.confirmPassword} onChange={handleAccountChange} placeholder="비밀번호를 다시 입력하세요" className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]" />
+                <input name="confirmPassword" type="password" value={accountData.confirmPassword} onChange={handleAccountChange} placeholder="비밀번호 재입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
               </div>
             </div>
 
-            <button type="submit" disabled={isLoading} className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-8 hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2">
+            <button type="submit" disabled={isLoading} className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-8 hover:bg-brand-hover transition-colors shadow-lg flex items-center justify-center gap-2">
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : '다음 (본인인증)'}
             </button>
           </form>

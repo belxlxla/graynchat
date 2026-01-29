@@ -5,7 +5,6 @@ import {
   ChevronLeft, ChevronRight, 
   Camera, User, Phone, Globe, LogOut, 
   Trash2, Image as ImageIcon, X, Search, CheckCircle2, Circle
-  // ✨ 에러 수정: 사용하지 않는 'Mail' 임포트 제거
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -27,7 +26,6 @@ interface Country {
   flag: string;
 }
 
-// ✨ 전 세계 주요 국가 리스트 확장
 const COUNTRIES: Country[] = [
   { code: 'KR', name: '대한민국', flag: '🇰🇷' },
   { code: 'US', name: '미국', flag: '🇺🇸' },
@@ -87,9 +85,6 @@ export default function AccountInfoPage() {
     if (cleaned.startsWith('010') && cleaned.length === 11) {
       return `+82 10-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
     }
-    if (cleaned.startsWith('8210') && cleaned.length === 12) {
-      return `+82 10-${cleaned.slice(4, 8)}-${cleaned.slice(8)}`;
-    }
     return phoneNumber;
   };
 
@@ -97,6 +92,7 @@ export default function AccountInfoPage() {
     if (!user) return;
     
     try {
+      // public.users 테이블에서 상세 데이터 조회
       const { data: dbData, error: dbError } = await supabase
         .from('users')
         .select('*')
@@ -105,21 +101,17 @@ export default function AccountInfoPage() {
 
       if (dbError) throw dbError;
 
-      const rawPhone = user.phone || user.user_metadata?.phone || dbData?.phone || '번호 없음';
-      const authEmail = user.email || user.user_metadata?.email || '이메일 없음';
-
-      if (dbData) {
-        setProfile({
-          name: dbData.name || user.user_metadata?.full_name || '사용자',
-          avatar: dbData.avatar || null,
-          bg: dbData.bg_image || null,
-          provider: user.app_metadata?.provider || 'email',
-          email: authEmail,
-          phone: formatPhoneNumber(rawPhone)
-        });
-        
-        setBlockedCountries(dbData.blocked_countries || []);
-      }
+      // ✨ auth.user와 public.users 정보 결합
+      setProfile({
+        name: dbData?.name || user.user_metadata?.full_name || '사용자',
+        avatar: dbData?.avatar || null,
+        bg: dbData?.bg_image || null,
+        provider: user.app_metadata?.provider || 'email',
+        email: user.email || '이메일 없음',
+        phone: formatPhoneNumber(dbData?.phone || '번호 없음')
+      });
+      
+      setBlockedCountries(dbData?.blocked_countries || []);
     } catch (err) {
       console.error('Data load error:', err);
     }
@@ -161,7 +153,7 @@ export default function AccountInfoPage() {
         const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
         const dbField = type === 'avatar' ? 'avatar' : 'bg_image';
         await supabase.from('users').update({ [dbField]: publicUrl }).eq('id', user.id);
-        setProfile(prev => ({ ...prev, [type]: publicUrl }));
+        setProfile(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
         toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
       } catch (err) {
         toast.error('업로드 실패', { id: loadingToast });
@@ -177,7 +169,7 @@ export default function AccountInfoPage() {
     try {
       const dbField = type === 'avatar' ? 'avatar' : 'bg_image';
       await supabase.from('users').update({ [dbField]: null }).eq('id', user.id);
-      setProfile(prev => ({ ...prev, [type]: null }));
+      setProfile(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: null }));
       toast.success('기본 이미지로 변경되었습니다.', { id: loadingToast });
     } catch (err) {
       toast.error('초기화 실패', { id: loadingToast });
@@ -218,6 +210,7 @@ export default function AccountInfoPage() {
           <Section label="기본 정보">
             <InfoItem label="전화번호" value={profile.phone} icon={<Phone className="w-5 h-5" />} />
             <InfoItem label="이름" value={profile.name} icon={<User className="w-5 h-5" />} />
+            <InfoItem label="로그인 방식" value={profile.provider.toUpperCase()} icon={<Globe className="w-5 h-5" />} />
           </Section>
 
           <Section label="보안 설정">
@@ -233,14 +226,14 @@ export default function AccountInfoPage() {
               </div>
               <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
             </button>
-            <p className="px-5 py-3 text-[11px] text-[#636366] leading-relaxed">
-              * 차단된 국가의 사용자는 회원님의 프로필을 검색할 수 없으며, 대화를 시도해도 전송되지 않습니다.
-            </p>
           </Section>
 
-          <button onClick={() => setIsLogoutModalOpen(true)} className="w-full py-4 text-[#EC5022] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2">
-            <LogOut className="w-4 h-4" />로그아웃
-          </button>
+          <div className="flex flex-col items-center gap-4 mt-6">
+            <button onClick={() => setIsLogoutModalOpen(true)} className="w-full py-4 text-[#EC5022] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2">
+              <LogOut className="w-4 h-4" />로그아웃
+            </button>
+            <button onClick={() => navigate('/settings/account/withdraw')} className="text-[12px] text-[#48484A] underline underline-offset-2 hover:text-[#8E8E93] transition-colors">회원 탈퇴하기</button>
+          </div>
         </div>
       </div>
 
@@ -269,32 +262,23 @@ export default function AccountInfoPage() {
   );
 }
 
-// --- [Sub Components] ---
-
+// --- Sub Components ---
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-2 tracking-wider uppercase">{label}</h3>
-      <div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C] divide-y divide-[#3A3A3C] shadow-sm">{children}</div>
-    </div>
+    <div><h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-2 tracking-wider uppercase">{label}</h3><div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C] divide-y divide-[#3A3A3C] shadow-sm">{children}</div></div>
   );
 }
 
 function InfoItem({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between px-5 py-4">
-      <div className="flex items-center gap-3"><div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center">{icon}</div><span className="text-[15px] text-white">{label}</span></div>
-      <span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{value}</span>
-    </div>
+    <div className="flex items-center justify-between px-5 py-4"><div className="flex items-center gap-3"><div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center">{icon}</div><span className="text-[15px] text-white">{label}</span></div><span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{value}</span></div>
   );
 }
 
-function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: { isOpen: boolean; onClose: () => void; blockedList: string[]; onSave: (list: string[]) => void }) {
+function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: any) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>(blockedList);
   useEffect(() => { if (isOpen) setSelected(blockedList); }, [isOpen, blockedList]);
-  const toggleCountry = (code: string) => { setSelected(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]); };
-  const handleSave = () => { onSave(selected); onClose(); };
   const filtered = COUNTRIES.filter(c => c.name.includes(search));
   if (!isOpen) return null;
   return (
@@ -302,35 +286,29 @@ function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: { isOpen: 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-[400px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
         <div className="h-14 flex items-center justify-between px-5 bg-[#2C2C2E] shrink-0"><h3 className="text-white font-bold text-lg">접근 제한 국가 선택</h3><button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button></div>
-        <div className="p-4 bg-[#1C1C1E] border-b border-[#2C2C2E]"><div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2.5"><Search className="w-4 h-4 text-[#8E8E93] mr-2" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="국가명 또는 코드 검색" className="bg-transparent text-white text-sm w-full focus:outline-none" /></div></div>
+        <div className="p-4 bg-[#1C1C1E] border-b border-[#2C2C2E]"><div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2.5"><Search className="w-4 h-4 text-[#8E8E93] mr-2" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="검색" className="bg-transparent text-white text-sm w-full focus:outline-none" /></div></div>
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
           {filtered.map(country => (
-            <button key={country.code} onClick={() => toggleCountry(country.code)} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-[#2C2C2E] transition-colors">
+            <button key={country.code} onClick={() => setSelected(prev => prev.includes(country.code) ? prev.filter(c => c !== country.code) : [...prev, country.code])} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-[#2C2C2E]">
               <div className="flex items-center gap-3"><span className="text-xl">{country.flag}</span><div className="flex flex-col items-start"><span className="text-white font-medium">{country.name}</span><span className="text-[10px] text-[#636366]">{country.code}</span></div></div>
               {selected.includes(country.code) ? <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
             </button>
           ))}
         </div>
-        <div className="p-4 bg-[#1C1C1E] border-t border-[#2C2C2E] flex items-center gap-3">
-          <div className="flex-1 text-xs text-[#8E8E93] pl-1"><span className="text-white font-bold">{selected.length}</span>개국 선택됨</div>
-          <button onClick={handleSave} className="px-6 h-11 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover transition-all active:scale-[0.98]">적용하기</button>
-        </div>
+        <div className="p-4 bg-[#1C1C1E] border-t border-[#2C2C2E] flex items-center gap-3"><div className="flex-1 text-xs text-[#8E8E93]"><span className="text-white font-bold">{selected.length}</span>개국 선택됨</div><button onClick={() => { onSave(selected); onClose(); }} className="px-6 h-11 bg-brand-DEFAULT text-white font-bold rounded-xl">적용하기</button></div>
       </motion.div>
     </div>
   );
 }
 
-function LogoutModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: () => void; onConfirm: () => void }) {
+function LogoutModal({ isOpen, onClose, onConfirm }: any) {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
-        <div className="p-8"><div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#FF453A]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?<br/>다음에 다시 만나요!</p></div>
-        <div className="flex border-t border-[#2C2C2E] h-14">
-          <button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold text-[16px] hover:bg-[#2C2C2E] transition-colors border-r border-[#2C2C2E]">취소</button>
-          <button onClick={() => onConfirm()} className="flex-1 text-[#FF453A] font-bold text-[16px] hover:bg-[#2C2C2E] transition-colors">로그아웃</button>
-        </div>
+        <div className="p-8"><div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#FF453A]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
+        <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#FF453A] font-bold">로그아웃</button></div>
       </motion.div>
     </div>
   );

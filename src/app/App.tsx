@@ -27,9 +27,8 @@ import AccountSecurityPage from '../features/settings/pages/AccountSecurityPage'
 import DeviceManagementPage from '../features/settings/pages/DeviceManagementPage';
 import ScreenLockPage from '../features/settings/pages/ScreenLockPage';
 import TwoFactorAuthPage from '../features/settings/pages/TwoFactorAuthPage';
-
-// ✨ 신규: 비밀번호 변경 페이지 임포트
 import PasswordChangePage from '../features/settings/pages/PasswordChangePage';
+import WithdrawPage from '../features/settings/pages/WithdrawPage';
 
 // ✨ New Component
 import AppLockOverlay from '../features/auth/components/AppLockOverlay';
@@ -81,12 +80,14 @@ function AppContent() {
       <Route element={<PublicRoute />}>
         <Route path="/auth/login" element={<LoginPage />} />
         <Route path="/auth/signup" element={<SignUpPage />} />
-        <Route path="/auth/phone" element={<PhoneAuthPage onBackToLogin={() => window.history.back()} onNewUser={() => {}} />} />
-        <Route path="/auth/profile" element={<ProfileSetupPage onComplete={() => {}} />} />
         <Route path="/auth/recovery" element={<RecoveryPage />} />
       </Route>
 
       <Route element={<PrivateRoute />}>
+        {/* ✨ 가입 절차 경로를 PrivateRoute 내부로 이동하여 튕김 현상 방지 */}
+        <Route path="/auth/phone" element={<PhoneAuthPage onBackToLogin={() => window.history.back()} onNewUser={() => {}} />} />
+        <Route path="/auth/profile" element={<ProfileSetupPage onComplete={() => {}} />} />
+
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />
           <Route path="friends" element={<FriendsListPage />} />
@@ -99,14 +100,13 @@ function AppContent() {
         <Route path="/chat/room/:chatId/settings" element={<ChatRoomSettingsPage />} />
 
         <Route path="/settings/account" element={<AccountInfoPage />} />
+        <Route path="/settings/account/withdraw" element={<WithdrawPage />} />
+
         <Route path="/settings/security" element={<SecurityPage />} />
         <Route path="/settings/security/privacy" element={<PrivacyManagementPage />} />
         <Route path="/settings/security/account" element={<AccountSecurityPage />} />
         <Route path="/settings/security/2fa" element={<TwoFactorAuthPage />} />
-        
-        {/* ✨ 비밀번호 변경 경로 추가 */}
         <Route path="/settings/security/password" element={<PasswordChangePage />} />
-        
         <Route path="/settings/security/manage" element={<DeviceManagementPage />} />
         <Route path="/settings/security/lock" element={<ScreenLockPage />} />
 
