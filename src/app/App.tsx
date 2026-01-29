@@ -61,7 +61,7 @@ function PublicRoute() {
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const { loading } = useAuth();
-  const navigate = useNavigate(); // ✨ navigate 함수 추가
+  const navigate = useNavigate();
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('grayn_theme') || 'dark';
@@ -85,7 +85,6 @@ function AppContent() {
       </Route>
 
       <Route element={<PrivateRoute />}>
-        {/* ✨ window.location.href 대신 navigate를 사용하여 새로고침 없이 스무스하게 이동 */}
         <Route 
           path="/auth/phone" 
           element={<PhoneAuthPage onBackToLogin={() => navigate('/auth/login')} onNewUser={() => navigate('/auth/profile')} />} 
@@ -114,6 +113,7 @@ function AppContent() {
         <Route path="/settings/security/password" element={<PasswordChangePage />} />
         <Route path="/settings/security/manage" element={<DeviceManagementPage />} />
         <Route path="/settings/security/lock" element={<ScreenLockPage />} />
+        {/* ✨ 친구 관리 라우트 */}
         <Route path="/settings/friends" element={<FriendsSettingsPage />} />
         <Route path="/settings/friends/blocked" element={<BlockedFriendsPage />} />
         <Route path="/settings/notification" element={<NotificationSettingsPage />} />

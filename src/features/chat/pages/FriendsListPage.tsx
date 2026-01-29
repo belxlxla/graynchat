@@ -281,13 +281,14 @@ export default function FriendsListPage() {
     }
   };
 
+  // ✨ [해결] 친구 관리 클릭 시 알림 설정이 아닌 친구 설정 페이지로 이동하도록 경로 수정
   const handleGoFriends = () => {
-    navigate('/settings/friends');
+    navigate('/settings/friends'); // FriendsSettingsPage.tsx로 이동
     setIsSettingsOpen(false);
   };
 
   const handleGoSettings = () => {
-    navigate('/main/settings'); 
+    navigate('/main/settings'); // 전체 설정 페이지
     setIsSettingsOpen(false);
   };
 
