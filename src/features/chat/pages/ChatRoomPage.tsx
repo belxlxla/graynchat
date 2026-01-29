@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Send, Plus, MoreHorizontal, 
   Image as ImageIcon, Smile, Search, Camera, 
-  FileText, X, Download, ChevronRight, ChevronUp, ChevronDown, AtSign, User as UserIcon 
+  FileText, X, Download, ChevronRight, ChevronUp, ChevronDown, AtSign, User as UserIcon,
+  UserPlus, Ban, Unlock, ShieldAlert, ExternalLink, AlertCircle, Info
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -24,6 +25,7 @@ interface Friend {
   id: number;
   name: string;
   avatar: string | null;
+  is_blocked?: boolean;
 }
 
 const getFileType = (content: string) => {
@@ -61,6 +63,13 @@ export default function ChatRoomPage() {
   const [friendlyScore, setFriendlyScore] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [roomMembers, setRoomMembers] = useState<Friend[]>([]);
+
+  const [isFriend, setIsFriend] = useState<boolean>(true);
+  const [isBlocked, setIsBlocked] = useState<boolean>(false);
+  const [targetFriendData, setTargetFriendData] = useState<Friend | null>(null);
+
+  const [showUrlWarning, setShowUrlWarning] = useState(false);
+  const [pendingUrl, setPendingUrl] = useState('');
 
   const [inputText, setInputText] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -121,32 +130,45 @@ export default function ChatRoomPage() {
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
+  const fetchInitialData = async () => {
+    if (!chatId || !user) return;
+    try {
+      const parsedChatId = Number(chatId);
+      
+      const { data: friendRecord, error: friendError } = await supabase
+        .from('friends')
+        .select('id, name, avatar, friendly_score, is_blocked')
+        .eq('id', isNaN(parsedChatId) ? -1 : parsedChatId)
+        .maybeSingle();
+
+      if (friendRecord) {
+        setRoomTitle(friendRecord.name);
+        setFriendlyScore(friendRecord.friendly_score);
+        setRoomMembers([{ id: friendRecord.id, name: friendRecord.name, avatar: friendRecord.avatar }]);
+        setTargetFriendData({ id: friendRecord.id, name: friendRecord.name, avatar: friendRecord.avatar });
+        
+        setIsFriend(true);
+        setIsBlocked(!!friendRecord.is_blocked);
+      } else {
+        setIsFriend(false);
+        setIsBlocked(false);
+        
+        const { data: roomData } = await supabase.from('chat_rooms').select('title').eq('id', chatId).maybeSingle();
+        setRoomTitle(roomData?.title || '알 수 없는 사용자');
+      }
+
+      const { data: msgData, error: msgError } = await supabase.from('messages').select('*').eq('room_id', chatId).order('created_at', { ascending: true }); 
+      if (msgError) throw msgError;
+      setMessages(msgData || []);
+      
+    } catch (error) { 
+      console.error(error); 
+    } finally { 
+      setIsLoading(false); 
+    }
+  };
+
   useEffect(() => {
-    if (!chatId) return;
-    const fetchInitialData = async () => {
-      try {
-        const parsedChatId = Number(chatId);
-        const { data: friendData } = await supabase.from('friends').select('id, name, avatar, friendly_score').eq('id', isNaN(parsedChatId) ? -1 : parsedChatId).maybeSingle();
-        if (friendData) {
-          setRoomTitle(friendData.name);
-          setFriendlyScore(friendData.friendly_score);
-          setRoomMembers([{ id: friendData.id, name: friendData.name, avatar: friendData.avatar }]);
-        } else {
-          const { data: roomData } = await supabase.from('chat_rooms').select('title').eq('id', chatId).maybeSingle();
-          setRoomTitle(roomData?.title || '그룹 채팅');
-        }
-        const { data: msgData, error: msgError } = await supabase.from('messages').select('*').eq('room_id', chatId).order('created_at', { ascending: true }); 
-        if (msgError) throw msgError;
-        setMessages(msgData || []);
-        if (msgData && msgData.length > 0) {
-          const senderIds = Array.from(new Set(msgData.map(m => Number(m.sender_id)).filter(id => Number.isFinite(id) && id !== Number(user?.id))));
-          if (senderIds.length > 0) {
-            const { data: members } = await supabase.from('friends').select('id, name, avatar').in('id', senderIds);
-            if (members) setRoomMembers(prev => [...prev, ...members].filter((v, i, a) => a.findIndex(t => t.id === v.id) === i));
-          }
-        }
-      } catch (error) { console.error(error); } finally { setIsLoading(false); }
-    };
     fetchInitialData();
     const channel = supabase.channel(`room:${chatId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${chatId}` }, (payload) => {
       const newMsg = payload.new as Message;
@@ -158,6 +180,41 @@ export default function ChatRoomPage() {
   useEffect(() => {
     if (scrollRef.current && !isSearching) scrollRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isMenuOpen, isSearching]);
+
+  const handleAddFriend = async () => {
+    if (!chatId || !user) return;
+    const addToast = toast.loading('친구 추가 중...');
+    try {
+      const { error } = await supabase.from('friends').upsert({
+        id: Number(chatId),
+        user_id: user.id,
+        name: roomTitle,
+        is_blocked: false,
+        friendly_score: 50 
+      });
+      if (error) throw error;
+      
+      setIsFriend(true);
+      toast.success(`${roomTitle}님을 친구로 추가했습니다.`, { id: addToast });
+      fetchInitialData();
+    } catch {
+      toast.error('친구 추가 실패', { id: addToast });
+    }
+  };
+
+  const handleUnblock = async () => {
+    if (!chatId) return;
+    const unblockToast = toast.loading('차단 해제 중...');
+    try {
+      const { error } = await supabase.from('friends').update({ is_blocked: false }).eq('id', chatId);
+      if (error) throw error;
+      setIsBlocked(false);
+      toast.success('차단이 해제되었습니다.', { id: unblockToast });
+      fetchInitialData();
+    } catch {
+      toast.error('해제 실패', { id: unblockToast });
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
@@ -183,7 +240,7 @@ export default function ChatRoomPage() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !chatId || !user) return;
+    if (!inputText.trim() || !chatId || !user || isBlocked) return;
     const textToSend = inputText;
     setInputText('');
     setIsMenuOpen(false);
@@ -197,7 +254,7 @@ export default function ChatRoomPage() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !chatId || !user) return;
+    if (!file || !chatId || !user || isBlocked) return;
     const uploadToast = toast.loading('파일 전송 중...');
     try {
       const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`; 
@@ -211,9 +268,17 @@ export default function ChatRoomPage() {
     } catch { toast.error('실패'); } finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
+  const handleLinkClick = (url: string, e: React.MouseEvent) => {
+    if (!isFriend) {
+      e.preventDefault();
+      setPendingUrl(url);
+      setShowUrlWarning(true);
+    }
+  };
+
   const renderMessageContent = (msg: Message, isMe: boolean) => {
     const type = getFileType(msg.content);
-    if (type === 'image') return <div className="rounded-2xl overflow-hidden shadow-sm border border-[#3A3A3C] max-w-[240px]"><img src={msg.content} alt="" className="w-full h-auto object-cover" onClick={() => { setInitialImageIndex(allImages.indexOf(msg.content)); setIsViewerOpen(true); }} /></div>;
+    if (type === 'image') return <div className="rounded-2xl overflow-hidden shadow-sm border border-[#3A3A3C] max-w-[240px]"><img src={msg.content} alt="" className="w-full h-auto object-cover cursor-pointer" onClick={() => { setInitialImageIndex(allImages.indexOf(msg.content)); setIsViewerOpen(true); }} /></div>;
     if (type === 'video') return <div className="rounded-2xl overflow-hidden shadow-sm border border-[#3A3A3C] max-w-[280px] bg-black"><video src={msg.content} controls playsInline className="w-full h-auto max-h-[300px]" /></div>;
     if (['pdf', 'file', 'office', 'text-file'].includes(type)) {
       return (
@@ -226,12 +291,32 @@ export default function ChatRoomPage() {
         </div>
       );
     }
+
     const mentionRegex = /(@[가-힣a-zA-Z0-9_]+)/g;
-    const parts = msg.content.split(mentionRegex);
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
+    const parts = msg.content.split(/((?:@[가-힣a-zA-Z0-9_]+)|(?:https?:\/\/[^\s]+))/g);
+
     return (
       <div className={`px-4 py-2.5 text-[15px] leading-relaxed break-words shadow-sm ${isMe ? 'bg-brand-DEFAULT text-white rounded-[20px] rounded-tr-none' : 'bg-[#2C2C2E] text-white rounded-[20px] rounded-tl-none border border-[#3A3A3C]'}`}>
         {parts.map((p, i) => {
           if (mentionRegex.test(p)) return <span key={i} className="font-bold text-blue-300 drop-shadow-sm">{p}</span>;
+          
+          if (urlRegex.test(p)) {
+            return (
+              <a 
+                key={i} 
+                href={p} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                onClick={(e) => handleLinkClick(p, e)}
+                className="underline text-blue-400 hover:text-blue-300 transition-colors font-medium"
+              >
+                {p}
+              </a>
+            );
+          }
+
           if (searchQuery && p.toLowerCase().includes(searchQuery.toLowerCase())) {
             const searchRegex = new RegExp(`(${searchQuery})`, 'gi');
             const searchParts = p.split(searchRegex);
@@ -245,7 +330,7 @@ export default function ChatRoomPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-[#1C1C1E] text-white overflow-hidden relative">
-      <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E]/95 backdrop-blur-md border-b border-[#2C2C2E] shrink-0 z-20 sticky top-0">
+      <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E]/95 backdrop-blur-md border-b border-[#2C2C2E] shrink-0 z-30 sticky top-0">
         <AnimatePresence mode="wait">
           {isSearching ? (
             <motion.div key="search" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex items-center w-full gap-2 px-2">
@@ -265,7 +350,6 @@ export default function ChatRoomPage() {
           ) : (
             <motion.div key="header" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between w-full">
               <div className="flex items-center">
-                {/* ✨ [수정] 뒤로가기 버튼 로직 강화: 명시적 경로 이동 */}
                 <button 
                   onClick={(e) => {
                     e.preventDefault();
@@ -290,6 +374,59 @@ export default function ChatRoomPage() {
         </AnimatePresence>
       </header>
 
+      {/* ✨ [UI 정제] 상단 안내 바 (카카오톡 스타일: 삭제된 친구/미등록 친구 안내) */}
+      <AnimatePresence>
+        {!isLoading && (!isFriend || isBlocked) && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0, y: -20 }} 
+            animate={{ height: 'auto', opacity: 1, y: 0 }} 
+            exit={{ height: 0, opacity: 0, y: -20 }}
+            className="bg-[#2C2C2E]/80 backdrop-blur-xl border-b border-[#3A3A3C] z-20 shrink-0 overflow-hidden shadow-lg"
+          >
+            <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 gap-4">
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                <div className={`w-12 h-12 rounded-[20px] flex items-center justify-center shrink-0 border border-white/5 ${isBlocked ? 'bg-[#FF453A]/10 text-[#FF453A]' : 'bg-brand-DEFAULT/10 text-brand-DEFAULT'}`}>
+                  {isBlocked ? <Ban className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
+                </div>
+                <div className="flex-1">
+                  <p className="text-[14px] font-bold text-white tracking-tight leading-tight">
+                    {isBlocked ? '차단된 사용자' : '미등록 또는 삭제된 사용자'}
+                  </p>
+                  <p className="text-[11px] text-[#8E8E93] mt-1 font-medium">
+                    {isBlocked ? '상대방에게 메시지를 보낼 수 없는 상태입니다.' : '친구 추가를 하시면 친밀도 분석 및 대화가 가능합니다.'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                {isBlocked ? (
+                  <button 
+                    onClick={handleUnblock}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-brand-DEFAULT hover:bg-brand-hover px-5 py-2.5 rounded-2xl text-[13px] font-bold text-white shadow-lg active:scale-95 transition-all"
+                  >
+                    <Unlock className="w-4 h-4" /> 차단 해제
+                  </button>
+                ) : (
+                  <>
+                    <button 
+                      onClick={handleAddFriend}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-brand-DEFAULT hover:bg-brand-hover px-5 py-2.5 rounded-2xl text-[13px] font-bold text-white shadow-lg shadow-brand-DEFAULT/20 active:scale-95 transition-all"
+                    >
+                      <UserPlus className="w-4.5 h-4.5" /> 친구 추가
+                    </button>
+                    <button 
+                      onClick={() => toast('신고가 접수되었습니다.')}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#3A3A3C] hover:bg-[#48484A] px-5 py-2.5 rounded-2xl text-[13px] font-bold text-[#FF453A] active:scale-95 transition-all border border-white/5"
+                    >
+                      차단/신고
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
         {isLoading ? <div className="flex justify-center items-center h-full text-[#8E8E93] text-sm">로딩 중...</div> : messages.length === 0 ? <div className="flex flex-col justify-center items-center h-full text-[#8E8E93] opacity-50 gap-2"><Smile className="w-8 h-8" /><p className="text-sm">대화를 시작해보세요!</p></div> : messages.map((msg, index) => {
             const isMe = msg.sender_id === user?.id;
@@ -308,7 +445,15 @@ export default function ChatRoomPage() {
         <div ref={scrollRef} />
       </div>
 
-      <div className="shrink-0 bg-[#1C1C1E] border-t border-[#2C2C2E] px-3 py-3 pb-safe z-50 overflow-visible">
+      <div className="shrink-0 bg-[#1C1C1E] border-t border-[#2C2C2E] px-3 py-3 pb-safe z-50 overflow-visible relative">
+        {isBlocked && (
+          <div className="absolute inset-0 bg-[#1C1C1E]/80 backdrop-blur-sm z-[60] flex items-center justify-center">
+            <p className="text-sm font-medium text-[#8E8E93] flex items-center gap-2">
+              <Ban className="w-4 h-4" /> 차단된 사용자와는 대화할 수 없습니다.
+            </p>
+          </div>
+        )}
+
         <AnimatePresence>
           {showMentionList && filteredMentionFriends.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute bottom-[80px] left-3 right-3 bg-[#2C2C2E]/95 border border-[#3A3A3C] rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[100] backdrop-blur-xl">
@@ -326,16 +471,32 @@ export default function ChatRoomPage() {
         </AnimatePresence>
 
         <div className="flex items-center gap-3 h-[44px]">
-          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={`w-[40px] h-[40px] flex items-center justify-center text-[#8E8E93] bg-[#2C2C2E] rounded-full transition-all shrink-0 hover:text-white ${isMenuOpen ? 'rotate-45 text-white bg-[#3A3A3C]' : ''}`}><Plus className="w-6 h-6" /></button>
+          <button 
+            disabled={isBlocked}
+            onClick={() => setIsMenuOpen(!isMenuOpen)} 
+            className={`w-[40px] h-[40px] flex items-center justify-center text-[#8E8E93] bg-[#2C2C2E] rounded-full transition-all shrink-0 hover:text-white ${isMenuOpen ? 'rotate-45 text-white bg-[#3A3A3C]' : ''}`}
+          >
+            <Plus className="w-6 h-6" />
+          </button>
           <div className="flex-1 h-full bg-[#2C2C2E] rounded-[22px] border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-all px-4 flex items-center gap-2">
-            <textarea ref={inputRef} value={inputText} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="메시지 보내기 (@멘션)" className="w-full bg-transparent text-white text-[15px] focus:outline-none resize-none placeholder-[#636366] leading-tight py-2" rows={1} style={{ height: '40px', lineHeight: '24px' }} />
-            <button onClick={() => toast('준비중')} className="text-[#8E8E93] hover:text-white transition-colors shrink-0"><Smile className="w-6 h-6" /></button>
+            <textarea 
+              ref={inputRef} 
+              value={inputText} 
+              onChange={handleInputChange} 
+              onKeyDown={handleKeyDown} 
+              disabled={isBlocked}
+              placeholder={isBlocked ? "대화가 불가능합니다" : "메시지 보내기 (@멘션)"} 
+              className="w-full bg-transparent text-white text-[15px] focus:outline-none resize-none placeholder-[#636366] leading-tight py-2" 
+              rows={1} 
+              style={{ height: '40px', lineHeight: '24px' }} 
+            />
+            <button disabled={isBlocked} onClick={() => toast('준비중')} className="text-[#8E8E93] hover:text-white transition-colors shrink-0"><Smile className="w-6 h-6" /></button>
           </div>
-          <button onClick={handleSendMessage} disabled={!inputText.trim()} className={`w-[40px] h-[40px] flex items-center justify-center rounded-full shrink-0 transition-all ${inputText.trim() ? 'bg-brand-DEFAULT text-white shadow-lg active:scale-90' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5" /></button>
+          <button onClick={handleSendMessage} disabled={!inputText.trim() || isBlocked} className={`w-[40px] h-[40px] flex items-center justify-center rounded-full shrink-0 transition-all ${inputText.trim() && !isBlocked ? 'bg-brand-DEFAULT text-white shadow-lg active:scale-90' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5" /></button>
         </div>
 
         <AnimatePresence>
-          {isMenuOpen && (
+          {isMenuOpen && !isBlocked && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden bg-[#2C2C2E]/30 mt-3 rounded-2xl">
               <div className="grid grid-cols-4 gap-4 p-4">
                 <MenuButton icon={<ImageIcon className="w-6 h-6" />} label="앨범" onClick={() => fileInputRef.current?.click()} />
@@ -349,9 +510,72 @@ export default function ChatRoomPage() {
       </div>
 
       <ImageViewerModal isOpen={isViewerOpen} initialIndex={initialImageIndex} images={allImages} onClose={() => setIsViewerOpen(false)} />
+      
+      <UrlWarningModal 
+        isOpen={showUrlWarning} 
+        url={pendingUrl} 
+        onClose={() => setShowUrlWarning(false)} 
+      />
+
       <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
       <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleFileUpload} className="hidden" />
       <input type="file" ref={docInputRef} onChange={handleFileUpload} className="hidden" />
+    </div>
+  );
+}
+
+// --- [컴포넌트 분리] ---
+
+function UrlWarningModal({ isOpen, url, onClose }: { isOpen: boolean, url: string, onClose: () => void }) {
+  if (!isOpen) return null;
+
+  const handleProceed = () => {
+    window.open(url, '_blank');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center px-8">
+      <motion.div 
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+        className="absolute inset-0 bg-black/80 backdrop-blur-md" 
+        onClick={onClose} 
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+        animate={{ scale: 1, opacity: 1, y: 0 }} 
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] border border-[#3A3A3C] rounded-[40px] p-8 text-center shadow-2xl"
+      >
+        <div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <ShieldAlert className="w-8 h-8 text-[#FF453A]" />
+        </div>
+        <h3 className="text-xl font-bold text-white mb-3">주의하세요!</h3>
+        <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">
+          친구로 등록되지 않은 사용자가 보낸 링크입니다.<br/>
+          클릭 시 피싱 사이트로 연결될 위험이 있으니<br/>
+          각별히 주의하시기 바랍니다.
+        </p>
+        
+        <div className="bg-[#2C2C2E] p-3 rounded-2xl mb-8 break-all">
+          <p className="text-[11px] text-blue-400 font-medium font-mono">{url}</p>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <button 
+            onClick={handleProceed}
+            className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2"
+          >
+            <ExternalLink className="w-4 h-4" /> 무시하고 열기
+          </button>
+          <button 
+            onClick={onClose} 
+            className="w-full py-4 bg-[#2C2C2E] text-[#8E8E93] font-bold rounded-2xl active:scale-95 transition-all"
+          >
+            취소
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 }

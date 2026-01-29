@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import type { PanInfo } from 'framer-motion'; 
@@ -9,7 +9,6 @@ import {
   ChevronRight, Users, Ban, AlertTriangle, BookUser
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-// ✨ Supabase 클라이언트 임포트
 import { supabase } from '../../../shared/lib/supabaseClient';
 
 // === [Types] ===
@@ -34,7 +33,6 @@ interface MyProfile {
 export default function FriendsListPage() {
   const navigate = useNavigate();
 
-  // ✨ [동기화 로직 보완] Grayn 서비스의 핵심인 연락처 동기화 권한 상태 관리
   const [step, setStep] = useState<'permission' | 'complete' | 'list'>(() => {
     const savedPermission = localStorage.getItem('grayn_contact_permission');
     return savedPermission === 'granted' ? 'list' : 'permission';
@@ -63,7 +61,6 @@ export default function FriendsListPage() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // ✨ [권한 핸들러] 연락처 접근 허용 시 동작
   const handleAllowContacts = () => {
     localStorage.setItem('grayn_contact_permission', 'granted');
     setStep('complete');
@@ -96,15 +93,19 @@ export default function FriendsListPage() {
     } catch (e) { console.error("MyProfile Load Error", e); }
   };
 
-  const fetchFriends = async () => {
+  // ✨ 데이터 로드 쿼리 보강
+  const fetchFriends = useCallback(async () => {
     setIsLoading(true);
-    setFriends([]); 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
       const { data, error } = await supabase
         .from('friends')
         .select('*')
+        .eq('user_id', session.user.id) 
         .or('is_blocked.eq.false,is_blocked.is.null') 
-        .order('id', { ascending: true });
+        .order('name', { ascending: true }); // 이름순 정렬
 
       if (error) throw error;
 
@@ -116,7 +117,7 @@ export default function FriendsListPage() {
           status: item.status,
           avatar: item.avatar,
           bg: item.bg,
-          isFavorite: item.is_favorite,
+          isFavorite: item.is_favorite || false,
           friendlyScore: item.friendly_score || 0
         }));
         setFriends(formattedData);
@@ -126,14 +127,14 @@ export default function FriendsListPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMyProfile();
     if (step === 'list') {
       fetchFriends();
     }
-  }, [step]);
+  }, [step, fetchFriends]);
   
   const handleSaveMyProfile = async (newProfile: MyProfile) => { 
     try {
@@ -225,10 +226,13 @@ export default function FriendsListPage() {
     if (!deleteTarget) return;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
       const { error } = await supabase
         .from('friends')
         .delete()
-        .eq('id', deleteTarget.id);
+        .match({ id: deleteTarget.id, user_id: session.user.id });
 
       if (error) throw error;
 
@@ -284,18 +288,13 @@ export default function FriendsListPage() {
   const { favorites, normals } = useMemo(() => {
     const favs = filteredFriends.filter(f => f.isFavorite);
     const norms = filteredFriends.filter(f => !f.isFavorite);
-    const sortFn = (a: Friend, b: Friend) => {
-      const typeA = a.name.charCodeAt(0);
-      const typeB = b.name.charCodeAt(0);
-      return typeA - typeB;
-    };
-    return { favorites: favs, normals: norms.sort(sortFn) };
+    const sortFn = (a: Friend, b: Friend) => a.name.localeCompare(b.name, 'ko');
+    return { favorites: favs.sort(sortFn), normals: norms.sort(sortFn) };
   }, [filteredFriends]);
 
   return (
     <div className="h-full w-full flex flex-col bg-dark-bg text-white">
       
-      {/* 1. 연락처 접근 권한 요청 단계 */}
       {step === 'permission' && (
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
           <div className="w-20 h-20 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mb-6">
@@ -311,59 +310,34 @@ export default function FriendsListPage() {
           >
             허용하기
           </button>
-          <button 
-            onClick={() => setFriends([])} // 임시 스킵 로직 (필요 시 수정)
-            className="mt-4 text-[#8E8E93] text-sm"
-          >
-            나중에 하기
-          </button>
+          <button onClick={() => setStep('list')} className="mt-4 text-[#8E8E93] text-sm">나중에 하기</button>
         </div>
       )}
 
-      {/* 2. 동기화 완료 애니메이션 단계 */}
       {step === 'complete' && (
         <div className="flex-1 flex flex-col items-center justify-center">
-          <motion.div 
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mb-6"
-          >
+          <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mb-6">
             <CheckCircle2 className="w-10 h-10 text-green-500" />
           </motion.div>
           <h2 className="text-xl font-bold">동기화 완료</h2>
         </div>
       )}
 
-      {/* 3. 실제 친구 리스트 단계 */}
       {step === 'list' && (
         <>
           <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-50 border-b border-[#2C2C2E] shrink-0">
             <h1 className="text-xl font-bold text-white ml-1">친구</h1>
             <div className="flex items-center gap-1 relative">
-              <button onClick={() => setIsSearching(!isSearching)} className={`p-2 transition-colors ${isSearching ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}>
-                <Search className="w-6 h-6" />
-              </button>
-              <button onClick={() => setShowAddFriendModal(true)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
-                <UserPlus className="w-6 h-6" />
-              </button>
-              <button onClick={() => setShowCreateChatModal(true)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
-                <MessageSquarePlus className="w-6 h-6" />
-              </button>
-              <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className={`p-2 transition-colors ${isSettingsOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}>
-                <Settings className="w-6 h-6" />
-              </button>
+              <button onClick={() => setIsSearching(!isSearching)} className={`p-2 transition-colors ${isSearching ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}><Search className="w-6 h-6" /></button>
+              <button onClick={() => setShowAddFriendModal(true)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors"><UserPlus className="w-6 h-6" /></button>
+              <button onClick={() => setShowCreateChatModal(true)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors"><MessageSquarePlus className="w-6 h-6" /></button>
+              <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className={`p-2 transition-colors ${isSettingsOpen ? 'text-brand-DEFAULT' : 'text-white hover:text-brand-DEFAULT'}`}><Settings className="w-6 h-6" /></button>
 
               <AnimatePresence>
                 {isSettingsOpen && (
                   <>
                     <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsSettingsOpen(false)} />
-                    <motion.div 
-                      initial={{ opacity: 0, y: -10, scale: 0.95 }} 
-                      animate={{ opacity: 1, y: 0, scale: 1 }} 
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute top-10 right-0 w-40 bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl shadow-xl z-50 overflow-hidden py-1.5"
-                    >
+                    <motion.div initial={{ opacity: 0, y: -10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.95 }} className="absolute top-10 right-0 w-40 bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl shadow-xl z-50 overflow-hidden py-1.5">
                       <button onClick={handleGoFriends} className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors">친구 관리</button>
                       <div className="h-[1px] bg-[#3A3A3C] mx-3 my-1" />
                       <button onClick={handleGoSettings} className="w-full text-left px-4 py-2.5 text-[14px] text-white hover:bg-[#3A3A3C] transition-colors">전체 설정</button>
@@ -388,9 +362,7 @@ export default function FriendsListPage() {
 
           <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
             {isLoading ? (
-              <div className="flex justify-center items-center h-[50vh] text-[#8E8E93]">
-                <RefreshCw className="w-6 h-6 animate-spin" />
-              </div>
+              <div className="flex justify-center items-center h-[50vh] text-[#8E8E93]"><RefreshCw className="w-6 h-6 animate-spin" /></div>
             ) : friends.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-[60vh] text-[#8E8E93] px-10 text-center">
                     <UserIcon className="w-12 h-12 opacity-20 mb-4" />
@@ -455,7 +427,6 @@ export default function FriendsListPage() {
         </ModalBackdrop>
       )}
 
-      {/* Modals */}
       <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} initialProfile={myProfile} onSave={handleSaveMyProfile} />
       <AddFriendModal isOpen={showAddFriendModal} onClose={() => setShowAddFriendModal(false)} onFriendAdded={fetchFriends} />
       <CreateChatModal isOpen={showCreateChatModal} onClose={() => setShowCreateChatModal(false)} friends={friends} />
@@ -474,8 +445,8 @@ function FriendItem({ friend, onClick, onBlock, onDelete }: { friend: Friend; on
   return (
     <div className="relative w-full h-[72px] overflow-hidden border-b border-[#2C2C2E] last:border-none bg-dark-bg">
       <div className="absolute inset-y-0 right-0 flex h-full z-0" style={{ width: `140px` }}>
-        <button onClick={() => { onBlock(); controls.start({ x: 0 }); }} className="flex-1 h-full bg-[#3A3A3C] flex flex-col items-center justify-center text-[#E5E5EA] active:bg-[#48484A] transition-colors"><Ban className="w-5 h-5 mb-1" /><span className="text-[10px] font-medium">차단</span></button>
-        <button onClick={() => { onDelete(); controls.start({ x: 0 }); }} className="flex-1 h-full bg-[#EC5022] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"><Trash2 className="w-5 h-5 mb-1" /><span className="text-[10px] font-medium">삭제</span></button>
+        <button onClick={(e) => { e.stopPropagation(); onBlock(); controls.start({ x: 0 }); }} className="flex-1 h-full bg-[#3A3A3C] flex flex-col items-center justify-center text-[#E5E5EA] active:bg-[#48484A] transition-colors"><Ban className="w-5 h-5 mb-1" /><span className="text-[10px] font-medium">차단</span></button>
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); controls.start({ x: 0 }); }} className="flex-1 h-full bg-[#EC5022] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"><Trash2 className="w-5 h-5 mb-1" /><span className="text-[10px] font-medium">삭제</span></button>
       </div>
       <motion.div drag="x" dragConstraints={{ left: SWIPE_WIDTH, right: 0 }} dragElastic={0.1} onDragEnd={handleDragEnd} animate={controls} onClick={onClick} className="relative w-full h-full bg-dark-bg flex items-center px-4 z-10 cursor-pointer active:bg-white/5 transition-colors" style={{ touchAction: 'pan-y' }}>
         <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4 border border-white/5 shadow-sm">
@@ -556,7 +527,33 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: { isOpen:
 function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; onClose: () => void; onFriendAdded?: () => void }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const handleAddDirectly = async () => { if (!name || !phone) return toast.error('이름과 전화번호를 입력해주세요.'); try { await supabase.from('friends').insert([{ name, phone, friendly_score: 50, is_favorite: false, is_blocked: false }]); toast.success('친구가 추가되었습니다.'); onFriendAdded?.(); onClose(); } catch (error) { toast.error('친구 추가에 실패했습니다.'); } };
+
+  // ✨ 친구 추가 시 user_id를 명시적으로 전달하도록 수정
+  const handleAddDirectly = async () => { 
+    if (!name || !phone) return toast.error('이름과 전화번호를 입력해주세요.'); 
+    try { 
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { error } = await supabase.from('friends').insert([{ 
+        user_id: session.user.id, // 필수 추가
+        name, 
+        phone, 
+        friendly_score: 50, 
+        is_favorite: false, 
+        is_blocked: false 
+      }]); 
+
+      if (error) throw error;
+      toast.success('친구가 추가되었습니다.'); 
+      onFriendAdded?.(); 
+      onClose(); 
+    } catch (error) { 
+      console.error(error);
+      toast.error('친구 추가에 실패했습니다.'); 
+    } 
+  };
+
   useEffect(() => { if (isOpen) { setName(''); setPhone(''); } }, [isOpen]);
   if (!isOpen) return null;
   return (
