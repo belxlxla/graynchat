@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Mail, Lock, User, Loader2, 
   Check, ChevronRight 
