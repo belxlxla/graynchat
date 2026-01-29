@@ -136,14 +136,12 @@ export default function ChatRoomPage() {
       const friendUUID = chatId.split('_').find(id => id !== user.id);
       if (!friendUUID) throw new Error("Invalid Room ID");
 
-      const { data: friendRecord, error: friendError } = await supabase
+      const { data: friendRecord } = await supabase
         .from('friends')
         .select('*')
         .eq('user_id', user.id)
         .eq('friend_user_id', friendUUID)
         .maybeSingle();
-
-      if (friendError) throw friendError;
 
       if (friendRecord) {
         setRoomTitle(friendRecord.name);
@@ -160,13 +158,7 @@ export default function ChatRoomPage() {
       } else {
         setIsFriend(false);
         setIsBlocked(false);
-
-        const { data: userData } = await supabase
-          .from('users')
-          .select('name')
-          .eq('id', friendUUID)
-          .maybeSingle();
-          
+        const { data: userData } = await supabase.from('users').select('name').eq('id', friendUUID).maybeSingle();
         setRoomTitle(userData?.name || '알 수 없는 사용자');
       }
 
@@ -186,11 +178,11 @@ export default function ChatRoomPage() {
     }
   };
 
-  // ✨ 실시간 통신 구독 로직 보강
+  // ✨ 실시간 구독 로직 (무료 플랜용 최적화)
   useEffect(() => {
     fetchInitialData();
+    if (!chatId) return;
 
-    // 채널 생성 및 구독
     const channel = supabase
       .channel(`room:${chatId}`)
       .on(
@@ -203,17 +195,16 @@ export default function ChatRoomPage() {
         }, 
         (payload) => {
           const newMsg = payload.new as Message;
-          // 내가 보낸 것은 이미 상태에 반영되어 있으므로, 중복 방지를 체크하며 추가
+          // 실시간 수신 시 상태 업데이트 (중복 방지)
           setMessages((prev) => {
-            if (prev.some(m => m.id === newMsg.id)) return prev;
+            const exists = prev.some(m => m.id === newMsg.id);
+            if (exists) return prev;
             return [...prev, newMsg];
           });
         }
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log("실시간 채널 연결 완료");
-        }
+        if (status === 'SUBSCRIBED') console.log("✅ 실시간 채팅 연결 성공");
       });
 
     return () => {
@@ -229,11 +220,9 @@ export default function ChatRoomPage() {
     if (!chatId || !user) return;
     const friendUUID = chatId.split('_').find(id => id !== user.id);
     if (!friendUUID) return;
-
     const addToast = toast.loading('친구 추가 중...');
     try {
       const { data: targetUser } = await supabase.from('users').select('*').eq('id', friendUUID).single();
-      
       const { error } = await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendUUID,
@@ -244,34 +233,24 @@ export default function ChatRoomPage() {
         friendly_score: 50 
       });
       if (error) throw error;
-      
       setIsFriend(true);
       toast.success(`${targetUser?.name || roomTitle}님을 친구로 추가했습니다.`, { id: addToast });
       fetchInitialData();
-    } catch {
-      toast.error('친구 추가 실패', { id: addToast });
-    }
+    } catch { toast.error('친구 추가 실패', { id: addToast }); }
   };
 
   const handleUnblock = async () => {
     if (!chatId || !user) return;
     const friendUUID = chatId.split('_').find(id => id !== user.id);
     if (!friendUUID) return;
-
     const unblockToast = toast.loading('차단 해제 중...');
     try {
-      const { error = null } = await supabase
-        .from('friends')
-        .update({ is_blocked: false })
-        .match({ friend_user_id: friendUUID, user_id: user.id });
-        
+      const { error = null } = await supabase.from('friends').update({ is_blocked: false }).match({ friend_user_id: friendUUID, user_id: user.id });
       if (error) throw error;
       setIsBlocked(false);
       toast.success('차단이 해제되었습니다.', { id: unblockToast });
       fetchInitialData();
-    } catch {
-      toast.error('해제 실패', { id: unblockToast });
-    }
+    } catch { toast.error('해제 실패', { id: unblockToast }); }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -304,31 +283,19 @@ export default function ChatRoomPage() {
     setIsMenuOpen(false);
     setShowMentionList(false);
     try {
-      // 1. 채팅방 최신 메시지 정보 업데이트
+      // 1. 채팅방 최신 메시지 업데이트
       await supabase.from('chat_rooms').upsert({ 
-        id: chatId, 
-        user_id: user.id,
-        title: roomTitle, 
-        last_message: textToSend, 
-        updated_at: new Date().toISOString() 
+        id: chatId, user_id: user.id, title: roomTitle, last_message: textToSend, updated_at: new Date().toISOString() 
       }, { onConflict: 'id' });
       
-      // 2. 메시지 테이블에 삽입 (이 삽입이 실시간 이벤트를 발생시킴)
-      const { data: newMsg, error } = await supabase
-        .from('messages')
-        .insert({ 
-          room_id: chatId, 
-          sender_id: user.id, 
-          content: textToSend, 
-          is_read: false 
-        })
-        .select()
-        .single();
-        
+      // 2. 메시지 발송
+      const { data: newMsg, error } = await supabase.from('messages').insert({ 
+        room_id: chatId, sender_id: user.id, content: textToSend, is_read: false 
+      }).select().single();
+      
       if (error) throw error;
       if (newMsg) setMessages((prev) => [...prev, newMsg]);
     } catch (error) { 
-      console.error(error);
       toast.error('전송 실패'); 
       setInputText(textToSend); 
     }
@@ -342,35 +309,16 @@ export default function ChatRoomPage() {
       const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`; 
       const { error: uploadError } = await supabase.storage.from('chat-uploads').upload(`${chatId}/${fileName}`, file);
       if (uploadError) throw uploadError;
-      
       const { data: { publicUrl } } = supabase.storage.from('chat-uploads').getPublicUrl(`${chatId}/${fileName}`);
-      
       await supabase.from('chat_rooms').upsert({ 
-        id: chatId, 
-        user_id: user.id,
-        title: roomTitle, 
-        last_message: '파일을 보냈습니다.', 
-        updated_at: new Date().toISOString() 
+        id: chatId, user_id: user.id, title: roomTitle, last_message: '파일을 보냈습니다.', updated_at: new Date().toISOString() 
       }, { onConflict: 'id' });
-      
-      const { data: newMsg } = await supabase
-        .from('messages')
-        .insert({ 
-          room_id: chatId, 
-          sender_id: user.id, 
-          content: publicUrl, 
-          is_read: false 
-        })
-        .select()
-        .single();
-        
+      const { data: newMsg } = await supabase.from('messages').insert({ 
+        room_id: chatId, sender_id: user.id, content: publicUrl, is_read: false 
+      }).select().single();
       if (newMsg) setMessages((prev) => [...prev, newMsg]);
       toast.success('전송 완료', { id: uploadToast });
-    } catch { 
-      toast.error('실패'); 
-    } finally { 
-      if (fileInputRef.current) fileInputRef.current.value = ''; 
-    }
+    } catch { toast.error('실패'); } finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   const handleLinkClick = (url: string, e: React.MouseEvent) => {
@@ -396,11 +344,9 @@ export default function ChatRoomPage() {
         </div>
       );
     }
-
     const mentionRegex = /(@[가-힣a-zA-Z0-9_]+)/g;
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = msg.content.split(/((?:@[가-힣a-zA-Z0-9_]+)|(?:https?:\/\/[^\s]+))/g);
-
     return (
       <div className={`px-4 py-2.5 text-[15px] leading-relaxed break-words shadow-sm ${isMe ? 'bg-brand-DEFAULT text-white rounded-[20px] rounded-tr-none' : 'bg-[#2C2C2E] text-white rounded-[20px] rounded-tl-none border border-[#3A3A3C]'}`}>
         {parts.map((p, i) => {
@@ -471,7 +417,7 @@ export default function ChatRoomPage() {
                 ) : (
                   <>
                     <button onClick={handleAddFriend} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-brand-DEFAULT px-5 py-2.5 rounded-2xl text-[13px] font-bold text-white shadow-lg"><UserPlus className="w-4.5 h-4.5" /> 친구 추가</button>
-                    <button onClick={() => toast('신고가 접수되었습니다.')} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#3A3A3C] px-5 py-2.5 rounded-2xl text-[13px] font-bold text-[#EC5022]">신고</button>
+                    <button onClick={() => toast('신고가 접수되었습니다.')} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#3A3A3C] px-5 py-2.5 rounded-2xl text-[13px] font-bold text-[#EC5022]">차단/신고</button>
                   </>
                 )}
               </div>
