@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Bell, MessageSquare, Volume2, 
   Moon, Sparkles, Clock, ChevronRight 
-  // ✨ 에러 수정: 사용하지 않는 'X' 아이콘 임포트 제거
+  // ✨ 에러 수정: 사용하지 않는 'X' 아이콘 임포트 제거됨
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -24,7 +24,8 @@ export default function NotificationSettingsPage() {
 
   const [dndTime, setDndTime] = useState({ start: '22:00', end: '08:00' });
   const [showDndPicker, setShowDndPicker] = useState(false);
-  const [permission, setPermission] = useState<NotificationPermission>('default');
+  // ✨ 에러 수정: 사용하지 않는 'permission' 변수를 생략하고 setter만 유지
+  const [, setPermission] = useState<NotificationPermission>('default');
 
   // 1. 초기 데이터 로드 및 권한 확인
   const fetchSettings = useCallback(async () => {

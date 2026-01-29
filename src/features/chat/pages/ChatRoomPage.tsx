@@ -3,9 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Send, Plus, MoreHorizontal, 
-  Image as ImageIcon, Smile, Search, Camera, 
+  ImageIcon, Smile, Search, Camera, 
   FileText, X, Download, ChevronRight, ChevronUp, ChevronDown, AtSign, User as UserIcon,
-  UserPlus, Ban, Unlock, ShieldAlert, ExternalLink, AlertCircle, Info
+  UserPlus, Ban, Unlock, ShieldAlert, ExternalLink
+  // ✨ 에러 수정: 사용하지 않는 AlertCircle, Info 임포트 제거
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -66,7 +67,7 @@ export default function ChatRoomPage() {
 
   const [isFriend, setIsFriend] = useState<boolean>(true);
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
-  const [targetFriendData, setTargetFriendData] = useState<Friend | null>(null);
+  // ✨ 에러 수정: 선언 후 읽지 않는 targetFriendData 상태 제거
 
   const [showUrlWarning, setShowUrlWarning] = useState(false);
   const [pendingUrl, setPendingUrl] = useState('');
@@ -135,7 +136,8 @@ export default function ChatRoomPage() {
     try {
       const parsedChatId = Number(chatId);
       
-      const { data: friendRecord, error: friendError } = await supabase
+      // ✨ 에러 수정: 사용하지 않는 friendError 변수 제거
+      const { data: friendRecord } = await supabase
         .from('friends')
         .select('id, name, avatar, friendly_score, is_blocked')
         .eq('id', isNaN(parsedChatId) ? -1 : parsedChatId)
@@ -145,7 +147,7 @@ export default function ChatRoomPage() {
         setRoomTitle(friendRecord.name);
         setFriendlyScore(friendRecord.friendly_score);
         setRoomMembers([{ id: friendRecord.id, name: friendRecord.name, avatar: friendRecord.avatar }]);
-        setTargetFriendData({ id: friendRecord.id, name: friendRecord.name, avatar: friendRecord.avatar });
+        // ✨ 에러 수정: targetFriendData 설정문 제거
         
         setIsFriend(true);
         setIsBlocked(!!friendRecord.is_blocked);
@@ -374,7 +376,6 @@ export default function ChatRoomPage() {
         </AnimatePresence>
       </header>
 
-      {/* ✨ [UI 정제] 상단 안내 바 (카카오톡 스타일: 삭제된 친구/미등록 친구 안내) */}
       <AnimatePresence>
         {!isLoading && (!isFriend || isBlocked) && (
           <motion.div 
