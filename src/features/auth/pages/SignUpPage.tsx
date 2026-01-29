@@ -24,11 +24,22 @@ export default function SignUpPage() {
     service: false,      // 이용약관 (필수)
     location: false,     // 위치기반서비스 이용약관 (필수)
     privacy: false,      // 개인정보처리방침 (필수)
-    sensitive: false,    // 민감정보 수집 및 이용 동의 (필수) ✨ 추가
+    sensitive: false,    // 민감정보 수집 및 이용 동의 (필수)
     operation: false,    // 운영정책 (필수)
     youth: false,        // 청소년보호정책 (필수)
     marketing: false,    // 맞춤형 광고 안내 (선택)
   });
+
+  // ✨ 약관별 노션 링크 (나중에 이 부분의 URL만 수정하면 됩니다)
+  const policyLinks: Record<string, string> = {
+    service: 'https://www.notion.so',
+    location: 'https://www.notion.so',
+    privacy: 'https://www.notion.so',
+    sensitive: 'https://www.notion.so',
+    operation: 'https://www.notion.so',
+    youth: 'https://www.notion.so',
+    marketing: 'https://www.notion.so',
+  };
 
   const handleAccountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setAccountData({ ...accountData, [e.target.name]: e.target.value });
@@ -53,12 +64,20 @@ export default function SignUpPage() {
     setAgreedTerms(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // ✨ 약관 상세 보기 핸들러
+  const handleOpenPolicy = (key: string) => {
+    const url = policyLinks[key];
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   // 필수 약관 동의 여부 확인
   const isRequiredAgreed = useMemo(() => {
     return agreedTerms.service && 
            agreedTerms.location && 
            agreedTerms.privacy && 
-           agreedTerms.sensitive && // ✨ 추가
+           agreedTerms.sensitive && 
            agreedTerms.operation && 
            agreedTerms.youth;
   }, [agreedTerms]);
@@ -82,7 +101,6 @@ export default function SignUpPage() {
       if (error) throw error;
 
       if (data.user) {
-        // public.users 테이블에 기본 데이터 생성 (약관 정보 포함)
         await supabase.from('users').upsert([{
           id: data.user.id,
           email: accountData.email,
@@ -109,7 +127,7 @@ export default function SignUpPage() {
     { key: 'service', label: '이용약관', required: true },
     { key: 'location', label: '위치기반서비스 이용약관', required: true },
     { key: 'privacy', label: '개인정보처리방침', required: true },
-    { key: 'sensitive', label: '민감정보 수집 및 이용 동의', required: true }, // ✨ 추가
+    { key: 'sensitive', label: '민감정보 수집 및 이용 동의', required: true },
     { key: 'operation', label: '운영정책', required: true },
     { key: 'youth', label: '청소년보호정책', required: true },
     { key: 'marketing', label: '맞춤형 광고 안내', required: false },
@@ -184,7 +202,12 @@ export default function SignUpPage() {
                         {term.label} <span className={term.required ? 'text-brand-DEFAULT' : 'text-[#636366]'}>({term.required ? '필수' : '선택'})</span>
                       </span>
                     </div>
-                    <button type="button" className="p-1 text-[#636366] hover:text-white">
+                    {/* ✨ 화살표 클릭 시 노션 페이지 연결 */}
+                    <button 
+                      type="button" 
+                      onClick={() => handleOpenPolicy(term.key)}
+                      className="p-1 text-[#636366] hover:text-white transition-colors"
+                    >
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>

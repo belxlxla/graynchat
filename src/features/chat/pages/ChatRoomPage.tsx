@@ -234,7 +234,7 @@ export default function ChatRoomPage() {
 
     const unblockToast = toast.loading('차단 해제 중...');
     try {
-      const { error } = await supabase
+      const { error = null } = await supabase
         .from('friends')
         .update({ is_blocked: false })
         .match({ friend_user_id: friendUUID, user_id: user.id });
@@ -511,11 +511,24 @@ function MenuButton({ icon, label, onClick }: { icon: React.ReactNode, label: st
 
 function ImageViewerModal({ isOpen, initialIndex, images, onClose }: { isOpen: boolean, initialIndex: number, images: string[], onClose: () => void }) {
   const [index, setIndex] = useState(initialIndex);
-  const [direction] = useState(0);
+  const [direction, setDirection] = useState(0);
   
   useEffect(() => { 
     if (isOpen) setIndex(initialIndex); 
   }, [isOpen, initialIndex]);
+
+  const p = (d: number) => { 
+    const n = index + d; 
+    if (n >= 0 && n < images.length) { 
+      setDirection(d);
+      setIndex(n); 
+    } 
+  };
+
+  const handleDragEnd = (_: any, info: any) => { 
+    if (info.offset.x < -50 && index < images.length - 1) p(1); 
+    else if (info.offset.x > 50 && index > 0) p(-1); 
+  };
 
   if (!isOpen || images.length === 0) return null;
 
@@ -543,6 +556,9 @@ function ImageViewerModal({ isOpen, initialIndex, images, onClose }: { isOpen: b
             initial="enter" 
             animate="center" 
             exit="exit" 
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            onDragEnd={handleDragEnd}
             className="absolute max-w-full max-h-full object-contain" 
           />
         </AnimatePresence>
