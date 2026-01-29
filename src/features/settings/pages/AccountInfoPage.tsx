@@ -6,6 +6,8 @@ import {
   Camera, User, Phone, Globe, LogOut, 
   Trash2, Image as ImageIcon, X, Search, CheckCircle2, Circle
 } from 'lucide-react';
+import Cropper from 'react-easy-crop';
+import type { Point, Area } from 'react-easy-crop';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
@@ -24,6 +26,22 @@ interface Country {
   code: string;
   name: string;
   flag: string;
+}
+
+// --- [Helpers for Cropping] ---
+async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
+  const image = await new Promise<HTMLImageElement>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.src = imageSrc;
+  });
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(URL.createObjectURL(blob!)), 'image/jpeg'));
 }
 
 const COUNTRIES: Country[] = [
@@ -76,6 +94,14 @@ export default function AccountInfoPage() {
   const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null); 
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
+  // ✨ 크롭 관련 상태 추가
+  const [isCropOpen, setIsCropOpen] = useState(false);
+  const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
+  const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
 
@@ -85,23 +111,21 @@ export default function AccountInfoPage() {
     if (cleaned.startsWith('010') && cleaned.length === 11) {
       return `+82 10-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
     }
+    if (cleaned.startsWith('8210') && cleaned.length === 12) {
+      return `+82 10-${cleaned.slice(4, 8)}-${cleaned.slice(8)}`;
+    }
     return phoneNumber;
   };
 
   const fetchUserData = useCallback(async () => {
     if (!user) return;
-    
     try {
-      // public.users 테이블에서 상세 데이터 조회
       const { data: dbData, error: dbError } = await supabase
         .from('users')
         .select('*')
         .eq('id', user.id)
         .single();
-
       if (dbError) throw dbError;
-
-      // ✨ auth.user와 public.users 정보 결합
       setProfile({
         name: dbData?.name || user.user_metadata?.full_name || '사용자',
         avatar: dbData?.avatar || null,
@@ -110,56 +134,53 @@ export default function AccountInfoPage() {
         email: user.email || '이메일 없음',
         phone: formatPhoneNumber(dbData?.phone || '번호 없음')
       });
-      
       setBlockedCountries(dbData?.blocked_countries || []);
-    } catch (err) {
-      console.error('Data load error:', err);
-    }
+    } catch (err) { console.error('Data load error:', err); }
   }, [user]);
 
-  useEffect(() => {
-    fetchUserData();
-  }, [fetchUserData]);
+  useEffect(() => { fetchUserData(); }, [fetchUserData]);
 
-  const handleSaveBlockedCountries = async (list: string[]) => {
-    if (!user) return;
-    const loadingToast = toast.loading('보안 설정 적용 중...');
-    
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ blocked_countries: list })
-        .eq('id', user.id);
-
-      if (error) throw error;
-
-      setBlockedCountries(list);
-      toast.success('국가별 접근 제한 설정이 완료되었습니다.', { id: loadingToast });
-    } catch (err) {
-      toast.error('설정 저장 실패', { id: loadingToast });
+  // ✨ 파일 선택 시 크롭 모달 열기
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTempImageSrc(reader.result as string);
+        setCurrentImageType(type);
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
+        setIsCropOpen(true);
+      };
+      reader.readAsDataURL(e.target.files[0]);
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
-    if (e.target.files && e.target.files.length > 0 && user) {
-      const file = e.target.files[0];
-      const loadingToast = toast.loading('사진 업로드 중...');
+  // ✨ 크롭된 이미지 업로드 및 저장
+  const handleCropSave = async () => {
+    if (!tempImageSrc || !croppedAreaPixels || !user) return;
+    const loadingToast = toast.loading('사진 업로드 중...');
 
-      try {
-        const fileExt = file.name.split('.').pop();
-        const filePath = `${user.id}/${type}_${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, file, { upsert: true });
-        if (uploadError) throw uploadError;
-        const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
-        const dbField = type === 'avatar' ? 'avatar' : 'bg_image';
-        await supabase.from('users').update({ [dbField]: publicUrl }).eq('id', user.id);
-        setProfile(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
-        toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
-      } catch (err) {
-        toast.error('업로드 실패', { id: loadingToast });
-      } finally {
-        setEditTarget(null);
-      }
+    try {
+      const croppedImageUrl = await getCroppedImg(tempImageSrc, croppedAreaPixels);
+      const res = await fetch(croppedImageUrl);
+      const blob = await res.blob();
+      
+      const filePath = `${user.id}/${currentImageType}_${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, blob, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
+      const dbField = currentImageType === 'avatar' ? 'avatar' : 'bg_image';
+      
+      await supabase.from('users').update({ [dbField]: publicUrl }).eq('id', user.id);
+      
+      setProfile(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
+      toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
+      setIsCropOpen(false);
+      setEditTarget(null);
+    } catch (err) {
+      toast.error('업로드 실패', { id: loadingToast });
     }
   };
 
@@ -171,11 +192,19 @@ export default function AccountInfoPage() {
       await supabase.from('users').update({ [dbField]: null }).eq('id', user.id);
       setProfile(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: null }));
       toast.success('기본 이미지로 변경되었습니다.', { id: loadingToast });
-    } catch (err) {
-      toast.error('초기화 실패', { id: loadingToast });
-    } finally {
-      setEditTarget(null);
-    }
+    } catch (err) { toast.error('초기화 실패', { id: loadingToast }); }
+    finally { setEditTarget(null); }
+  };
+
+  const handleSaveBlockedCountries = async (list: string[]) => {
+    if (!user) return;
+    const loadingToast = toast.loading('보안 설정 적용 중...');
+    try {
+      const { error } = await supabase.from('users').update({ blocked_countries: list }).eq('id', user.id);
+      if (error) throw error;
+      setBlockedCountries(list);
+      toast.success('국가별 접근 제한 설정이 완료되었습니다.', { id: loadingToast });
+    } catch (err) { toast.error('설정 저장 실패', { id: loadingToast }); }
   };
 
   return (
@@ -256,6 +285,44 @@ export default function AccountInfoPage() {
         )}
       </AnimatePresence>
 
+      {/* ✨ 크롭 편집 모달 추가 */}
+      <AnimatePresence>
+        {isCropOpen && tempImageSrc && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black flex flex-col">
+            <div className="h-16 flex items-center justify-between px-5 bg-black/80 backdrop-blur-md z-10 sticky top-0">
+              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2"><X className="w-7 h-7 text-white" /></button>
+              <span className="font-bold text-lg text-white">이미지 편집</span>
+              <button onClick={handleCropSave} className="px-5 py-2 bg-brand-DEFAULT rounded-full font-black text-sm text-white shadow-lg active:scale-95 transition-all">완료</button>
+            </div>
+            <div className="relative flex-1 bg-black">
+              <Cropper 
+                image={tempImageSrc} 
+                crop={crop} 
+                zoom={zoom} 
+                aspect={currentImageType === 'avatar' ? 1 : 16/9} 
+                onCropChange={setCrop} 
+                onCropComplete={(_, p) => setCroppedAreaPixels(p)} 
+                onZoomChange={setZoom} 
+                cropShape={currentImageType === 'avatar' ? 'round' : 'rect'}
+                showGrid={false}
+              />
+            </div>
+            <div className="h-24 bg-black/80 backdrop-blur-md flex items-center justify-center px-10 gap-4">
+               <span className="text-xs text-[#8E8E93]">ZOOM</span>
+               <input 
+                 type="range" 
+                 min={1} 
+                 max={3} 
+                 step={0.1} 
+                 value={zoom} 
+                 onChange={(e) => setZoom(Number(e.target.value))} 
+                 className="flex-1 accent-brand-DEFAULT"
+               />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <CountrySelectModal isOpen={isCountryModalOpen} onClose={() => setIsCountryModalOpen(false)} blockedList={blockedCountries} onSave={handleSaveBlockedCountries} />
       <LogoutModal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)} onConfirm={() => supabase.auth.signOut().then(() => navigate('/'))} />
     </div>
@@ -306,7 +373,7 @@ function LogoutModal({ isOpen, onClose, onConfirm }: any) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
+      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
         <div className="p-8"><div className="w-16 h-16 bg-[#FF453A]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#FF453A]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
         <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#FF453A] font-bold">로그아웃</button></div>
       </motion.div>
