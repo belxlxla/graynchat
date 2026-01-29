@@ -186,13 +186,39 @@ export default function ChatRoomPage() {
     }
   };
 
+  // ✨ 실시간 통신 구독 로직 보강
   useEffect(() => {
     fetchInitialData();
-    const channel = supabase.channel(`room:${chatId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${chatId}` }, (payload) => {
-      const newMsg = payload.new as Message;
-      setMessages((prev) => (prev.some(msg => msg.id === newMsg.id) ? prev : [...prev, newMsg]));
-    }).subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    // 채널 생성 및 구독
+    const channel = supabase
+      .channel(`room:${chatId}`)
+      .on(
+        'postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages', 
+          filter: `room_id=eq.${chatId}` 
+        }, 
+        (payload) => {
+          const newMsg = payload.new as Message;
+          // 내가 보낸 것은 이미 상태에 반영되어 있으므로, 중복 방지를 체크하며 추가
+          setMessages((prev) => {
+            if (prev.some(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log("실시간 채널 연결 완료");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [chatId, user?.id]);
 
   useEffect(() => {
@@ -278,14 +304,17 @@ export default function ChatRoomPage() {
     setIsMenuOpen(false);
     setShowMentionList(false);
     try {
+      // 1. 채팅방 최신 메시지 정보 업데이트
       await supabase.from('chat_rooms').upsert({ 
         id: chatId, 
+        user_id: user.id,
         title: roomTitle, 
         last_message: textToSend, 
         updated_at: new Date().toISOString() 
-      });
+      }, { onConflict: 'id' });
       
-      const { data: newMsg } = await supabase
+      // 2. 메시지 테이블에 삽입 (이 삽입이 실시간 이벤트를 발생시킴)
+      const { data: newMsg, error } = await supabase
         .from('messages')
         .insert({ 
           room_id: chatId, 
@@ -296,8 +325,10 @@ export default function ChatRoomPage() {
         .select()
         .single();
         
+      if (error) throw error;
       if (newMsg) setMessages((prev) => [...prev, newMsg]);
     } catch (error) { 
+      console.error(error);
       toast.error('전송 실패'); 
       setInputText(textToSend); 
     }
@@ -316,10 +347,11 @@ export default function ChatRoomPage() {
       
       await supabase.from('chat_rooms').upsert({ 
         id: chatId, 
+        user_id: user.id,
         title: roomTitle, 
         last_message: '파일을 보냈습니다.', 
         updated_at: new Date().toISOString() 
-      });
+      }, { onConflict: 'id' });
       
       const { data: newMsg } = await supabase
         .from('messages')
@@ -439,7 +471,7 @@ export default function ChatRoomPage() {
                 ) : (
                   <>
                     <button onClick={handleAddFriend} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-brand-DEFAULT px-5 py-2.5 rounded-2xl text-[13px] font-bold text-white shadow-lg"><UserPlus className="w-4.5 h-4.5" /> 친구 추가</button>
-                    <button onClick={() => toast('신고가 접수되었습니다.')} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#3A3A3C] px-5 py-2.5 rounded-2xl text-[13px] font-bold text-[#EC5022]">차단/신고</button>
+                    <button onClick={() => toast('신고가 접수되었습니다.')} className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-[#3A3A3C] px-5 py-2.5 rounded-2xl text-[13px] font-bold text-[#EC5022]">신고</button>
                   </>
                 )}
               </div>
@@ -451,7 +483,7 @@ export default function ChatRoomPage() {
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
         {isLoading ? <div className="flex justify-center items-center h-full text-[#8E8E93] text-sm">로딩 중...</div> : messages.length === 0 ? <div className="flex flex-col justify-center items-center h-full text-[#8E8E93] opacity-50 gap-2"><Smile className="w-8 h-8" /><p className="text-sm">대화를 시작해보세요!</p></div> : messages.map((msg, index) => {
             const isMe = msg.sender_id === user?.id;
-            const showProfile = !isSearching && !isMe && (index === 0 || messages[index - 1].sender_id !== msg.sender_id);
+            const showProfile = !isMe && (index === 0 || messages[index - 1].sender_id !== msg.sender_id);
             return (
               <motion.div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
                 {!isMe && <div className={`w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 shrink-0 overflow-hidden ${!showProfile ? 'invisible' : ''}`}><img src={roomMembers.find(f => f.friend_user_id === msg.sender_id)?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} className="w-full h-full object-cover" alt="" /></div>}
@@ -472,7 +504,7 @@ export default function ChatRoomPage() {
           {showMentionList && filteredMentionFriends.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute bottom-[80px] left-3 right-3 bg-[#2C2C2E]/95 border border-[#3A3A3C] rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[100] backdrop-blur-xl">
               <div className="px-4 py-2.5 border-b border-white/5 bg-white/5 flex items-center gap-2"><AtSign className="w-3.5 h-3.5 text-brand-DEFAULT" /><span className="text-[11px] text-[#8E8E93] font-bold">참여자 멘션</span></div>
-              <div className="max-h-60 overflow-y-auto custom-scrollbar">
+              <div className="max-h-60 overflow-y-auto">
                 {filteredMentionFriends.map(f => (
                   <button key={f.friend_user_id} onClick={() => handleMentionSelect(f.name)} className={`w-full flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-none hover:bg-brand-DEFAULT/15 active:bg-brand-DEFAULT/20 ${f.name === '나' ? 'opacity-50 cursor-default pointer-events-none' : ''}`}>
                     <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] overflow-hidden flex items-center justify-center shrink-0">{f.avatar ? <img src={f.avatar} className="w-full h-full object-cover" alt="" /> : <UserIcon className="w-5 h-5 text-[#8E8E93]" />}</div>
@@ -486,7 +518,7 @@ export default function ChatRoomPage() {
         <div className="flex items-center gap-3 h-[44px]">
           <button disabled={isBlocked} onClick={() => setIsMenuOpen(!isMenuOpen)} className={`w-[40px] h-[40px] flex items-center justify-center text-[#8E8E93] bg-[#2C2C2E] rounded-full transition-all shrink-0 ${isMenuOpen ? 'rotate-45 text-white bg-[#3A3A3C]' : ''}`}><Plus className="w-6 h-6" /></button>
           <div className="flex-1 h-full bg-[#2C2C2E] rounded-[22px] border border-[#3A3A3C] px-4 flex items-center gap-2"><textarea ref={inputRef} value={inputText} onChange={handleInputChange} onKeyDown={handleKeyDown} disabled={isBlocked} placeholder={isBlocked ? "대화가 불가능합니다" : "메시지 보내기 (@멘션)"} className="w-full bg-transparent text-white text-[15px] focus:outline-none resize-none py-2" rows={1} style={{ height: '40px', lineHeight: '24px' }} /><button disabled={isBlocked} onClick={() => toast('준비중')} className="text-[#8E8E93] hover:text-white shrink-0"><Smile className="w-6 h-6" /></button></div>
-          <button onClick={handleSendMessage} disabled={!inputText.trim() || isBlocked} className={`w-[40px] h-[40px] flex items-center justify-center rounded-full shrink-0 ${inputText.trim() && !isBlocked ? 'bg-brand-DEFAULT text-white' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5" /></button>
+          <button onClick={handleSendMessage} disabled={!inputText.trim() || isBlocked} className={`w-[40px] h-[40px] flex items-center justify-center rounded-full shrink-0 ${inputText.trim() && !isBlocked ? 'bg-brand-DEFAULT text-white shadow-lg active:scale-90' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5" /></button>
         </div>
         <AnimatePresence>{isMenuOpen && !isBlocked && (<motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden bg-[#2C2C2E]/30 mt-3 rounded-2xl"><div className="grid grid-cols-4 gap-4 p-4"><MenuButton icon={<ImageIcon className="w-6 h-6" />} label="앨범" onClick={() => fileInputRef.current?.click()} /><MenuButton icon={<Camera className="w-6 h-6" />} label="카메라" onClick={() => cameraInputRef.current?.click()} /><MenuButton icon={<FileText className="w-6 h-6" />} label="파일" onClick={() => docInputRef.current?.click()} /><MenuButton icon={<Smile className="w-6 h-6" />} label="이모티콘" onClick={() => toast('준비 중')} /></div></motion.div>)}</AnimatePresence>
       </div>
@@ -512,57 +544,9 @@ function MenuButton({ icon, label, onClick }: { icon: React.ReactNode, label: st
 function ImageViewerModal({ isOpen, initialIndex, images, onClose }: { isOpen: boolean, initialIndex: number, images: string[], onClose: () => void }) {
   const [index, setIndex] = useState(initialIndex);
   const [direction, setDirection] = useState(0);
-  
-  useEffect(() => { 
-    if (isOpen) setIndex(initialIndex); 
-  }, [isOpen, initialIndex]);
-
-  const p = (d: number) => { 
-    const n = index + d; 
-    if (n >= 0 && n < images.length) { 
-      setDirection(d);
-      setIndex(n); 
-    } 
-  };
-
-  const handleDragEnd = (_: any, info: any) => { 
-    if (info.offset.x < -50 && index < images.length - 1) p(1); 
-    else if (info.offset.x > 50 && index > 0) p(-1); 
-  };
-
+  useEffect(() => { if (isOpen) setIndex(initialIndex); }, [isOpen, initialIndex]);
+  const p = (d: number) => { const n = index + d; if (n >= 0 && n < images.length) { setDirection(d); setIndex(n); } };
+  const handleDragEnd = (_: any, info: any) => { if (info.offset.x < -50 && index < images.length - 1) p(1); else if (info.offset.x > 50 && index > 0) p(-1); };
   if (!isOpen || images.length === 0) return null;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col justify-center overflow-hidden bg-black/98 backdrop-blur-2xl">
-      <div className="absolute top-0 left-0 w-full p-4 flex justify-between z-20">
-        <span className="text-white/80 font-mono text-sm bg-black/40 px-3 py-1 rounded-full">
-          {index + 1} / {images.length}
-        </span>
-        <button onClick={onClose} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors">
-          <X className="w-6 h-6" />
-        </button>
-      </div>
-      <div className="flex-1 flex items-center justify-center relative w-full h-full">
-        <AnimatePresence initial={false} custom={direction} mode="popLayout">
-          <motion.img 
-            key={index} 
-            src={images[index]} 
-            custom={direction} 
-            variants={{ 
-              enter: (d: number) => ({ x: d > 0 ? 600 : -600, opacity: 0 }), 
-              center: { x: 0, opacity: 1 }, 
-              exit: (d: number) => ({ x: d < 0 ? 600 : -600, opacity: 0 }) 
-            }} 
-            initial="enter" 
-            animate="center" 
-            exit="exit" 
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            onDragEnd={handleDragEnd}
-            className="absolute max-w-full max-h-full object-contain" 
-          />
-        </AnimatePresence>
-      </div>
-    </div>
-  );
+  return (<div className="fixed inset-0 z-[100] flex flex-col justify-center overflow-hidden bg-black/98 backdrop-blur-2xl"><div className="absolute top-0 left-0 w-full p-4 flex justify-between z-20"><span className="text-white/80 font-mono text-sm bg-black/40 px-3 py-1 rounded-full">{index + 1} / {images.length}</span><button onClick={onClose} className="p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"><X className="w-6 h-6" /></button></div><div className="flex-1 flex items-center justify-center relative w-full h-full"><AnimatePresence initial={false} custom={direction} mode="popLayout"><motion.img key={index} src={images[index]} custom={direction} variants={{ enter: (d: number) => ({ x: d > 0 ? 600 : -600, opacity: 0 }), center: { x: 0, opacity: 1 }, exit: (d: number) => ({ x: d < 0 ? 600 : -600, opacity: 0 }) }} initial="enter" animate="center" exit="exit" drag="x" dragConstraints={{ left: 0, right: 0 }} onDragEnd={handleDragEnd} className="absolute max-w-full max-h-full object-contain" /></AnimatePresence></div></div>);
 }

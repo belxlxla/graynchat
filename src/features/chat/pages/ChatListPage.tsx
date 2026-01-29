@@ -25,7 +25,7 @@ interface ChatRoom {
 
 interface Friend {
   id: number;
-  friend_user_id: string; // 매칭을 위해 추가
+  friend_user_id: string; 
   name: string;
   avatar: string | null;
 }
@@ -59,7 +59,6 @@ export default function ChatListPage() {
       if (error) throw error;
 
       if (rooms) {
-        // ✨ 에러 수정: 1:1 채팅방 ID에서 상대방의 UUID만 추출
         const friendUUIDs = rooms
           .filter(r => r.type === 'individual' || !r.type)
           .map(r => r.id.split('_').find((id: string) => id !== user.id))
@@ -67,7 +66,6 @@ export default function ChatListPage() {
 
         let friendsData: Friend[] = [];
         if (friendUUIDs.length > 0) {
-          // ✨ 에러 수정: 'id'(bigint)가 아닌 'friend_user_id'(text/uuid) 컬럼으로 조회
           const { data: profiles } = await supabase
             .from('friends')
             .select('id, friend_user_id, name, avatar')
@@ -78,8 +76,6 @@ export default function ChatListPage() {
 
         const formattedData: ChatRoom[] = rooms.map((room: any) => {
           const isGroup = room.type === 'group';
-          
-          // ✨ 매칭 로직 수정
           const friendIdFromRoom = !isGroup ? room.id.split('_').find((id: string) => id !== user.id) : null;
           const matchedProfile = !isGroup ? friendsData?.find(f => f.friend_user_id === friendIdFromRoom) : null;
           
@@ -90,7 +86,7 @@ export default function ChatListPage() {
             avatar: !isGroup && matchedProfile ? matchedProfile.avatar : (room.avatar || null),
             membersCount: room.members_count || (isGroup ? 3 : 1),
             lastMessage: room.last_message || '대화를 시작해보세요!',
-            timestamp: new Date(room.updated_at).toLocaleDateString(),
+            timestamp: new Date(room.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             unreadCount: room.unread_count || 0,
             isMuted: false
           };
@@ -103,6 +99,32 @@ export default function ChatListPage() {
       setIsLoading(false);
     }
   }, [user]);
+
+  // ✨ 채팅방 목록 실시간 업데이트 구독
+  useEffect(() => {
+    if (!user) return;
+    fetchChats();
+
+    const channel = supabase
+      .channel('chat_list_realtime')
+      .on(
+        'postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'chat_rooms', 
+          filter: `user_id=eq.${user.id}` 
+        }, 
+        () => {
+          fetchChats(); // 데이터 변경 시 리스트 재조회
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, fetchChats]);
 
   const fetchFriends = useCallback(async () => {
     if (!user) return;
@@ -121,9 +143,8 @@ export default function ChatListPage() {
   }, [user]);
 
   useEffect(() => {
-    fetchChats();
     fetchFriends();
-  }, [fetchChats, fetchFriends]);
+  }, [fetchFriends]);
 
   const handleLeaveChat = async (id: string) => {
     if (!user) return;
@@ -275,7 +296,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
     if (selectedIds.length === 0 || !user) return toast.error('상대를 선택해주세요.'); 
     try {
       const isGroup = selectedIds.length > 1;
-      // 1:1 채팅인 경우 uuid_uuid 형식을 유지하기 위해 수정
       let roomId = "";
       if (!isGroup) {
         roomId = [user.id, friends.find(f => f.id === selectedIds[0])?.friend_user_id].sort().join("_");
