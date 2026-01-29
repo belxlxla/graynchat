@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
 // ✨ Auth Context
@@ -61,6 +61,7 @@ function PublicRoute() {
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const { loading } = useAuth();
+  const navigate = useNavigate(); // ✨ navigate 함수 추가
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('grayn_theme') || 'dark';
@@ -84,9 +85,15 @@ function AppContent() {
       </Route>
 
       <Route element={<PrivateRoute />}>
-        {/* ✨ Props 전달 에러 해결: 컴포넌트가 이제 인터페이스를 통해 이 값들을 수용합니다. */}
-        <Route path="/auth/phone" element={<PhoneAuthPage onBackToLogin={() => window.history.back()} onNewUser={() => window.location.href='/auth/profile'} />} />
-        <Route path="/auth/profile" element={<ProfileSetupPage onComplete={() => window.location.href='/main/friends'} />} />
+        {/* ✨ window.location.href 대신 navigate를 사용하여 새로고침 없이 스무스하게 이동 */}
+        <Route 
+          path="/auth/phone" 
+          element={<PhoneAuthPage onBackToLogin={() => navigate('/auth/login')} onNewUser={() => navigate('/auth/profile')} />} 
+        />
+        <Route 
+          path="/auth/profile" 
+          element={<ProfileSetupPage onComplete={() => navigate('/main/friends')} />} 
+        />
 
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />
@@ -98,10 +105,8 @@ function AppContent() {
 
         <Route path="/chat/room/:chatId" element={<ChatRoomPage />} />
         <Route path="/chat/room/:chatId/settings" element={<ChatRoomSettingsPage />} />
-
         <Route path="/settings/account" element={<AccountInfoPage />} />
         <Route path="/settings/account/withdraw" element={<WithdrawPage />} />
-
         <Route path="/settings/security" element={<SecurityPage />} />
         <Route path="/settings/security/privacy" element={<PrivacyManagementPage />} />
         <Route path="/settings/security/account" element={<AccountSecurityPage />} />
@@ -109,7 +114,6 @@ function AppContent() {
         <Route path="/settings/security/password" element={<PasswordChangePage />} />
         <Route path="/settings/security/manage" element={<DeviceManagementPage />} />
         <Route path="/settings/security/lock" element={<ScreenLockPage />} />
-
         <Route path="/settings/friends" element={<FriendsSettingsPage />} />
         <Route path="/settings/friends/blocked" element={<BlockedFriendsPage />} />
         <Route path="/settings/notification" element={<NotificationSettingsPage />} />
@@ -126,7 +130,7 @@ function AppContent() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
@@ -137,5 +141,3 @@ function App() {
     </AuthProvider>
   );
 }
-
-export default App;
