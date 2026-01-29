@@ -45,7 +45,6 @@ export default function SignUpPage() {
     setAccountData({ ...accountData, [e.target.name]: e.target.value });
   };
 
-  // 전체 동의 핸들러
   const handleAllAgree = () => {
     const isAllChecked = Object.values(agreedTerms).every(val => val);
     setAgreedTerms({
@@ -59,12 +58,10 @@ export default function SignUpPage() {
     });
   };
 
-  // 개별 동의 핸들러
   const handleTermToggle = (key: keyof typeof agreedTerms) => {
     setAgreedTerms(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // 약관 상세 보기 핸들러
   const handleOpenPolicy = (key: string) => {
     const url = policyLinks[key];
     if (url) {
@@ -72,7 +69,6 @@ export default function SignUpPage() {
     }
   };
 
-  // 필수 약관 동의 여부 확인
   const isRequiredAgreed = useMemo(() => {
     return agreedTerms.service && 
            agreedTerms.location && 
@@ -92,7 +88,7 @@ export default function SignUpPage() {
 
     setIsLoading(true);
     try {
-      // 1. Supabase Auth 계정 생성
+      // 1. Supabase Auth 회원가입
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: accountData.email,
         password: accountData.password,
@@ -106,35 +102,32 @@ export default function SignUpPage() {
       if (signUpError) throw signUpError;
 
       if (data.user) {
-        // 2. public.users 테이블에 추가 데이터 저장 (또는 업데이트)
-        // 만약 트리거가 이미 생성했다면 그 위에 약관 동의 여부를 덮어씌웁니다.
-        const { error: upsertError } = await supabase.from('users').upsert({
-          id: data.user.id,
-          email: accountData.email,
-          name: accountData.name,
-          status_message: '반가워요!',
-          is_terms_agreed: true,
-          is_marketing_agreed: agreedTerms.marketing,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'id'
-        });
+        // 2. public.users 테이블에 데이터 명시적 저장
+        // 트리거와의 충돌을 피하기 위해 upsert를 사용하며, 필요한 컬럼만 정확히 매칭합니다.
+        const { error: dbError } = await supabase
+          .from('users')
+          .upsert({
+            id: data.user.id,
+            email: accountData.email,
+            name: accountData.name,
+            status_message: '반가워요!',
+            is_terms_agreed: true,
+            is_marketing_agreed: agreedTerms.marketing,
+          }, { 
+            onConflict: 'id' 
+          });
 
-        if (upsertError) throw upsertError;
+        if (dbError) {
+          console.error('DB 저장 오류 세부사항:', dbError);
+          throw new Error('프로필 정보를 저장할 수 없습니다. 관리자에게 문의하세요.');
+        }
 
         toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
         navigate('/auth/phone'); 
-      } else if (!data.session) {
-        toast('이메일 인증 링크를 보냈습니다. 확인해주세요.', { icon: '📧' });
       }
     } catch (error: any) {
-      console.error('Signup Error:', error);
-      // 구체적인 에러 메시지 처리
-      if (error.message.includes('users')) {
-        toast.error('데이터베이스 저장 중 오류가 발생했습니다. SQL 설정을 확인해 주세요.');
-      } else {
-        toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
-      }
+      console.error('Signup Process Error:', error);
+      toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -217,11 +210,7 @@ export default function SignUpPage() {
                         {term.label} <span className={term.required ? 'text-brand-DEFAULT' : 'text-[#636366]'}>({term.required ? '필수' : '선택'})</span>
                       </span>
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={() => handleOpenPolicy(term.key)}
-                      className="p-1 text-[#636366] hover:text-white transition-colors"
-                    >
+                    <button type="button" onClick={() => handleOpenPolicy(term.key)} className="p-1 text-[#636366] hover:text-white transition-colors">
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -229,12 +218,7 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            <button 
-              type="submit" 
-              disabled={isLoading || !isRequiredAgreed} 
-              className={`w-full py-4 font-bold rounded-2xl mt-4 transition-all shadow-lg flex items-center justify-center gap-2 
-                ${isRequiredAgreed ? 'bg-brand-DEFAULT text-white hover:bg-brand-hover' : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed border border-[#3A3A3C]'}`}
-            >
+            <button type="submit" disabled={isLoading || !isRequiredAgreed} className={`w-full py-4 font-bold rounded-2xl mt-4 transition-all shadow-lg flex items-center justify-center gap-2 ${isRequiredAgreed ? 'bg-brand-DEFAULT text-white hover:bg-brand-hover' : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed border border-[#3A3A3C]'}`}>
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : '다음 (본인인증)'}
             </button>
           </form>
