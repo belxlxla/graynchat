@@ -362,13 +362,9 @@ export default function FriendsListPage() {
           <div className="flex-1 overflow-y-auto custom-scrollbar pb-4">
             {isLoading ? (
               <div className="flex justify-center items-center h-[50vh] text-[#8E8E93]"><RefreshCw className="w-6 h-6 animate-spin" /></div>
-            ) : friends.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-[60vh] text-[#8E8E93] px-10 text-center">
-                    <UserIcon className="w-12 h-12 opacity-20 mb-4" />
-                    <p className="text-sm">등록된 친구가 없습니다.<br/>친구를 추가하거나 동기화해보세요.</p>
-                </div>
             ) : (
               <>
+                {/* ✨ 내 프로필 영역 - 검색 중이 아닐 때 무조건 노출 */}
                 {!searchQuery && (
                   <div className="px-5">
                       <div onClick={() => setShowEditProfileModal(true)} className="py-4 flex items-center gap-3 cursor-pointer hover:bg-white/5 rounded-xl px-2 transition-colors">
@@ -383,22 +379,31 @@ export default function FriendsListPage() {
                       <div className="h-[1px] bg-[#2C2C2E] w-full my-2" />
                   </div>
                 )}
-                <div className="animate-fade-in">
-                    {favorites.length > 0 && (
-                      <div className="mb-2">
-                        <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">즐겨찾기</p>
-                        {favorites.map(f => (
+
+                {/* ✨ 친구 목록 영역 - 비어 있을 경우 전용 UI 노출 */}
+                {friends.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-[40vh] text-[#8E8E93] px-10 text-center">
+                        <UserIcon className="w-12 h-12 opacity-20 mb-4" />
+                        <p className="text-sm">등록된 친구가 없습니다.<br/>친구를 추가하거나 동기화해보세요.</p>
+                    </div>
+                ) : (
+                  <div className="animate-fade-in">
+                      {favorites.length > 0 && (
+                        <div className="mb-2">
+                          <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">즐겨찾기</p>
+                          {favorites.map(f => (
+                            <FriendItem key={f.id} friend={f} onClick={() => setSelectedFriend(f)} onBlock={() => setBlockTarget(f)} onDelete={() => handleDeleteClick(f.id)} />
+                          ))}
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">친구 {normals.length}</p>
+                        {normals.map(f => (
                           <FriendItem key={f.id} friend={f} onClick={() => setSelectedFriend(f)} onBlock={() => setBlockTarget(f)} onDelete={() => handleDeleteClick(f.id)} />
                         ))}
                       </div>
-                    )}
-                    <div>
-                      <p className="text-[11px] text-[#636366] font-medium mb-1 px-5 mt-2">친구 {normals.length}</p>
-                      {normals.map(f => (
-                        <FriendItem key={f.id} friend={f} onClick={() => setSelectedFriend(f)} onBlock={() => setBlockTarget(f)} onDelete={() => handleDeleteClick(f.id)} />
-                      ))}
-                    </div>
-                </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -487,7 +492,7 @@ function DeleteFriendModal({ friend, onClose, onConfirm }: { friend: Friend | nu
   if (!friend) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClose}>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={(e) => e.stopPropagation()} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]">
         <div className="p-6 text-center"><div className="w-12 h-12 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle className="w-6 h-6 text-[#EC5022]" /></div><h3 className="text-white font-bold text-lg mb-2">{friend.name}님을 삭제하시겠습니까?</h3><p className="text-xs text-[#8E8E93] leading-relaxed">삭제된 친구는<br/>친구 추가 메뉴에서 다시 추가할 수 있습니다.</p></div>
         <div className="flex border-t border-[#3A3A3C] h-12"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-medium text-[15px] hover:bg-[#2C2C2E] transition-colors border-r border-[#3A3A3C]">취소</button><button onClick={() => onConfirm()} className="flex-1 text-[#EC5022] font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors">삭제</button></div>
@@ -528,7 +533,6 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
   const [phone, setPhone] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
-  // ✨ [로직 수정] 가입 유저 확인 후 친구 추가
   const handleAddDirectly = async () => { 
     if (!name || !phone) return toast.error('이름과 전화번호를 입력해주세요.'); 
     
@@ -539,12 +543,11 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
 
-      // 1. 그레인에 가입된 사용자인지 users 테이블에서 검색
       const { data: targetUser, error: searchError } = await supabase
         .from('users')
         .select('*')
         .eq('name', name.trim())
-        .eq('phone', phone.replace(/[^0-9]/g, '')) // 전화번호 숫자만 추출하여 비교
+        .eq('phone', phone.replace(/[^0-9]/g, '')) 
         .maybeSingle();
 
       if (searchError) throw searchError;
@@ -554,13 +557,11 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
         return toast.error('그레인에 가입된 사용자가 아닙니다.');
       }
 
-      // 2. 본인을 추가하려는지 확인
       if (targetUser.id === session.user.id) {
         toast.dismiss(loadingToast);
         return toast.error('본인은 친구로 추가할 수 없습니다.');
       }
 
-      // 3. 이미 친구인지 확인
       const { data: alreadyFriend } = await supabase
         .from('friends')
         .select('id')
@@ -573,13 +574,12 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: { isOpen: boolean; o
         return toast.error('이미 등록된 친구입니다.');
       }
 
-      // 4. 가입된 유저 정보를 바탕으로 친구 목록에 삽입
       const { error: insertError } = await supabase.from('friends').insert([{ 
         user_id: session.user.id,
         name: targetUser.name, 
         phone: targetUser.phone, 
-        avatar: targetUser.avatar, // 가입된 유저의 프로필 사진 연동
-        status: targetUser.status_message, // 가입된 유저의 상태메시지 연동
+        avatar: targetUser.avatar, 
+        status: targetUser.status_message, 
         friendly_score: 50, 
         is_favorite: false, 
         is_blocked: false 
