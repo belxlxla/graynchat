@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Send, Plus, MoreHorizontal, 
   ImageIcon, Smile, Search, Camera, 
-  FileText, X, Download, ChevronRight, ChevronUp, ChevronDown, AtSign, User as UserIcon,
+  FileText, X, Download, ChevronUp, ChevronDown, AtSign, User as UserIcon,
   UserPlus, Ban, Unlock, ShieldAlert, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
