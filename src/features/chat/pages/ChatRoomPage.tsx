@@ -511,7 +511,7 @@ function MenuButton({ icon, label, onClick }: { icon: React.ReactNode, label: st
 
 function ImageViewerModal({ isOpen, initialIndex, images, onClose }: { isOpen: boolean, initialIndex: number, images: string[], onClose: () => void }) {
   const [index, setIndex] = useState(initialIndex);
-  const [direction, setDirection] = useState(0);
+  const [direction] = useState(0);
   
   useEffect(() => { 
     if (isOpen) setIndex(initialIndex); 
