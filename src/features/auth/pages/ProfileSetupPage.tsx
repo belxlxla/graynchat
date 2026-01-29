@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Check, Image as ImageIcon, X, Eye, Trash2, User as UserIcon } from 'lucide-react';
+import { Camera, Check, Image as ImageIcon, X, Eye, User as UserIcon } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Point, Area } from 'react-easy-crop';
 import toast from 'react-hot-toast';
