@@ -37,7 +37,7 @@ type StepType = 'permission' | 'complete' | 'list';
 // === [Main Component] ===
 export default function FriendsListPage() {
   const navigate = useNavigate();
-  // [수정] 사용하지 않는 user 변수 제거 (TS6133 해결)
+  // [수정] 메인 컴포넌트에서 사용하지 않는 user 변수 제거 (TS6133 해결)
 
   const [step, setStep] = useState<StepType>(() => {
     const savedPermission = localStorage.getItem('grayn_contact_permission');
@@ -1076,14 +1076,17 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   const { user } = useAuth();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  // [수정] chatType 상태를 모달 내부에서 관리하여 UI와 동기화
+  // [수정] chatType 상태를 모달 내부에서 관리하여 UI와 동기화 (TS2304 등 해결)
   const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
+  // [수정] step 상태 추가 (TS2304 해결)
+  const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
 
   useEffect(() => { 
     if (isOpen) {
       setSelectedIds([]);
       setSearchTerm('');
       setChatType('individual'); // 모달 열릴 때 초기화
+      setStep('select-type');
     }
   }, [isOpen]);
 
@@ -1270,26 +1273,26 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
               {filteredFriends.length > 0 ? (
-                filteredFriends.map(f => { 
-                  const isSelected = selectedIds.includes(f.id); 
+                filteredFriends.map(friend => { 
+                  const isSelected = selectedIds.includes(friend.id); 
                   return (
                     <div 
-                      key={f.id} 
-                      onClick={() => toggleSelection(f.id)} 
+                      key={friend.id} 
+                      onClick={() => toggleSelection(friend.id)} 
                       className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
                         isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
                       }`}
                     >
                       <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
-                        {f.avatar ? (
-                          <img src={f.avatar} className="w-full h-full object-cover" alt="" />
+                        {friend.avatar ? (
+                          <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/>
                         ) : (
-                          <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50" />
+                          <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
                         )}
                       </div>
                       <div className="flex-1">
                         <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
-                          {f.name}
+                          {friend.name}
                         </p>
                       </div>
                       {isSelected ? (
@@ -1326,23 +1329,56 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   );
 }
 
-function ModalBackdrop({ children, onClick }: { 
-  children: React.ReactNode; 
-  onClick?: () => void 
+function EditTitleModal({ isOpen, onClose, currentTitle, onSave }: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  currentTitle: string; 
+  onSave: (val: string) => void; 
 }) {
+  const [text, setText] = useState(currentTitle);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  useEffect(() => { 
+    if (isOpen) { 
+      setText(currentTitle); 
+      setTimeout(() => inputRef.current?.focus(), 100); 
+    } 
+  }, [isOpen, currentTitle]);
+  
+  if (!isOpen) return null;
+  
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClick}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        exit={{ opacity: 0 }} 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
-      />
-      <div className="relative z-10 w-full flex justify-center pointer-events-none">
-        <div className="pointer-events-auto w-full flex justify-center">
-          {children}
+        initial={{ scale: 0.95, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        onClick={e => e.stopPropagation()} 
+        className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] rounded-2xl p-6 border border-[#3A3A3C]"
+      >
+        <h3 className="text-white font-bold text-lg mb-4 text-center">이름 변경</h3>
+        <input 
+          ref={inputRef} 
+          type="text" 
+          value={text} 
+          onChange={e => setText(e.target.value)} 
+          className="w-full bg-[#2C2C2E] text-white p-3 rounded-xl mb-6 focus:outline-none" 
+        />
+        <div className="flex gap-3">
+          <button 
+            onClick={onClose} 
+            className="flex-1 h-11 rounded-xl bg-[#3A3A3C] text-white"
+          >
+            취소
+          </button>
+          <button 
+            onClick={() => onSave(text)} 
+            className="flex-1 h-11 rounded-xl bg-brand-DEFAULT text-white font-bold"
+          >
+            확인
+          </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
