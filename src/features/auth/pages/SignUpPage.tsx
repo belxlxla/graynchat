@@ -129,105 +129,46 @@ export default function SignUpPage() {
     setIsLoading(true);
     
     try {
-      // 먼저 이메일 중복 체크
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', accountData.email.trim())
-        .maybeSingle();
-
-      if (existingUser) {
-        toast.error('이미 가입된 이메일입니다.');
-        setIsLoading(false);
-        return;
-      }
-
-      // Auth 회원가입
+      // 1. Auth 회원가입
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: accountData.email.trim(),
         password: accountData.password,
         options: { 
-          data: { 
-            full_name: accountData.name.trim()
-          },
-          emailRedirectTo: undefined // 이메일 확인 비활성화
+          data: { full_name: accountData.name.trim() }
         }
       });
 
       if (signUpError) throw signUpError;
       if (!authData.user) throw new Error('회원가입에 실패했습니다.');
 
-      // 약간의 딜레이 후 users 테이블 확인 (트리거가 작동할 시간)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // users 테이블에 데이터가 이미 있는지 확인
-      const { data: userData } = await supabase
+      // 2. public.users 테이블에 데이터 저장 (스키마 에러 방지를 위해 필요한 필드만 upsert)
+      const { error: upsertError } = await supabase
         .from('users')
-        .select('*')
-        .eq('id', authData.user.id)
-        .maybeSingle();
+        .upsert({
+          id: authData.user.id,
+          email: accountData.email.trim(),
+          name: accountData.name.trim(),
+          is_terms_agreed: true,
+          is_marketing_agreed: agreedTerms.marketing,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
 
-      if (userData) {
-        // 이미 데이터가 있다면 업데이트
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({
-            name: accountData.name.trim(),
-            email: accountData.email.trim(),
-            is_terms_agreed: true,
-            is_marketing_agreed: agreedTerms.marketing,
-            phone: null,
-            status_message: null,
-            avatar: null,
-            bg_image: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', authData.user.id);
+      if (upsertError) throw upsertError;
 
-        if (updateError) throw updateError;
-      } else {
-        // 데이터가 없다면 삽입
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: authData.user.id,
-            email: accountData.email.trim(),
-            name: accountData.name.trim(),
-            is_terms_agreed: true,
-            is_marketing_agreed: agreedTerms.marketing,
-            phone: null,
-            status_message: null,
-            avatar: null,
-            bg_image: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-        if (insertError) throw insertError;
-      }
-
-      // 로그아웃 (본인인증 전까지 로그인 상태 유지하지 않음)
-      await supabase.auth.signOut();
-
-      toast.success('계정이 생성되었습니다!');
-      
-      // 계정 정보를 세션 스토리지에 임시 저장
+      // 3. 임시 세션 데이터 저장 (다음 단계를 위함)
       sessionStorage.setItem('signup_email', accountData.email.trim());
       sessionStorage.setItem('signup_password', accountData.password);
       sessionStorage.setItem('signup_user_id', authData.user.id);
 
-      // 본인인증 페이지로 이동
-      setTimeout(() => {
-        navigate('/auth/phone', { replace: true });
-      }, 500);
+      toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
+      
+      // 4. 휴대폰 인증 페이지로 이동
+      navigate('/auth/phone', { replace: true });
 
     } catch (error: any) {
       console.error('Signup Error:', error);
-      
       if (error.message?.includes('already registered')) {
         toast.error('이미 가입된 이메일입니다.');
-      } else if (error.message?.includes('Invalid email')) {
-        toast.error('유효하지 않은 이메일 형식입니다.');
       } else {
         toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
       }
@@ -328,27 +269,14 @@ export default function SignUpPage() {
                   </div>
                 </div>
                 {passwordError && accountData.password && (
-                  <motion.p 
-                    initial={{ opacity: 0, y: -5 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    className="text-xs text-red-500 ml-1 mt-1"
-                  >
+                  <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-red-500 ml-1 mt-1">
                     {passwordError}
                   </motion.p>
                 )}
                 {isPasswordValid && (
-                  <motion.p 
-                    initial={{ opacity: 0, y: -5 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    className="text-xs text-green-500 ml-1 mt-1"
-                  >
+                  <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-green-500 ml-1 mt-1">
                     ✓ 안전한 비밀번호입니다.
                   </motion.p>
-                )}
-                {!accountData.password && (
-                  <p className="text-xs text-[#636366] ml-1 mt-1">
-                    • 8자리 이상 • 대문자 • 소문자 • 숫자 • 특수문자 포함
-                  </p>
                 )}
               </div>
 
@@ -388,21 +316,8 @@ export default function SignUpPage() {
                   </div>
                 </div>
                 {confirmPasswordError && accountData.confirmPassword && (
-                  <motion.p 
-                    initial={{ opacity: 0, y: -5 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    className="text-xs text-red-500 ml-1 mt-1"
-                  >
+                  <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-red-500 ml-1 mt-1">
                     {confirmPasswordError}
-                  </motion.p>
-                )}
-                {isConfirmPasswordValid && (
-                  <motion.p 
-                    initial={{ opacity: 0, y: -5 }} 
-                    animate={{ opacity: 1, y: 0 }} 
-                    className="text-xs text-green-500 ml-1 mt-1"
-                  >
-                    ✓ 비밀번호가 일치합니다.
                   </motion.p>
                 )}
               </div>
@@ -417,9 +332,7 @@ export default function SignUpPage() {
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
                     Object.values(agreedTerms).every(v => v) ? 'bg-brand-DEFAULT' : 'bg-[#3A3A3C]'
                   }`}>
-                    <Check className={`w-4 h-4 ${
-                      Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'
-                    }`} />
+                    <Check className={`w-4 h-4 ${Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'}`} />
                   </div>
                   <span className="font-bold text-sm text-white">약관 전체동의</span>
                 </div>
@@ -440,11 +353,7 @@ export default function SignUpPage() {
                         </span>
                       </span>
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={() => handleOpenPolicy(term.key)} 
-                      className="p-1 text-[#636366] hover:text-white transition-colors"
-                    >
+                    <button type="button" onClick={() => handleOpenPolicy(term.key)} className="p-1 text-[#636366] hover:text-white transition-colors">
                       <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
