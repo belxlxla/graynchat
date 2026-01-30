@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -21,14 +21,15 @@ interface Message {
   is_read: boolean; 
 }
 
-interface Friend { 
-  id: number; 
-  friend_user_id: string; 
-  name: string; 
-  avatar: string | null; 
+interface MemberProfile {
+  id: string;
+  name: string;
+  avatar: string | null;
 }
 
+// === [Utility Functions - 에러 해결의 핵심] ===
 const getFileType = (content: string) => {
+  if (!content) return 'text';
   const isStorageFile = content.includes('chat-uploads');
   if (isStorageFile) {
     const ext = content.split('.').pop()?.toLowerCase();
@@ -54,9 +55,12 @@ export default function ChatRoomPage() {
   const { user } = useAuth();
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [roomTitle, setRoomTitle] = useState('대화방'); 
+  const [roomTitle, setRoomTitle] = useState('대화 중...'); 
   const [isLoading, setIsLoading] = useState(true);
-  const [roomMembers, setRoomMembers] = useState<Friend[]>([]);
+  
+  // 참여자 프로필 정보 (목업 방지)
+  const [memberProfiles, setMemberProfiles] = useState<Record<string, MemberProfile>>({});
+  
   const [isFriend, setIsFriend] = useState<boolean>(true);
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
   const [inputText, setInputText] = useState('');
@@ -89,12 +93,31 @@ export default function ChatRoomPage() {
     messageRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = useCallback(async () => {
     if (!chatId || !user) return;
     try {
-      const friendUUID = chatId.split('_').find(id => id !== user.id);
-      if (!friendUUID) return;
+      // ✨ [400 에러 해결]: ID 형식이 올바르지 않은 경우(예: 숫자 10) 필터링
+      const ids = chatId.split('_');
+      const friendUUID = ids.find(id => id !== user.id && id.length > 10);
+      
+      if (!friendUUID) {
+        setIsLoading(false);
+        return;
+      }
 
+      // 1. 참여자 프로필 정보 가져오기 (목업 방지)
+      const { data: profiles } = await supabase
+        .from('users')
+        .select('id, name, avatar')
+        .in('id', [user.id, friendUUID]);
+
+      if (profiles) {
+        const profileMap: Record<string, MemberProfile> = {};
+        profiles.forEach(p => { profileMap[p.id] = p; });
+        setMemberProfiles(profileMap);
+      }
+
+      // 2. 친구 상태 확인 (정확한 UUID 사용)
       const { data: friendRecord } = await supabase
         .from('friends')
         .select('*')
@@ -104,46 +127,84 @@ export default function ChatRoomPage() {
 
       if (friendRecord) {
         setRoomTitle(friendRecord.name);
-        setRoomMembers([{ id: friendRecord.id, friend_user_id: friendRecord.friend_user_id, name: friendRecord.name, avatar: friendRecord.avatar }]);
         setIsFriend(true);
         setIsBlocked(!!friendRecord.is_blocked);
       } else {
         setIsFriend(false);
-        const { data: userData } = await supabase.from('users').select('name').eq('id', friendUUID).maybeSingle();
-        setRoomTitle(userData?.name || '알 수 없는 사용자');
+        setRoomTitle(profileMap[friendUUID]?.name || '알 수 없는 사용자');
       }
 
-      const { data: msgData } = await supabase.from('messages').select('*').eq('room_id', chatId).order('created_at', { ascending: true }); 
+      // 3. 메시지 히스토리 로드
+      const { data: msgData } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', chatId)
+        .order('created_at', { ascending: true }); 
+      
       setMessages(msgData || []);
-    } catch (e) { console.error(e); } finally { setIsLoading(false); }
-  };
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [chatId, user]);
 
   useEffect(() => {
     fetchInitialData();
     if (!chatId) return;
 
     const channel = supabase.channel(`room_${chatId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${chatId}` }, (payload) => {
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'messages', 
+        filter: `room_id=eq.${chatId}` 
+      }, (payload) => {
         const newMsg = payload.new as Message;
-        setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
-      }).subscribe();
+        setMessages(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+      })
+      .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [chatId, user?.id]);
+  }, [chatId, fetchInitialData]);
 
-  useEffect(() => { if (scrollRef.current && !isSearching) scrollRef.current.scrollIntoView({ behavior: 'smooth' }); }, [messages, isSearching]);
+  useEffect(() => {
+    if (scrollRef.current && !isSearching) scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isSearching]);
+
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || !chatId || !user || isBlocked) return;
+    const textToSend = inputText;
+    setInputText('');
+    try {
+      await supabase.from('chat_rooms').upsert({ 
+        id: chatId, user_id: user.id, title: roomTitle, last_message: textToSend, updated_at: new Date().toISOString() 
+      }, { onConflict: 'id' });
+      
+      const { data: newMsg, error } = await supabase.from('messages').insert({ 
+        room_id: chatId, sender_id: user.id, content: textToSend, is_read: false 
+      }).select().single();
+      
+      if (error) throw error;
+      if (newMsg) setMessages(prev => [...prev, newMsg]);
+    } catch (e) {
+      toast.error('전송 실패');
+      setInputText(textToSend);
+    }
+  };
 
   const handleAddFriend = async () => {
-    if (!chatId || !user) return;
-    const friendUUID = chatId.split('_').find(id => id !== user.id);
-    if (!friendUUID) return;
+    const friendUUID = chatId?.split('_').find(id => id !== user?.id && id.length > 10);
+    if (!friendUUID || !user) return;
     const addToast = toast.loading('친구 추가 중...');
     try {
       const { error } = await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendUUID,
         name: roomTitle,
-        is_blocked: false,
         friendly_score: 50 
       });
       if (error) throw error;
@@ -153,19 +214,8 @@ export default function ChatRoomPage() {
     } catch { toast.error('실패', { id: addToast }); }
   };
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim() || !chatId || !user || isBlocked) return;
-    const textToSend = inputText;
-    setInputText('');
-    try {
-      await supabase.from('chat_rooms').upsert({ id: chatId, user_id: user.id, title: roomTitle, last_message: textToSend, updated_at: new Date().toISOString() }, { onConflict: 'id' });
-      const { data: newMsg, error } = await supabase.from('messages').insert({ room_id: chatId, sender_id: user.id, content: textToSend, is_read: false }).select().single();
-      if (error) throw error;
-      if (newMsg) setMessages(prev => [...prev, newMsg]);
-    } catch (e) { toast.error('전송 실패'); setInputText(textToSend); }
-  };
-
   const renderMessageContent = (msg: Message, isMe: boolean) => {
+    // ✨ [getFileType ReferenceError 해결]: 함수가 상단에 정의됨
     const type = getFileType(msg.content);
     if (type === 'image') return <div className="rounded-2xl overflow-hidden border border-[#3A3A3C] max-w-[240px]"><img src={msg.content} alt="" className="w-full h-auto" /></div>;
     if (['pdf', 'file'].includes(type)) {
@@ -177,7 +227,7 @@ export default function ChatRoomPage() {
         </div>
       );
     }
-    return <div className={`p-3 rounded-2xl ${isMe ? 'bg-brand-DEFAULT rounded-tr-none' : 'bg-[#2C2C2E] rounded-tl-none'}`}>{msg.content}</div>;
+    return <div className={`p-3 rounded-2xl text-[15px] ${isMe ? 'bg-brand-DEFAULT rounded-tr-none' : 'bg-[#2C2C2E] rounded-tl-none border border-white/5'}`}>{msg.content}</div>;
   };
 
   return (
@@ -197,18 +247,8 @@ export default function ChatRoomPage() {
         {isSearching && (
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="bg-[#2C2C2E] px-4 py-2 border-b border-[#3A3A3C] flex items-center gap-2 overflow-hidden">
             <div className="flex-1 bg-[#1C1C1E] rounded-lg px-3 py-1.5 flex items-center gap-2">
-              <input 
-                autoFocus
-                value={searchQuery} 
-                onChange={e => { setSearchQuery(e.target.value); setCurrentSearchIndex(-1); }} 
-                placeholder="대화 내용 검색" 
-                className="flex-1 bg-transparent text-sm focus:outline-none" 
-              />
-              {searchQuery && (
-                <span className="text-[10px] text-[#8E8E93] font-mono">
-                  {searchResults.length > 0 ? `${currentSearchIndex + 1}/${searchResults.length}` : '0'}
-                </span>
-              )}
+              <input autoFocus value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentSearchIndex(-1); }} placeholder="대화 내용 검색" className="flex-1 bg-transparent text-sm focus:outline-none" />
+              {searchQuery && <span className="text-[10px] text-[#8E8E93] font-mono">{searchResults.length > 0 ? `${currentSearchIndex + 1}/${searchResults.length}` : '0'}</span>}
             </div>
             <div className="flex items-center gap-1">
               <button onClick={() => handleSearchMove('up')} className="p-1 hover:text-brand-DEFAULT"><ChevronUp className="w-4 h-4" /></button>
@@ -221,11 +261,11 @@ export default function ChatRoomPage() {
 
       {!isLoading && (!isFriend || isBlocked) && (
         <div className="bg-[#2C2C2E] p-4 flex items-center justify-between border-b border-[#3A3A3C] z-20">
-          <div className="flex items-center gap-3">
-            <ShieldAlert className="w-6 h-6 text-brand-DEFAULT" />
-            <div><p className="text-sm font-bold">{isBlocked ? '차단된 사용자' : '미등록 사용자'}</p><p className="text-[11px] text-[#8E8E93]">친구 추가 후 대화가 가능합니다.</p></div>
-          </div>
-          <button onClick={handleAddFriend} className="bg-brand-DEFAULT px-4 py-2 rounded-xl text-xs font-bold">친구 추가</button>
+          <ShieldAlert className="w-6 h-6 text-brand-DEFAULT" />
+          <div className="flex-1 ml-3"><p className="text-sm font-bold">{isBlocked ? '차단됨' : '미등록'}</p></div>
+          <button onClick={isBlocked ? undefined : handleAddFriend} className="bg-brand-DEFAULT px-4 py-2 rounded-xl text-xs font-bold">
+            {isBlocked ? '차단됨' : '친구 추가'}
+          </button>
         </div>
       )}
 
@@ -233,14 +273,12 @@ export default function ChatRoomPage() {
         {isLoading ? <div className="text-center mt-10 text-[#8E8E93]">로딩 중...</div> : 
          messages.map((msg) => {
            const isMe = msg.sender_id === user?.id;
+           const sender = memberProfiles[msg.sender_id];
            return (
-             <div 
-               key={msg.id} 
-               // ✨ 에러 수정: 중괄호 {}를 사용하여 반환값이 void가 되도록 수정
-               ref={(el) => { messageRefs.current[msg.id] = el; }} 
-               className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
-             >
-               {!isMe && <div className="w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 shrink-0 overflow-hidden"><img src={roomMembers[0]?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} alt="" /></div>}
+             <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+               {!isMe && <div className="w-9 h-9 rounded-[14px] bg-[#3A3A3C] mr-2 overflow-hidden border border-white/5">
+                 {sender?.avatar ? <img src={sender.avatar} className="w-full h-full object-cover" alt="" /> : <UserIcon className="w-5 h-5 m-auto mt-2 text-[#8E8E93] opacity-30" />}
+               </div>}
                <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                  {renderMessageContent(msg, isMe)}
                  <span className="text-[10px] text-[#636366] mt-1">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -258,9 +296,8 @@ export default function ChatRoomPage() {
             <textarea ref={inputRef} value={inputText} onChange={e => setInputText(e.target.value)} placeholder="메시지 입력" className="flex-1 bg-transparent text-[15px] focus:outline-none resize-none py-1" rows={1} />
             <button onClick={() => setShowMentionList(!showMentionList)} className="text-[#8E8E93]"><Smile className="w-6 h-6" /></button>
           </div>
-          <button onClick={handleSendMessage} disabled={!inputText.trim()} className={`p-3 rounded-full ${inputText.trim() ? 'bg-brand-DEFAULT text-white shadow-lg active:scale-95' : 'bg-[#2C2C2E] text-[#636366]'} transition-all`}><Send className="w-5 h-5" /></button>
+          <button onClick={handleSendMessage} disabled={!inputText.trim()} className={`p-3 rounded-full transition-all ${inputText.trim() ? 'bg-brand-DEFAULT text-white shadow-lg active:scale-95' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5" /></button>
         </div>
-
         <AnimatePresence>
           {isMenuOpen && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="grid grid-cols-4 gap-4 pb-2 pt-2 overflow-hidden">
@@ -272,10 +309,7 @@ export default function ChatRoomPage() {
           )}
         </AnimatePresence>
       </div>
-
-      <div className="hidden">
-        <X /><Download /><AtSign /><UserIcon /><Ban /><Unlock /><ExternalLink />
-      </div>
+      <div className="hidden"><AtSign /><X /><Ban /><Unlock /><ExternalLink /></div>
     </div>
   );
 }

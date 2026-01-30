@@ -58,11 +58,11 @@ export default function ChatListPage() {
       if (error) throw error;
 
       if (rooms) {
-        // ✨ [400 에러 및 매핑 수정]: 유효한 UUID 형식만 필터링 (숫자 '10' 등 방지)
+        // ✨ [400 에러 해결]: UUID 형식이 아닌 ID(예: 10)가 쿼리에 포함되지 않도록 필터링
         const friendUUIDs = rooms
           .filter(r => (r.type === 'individual' || !r.type) && r.id.includes('_'))
           .map(r => r.id.split('_').find((id: string) => id !== user.id))
-          .filter((id): id is string => !!id && id.length > 20); // UUID 길이는 통상 36자
+          .filter((id): id is string => !!id && id.length > 20);
 
         let friendsData: Friend[] = [];
         if (friendUUIDs.length > 0) {
@@ -83,7 +83,7 @@ export default function ChatListPage() {
             id: room.id.toString(),
             type: room.type || 'individual',
             title: isGroup ? room.title : (matchedProfile?.name || room.title || '알 수 없는 사용자'),
-            avatar: !isGroup && matchedProfile ? matchedProfile.avatar : (room.avatar || null), // ✨ 목업 대신 실제 아바타 매칭
+            avatar: !isGroup && matchedProfile ? matchedProfile.avatar : (room.avatar || null),
             membersCount: room.members_count || (isGroup ? 3 : 1),
             lastMessage: room.last_message || '대화를 시작해보세요!',
             timestamp: new Date(room.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -100,13 +100,13 @@ export default function ChatListPage() {
     }
   }, [user]);
 
-  // ✨ 리스트 실시간 업데이트 및 원복 방지
+  // ✨ 리스트 실시간 업데이트 및 원복 현상 해결
   useEffect(() => {
     if (!user) return;
     fetchChats();
 
     const channel = supabase
-      .channel(`chat_list_${user.id}`)
+      .channel(`chat_list_realtime_${user.id}`)
       .on(
         'postgres_changes', 
         { 
@@ -116,7 +116,6 @@ export default function ChatListPage() {
           filter: `user_id=eq.${user.id}` 
         }, 
         (payload) => {
-          // 삭제 이벤트인 경우 목록에서 즉시 제거하여 원복 현상 방지
           if (payload.eventType === 'DELETE') {
             setChats(prev => prev.filter(c => c.id !== payload.old.id));
           } else {
@@ -154,7 +153,7 @@ export default function ChatListPage() {
   const handleLeaveChat = async (id: string) => {
     if (!user) return;
     if (confirm('채팅방을 나가시겠습니까?')) { 
-      // ✨ 상태를 먼저 업데이트하여 즉각적인 피드백 제공 (Optimistic Update)
+      // 즉시 UI에서 제거
       setChats(prev => prev.filter(chat => chat.id !== id));
       
       const { error } = await supabase
@@ -163,8 +162,8 @@ export default function ChatListPage() {
         .match({ id, user_id: user.id });
 
       if (error) {
-        toast.error('채팅방을 나가는 중 오류가 발생했습니다.');
-        fetchChats(); // 실패 시 재동기화
+        toast.error('오류가 발생했습니다.');
+        fetchChats();
       } else {
         toast.success('채팅방을 나갔습니다.');
       }
@@ -314,7 +313,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
       const isGroup = selectedIds.length > 1;
       let roomId = "";
       if (!isGroup) {
-        // ✨ [실시간 통신 해결]: ID 정렬을 통해 두 사용자 간 동일한 roomId 생성 보장
+        // ✨ [실시간 통신 해결]: ID 정렬을 통해 User A와 User B가 동일한 roomId를 공유하도록 보장
         const friendId = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
         if (!friendId) throw new Error("Friend ID not found");
         roomId = [user.id, friendId].sort().join("_");
@@ -324,8 +323,8 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
       
       const title = isGroup ? `나 외 ${selectedIds.length}명` : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
       
-      // 방 생성 및 목록에 표시를 위해 upsert
-      const { error } = await supabase.from('chat_rooms').upsert([{ 
+      // 내 채팅방 리스트에 추가
+      await supabase.from('chat_rooms').upsert([{ 
         id: roomId, 
         user_id: user.id,
         title, 
@@ -335,8 +334,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
         updated_at: new Date().toISOString(),
         members_count: selectedIds.length + 1 
       }]);
-
-      if (error) throw error;
       
       if (onCreated) onCreated(roomId); 
     } catch (error) { 

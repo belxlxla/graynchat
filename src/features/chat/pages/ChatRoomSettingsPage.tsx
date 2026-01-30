@@ -34,6 +34,7 @@ interface LinkItem {
 
 interface Friend {
   id: number;
+  friend_user_id: string; // ✨ friend_user_id 추가
   name: string;
   avatar: string | null;
   status: string | null;
@@ -92,14 +93,34 @@ export default function ChatRoomSettingsPage() {
 
     const fetchData = async () => {
       try {
-        const { data: friend } = await supabase.from('friends').select('*').eq('id', chatId).maybeSingle();
-        if (friend) {
-          setRoomInfo({ title: friend.name, count: 2, avatar: friend.avatar, status: friend.status || '상태메시지 없음' });
+        const { data: { session } } = await supabase.auth.getSession();
+        const myId = session?.user.id;
+
+        // 1. 방 정보 가져오기 및 상대방 실제 프로필 매칭 (목업 방지)
+        if (chatId.includes('_')) {
+          const friendId = chatId.split('_').find(id => id !== myId);
+          if (friendId) {
+            const { data: friendProfile } = await supabase
+              .from('users')
+              .select('name, avatar, status_message')
+              .eq('id', friendId)
+              .maybeSingle();
+
+            if (friendProfile) {
+              setRoomInfo({
+                title: friendProfile.name,
+                count: 2,
+                avatar: friendProfile.avatar,
+                status: friendProfile.status_message || '상태메시지 없음'
+              });
+            }
+          }
         } else {
           const { data: room } = await supabase.from('chat_rooms').select('title').eq('id', chatId).maybeSingle();
           setRoomInfo({ title: room?.title || '알 수 없는 대화방', count: 0, avatar: null, status: null });
         }
 
+        // 2. 메시지 내역에서 미디어 분류
         const { data: messages } = await supabase
           .from('messages')
           .select('id, content, created_at')
@@ -133,7 +154,8 @@ export default function ChatRoomSettingsPage() {
           setLinkList(links);
         }
 
-        const { data: friends } = await supabase.from('friends').select('*');
+        // 3. 친구 목록 (초대용)
+        const { data: friends } = await supabase.from('friends').select('*').eq('user_id', myId);
         if (friends) setFriendsList(friends);
 
       } catch (error) {
@@ -157,11 +179,21 @@ export default function ChatRoomSettingsPage() {
   const handleConfirmLeave = async () => {
     try {
       if (!chatId) return;
-      await supabase.from('chat_rooms').delete().eq('id', chatId);
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // ✨ [409 Conflict 해결]: match를 사용하여 정확한 문자열 ID와 사용자 ID로 삭제
+      const { error } = await supabase
+        .from('chat_rooms')
+        .delete()
+        .match({ id: chatId, user_id: session?.user.id });
+
+      if (error) throw error;
+
       setIsLeaveModalOpen(false);
       toast.success('채팅방을 나갔습니다.');
       navigate('/main/chats');
     } catch (error) {
+      console.error(error);
       toast.error('나가기 실패');
     }
   };
