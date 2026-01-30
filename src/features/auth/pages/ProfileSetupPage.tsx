@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, Check, Image as ImageIcon, X, Eye, User as UserIcon } from 'lucide-react';
@@ -10,7 +10,6 @@ import { useAuth } from '../contexts/AuthContext';
 
 type ImageType = 'avatar' | 'background';
 
-// 이미지 크롭 헬퍼 함수
 async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -78,6 +77,15 @@ export default function ProfileSetupPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
 
+  // 회원가입 정보 확인
+  useEffect(() => {
+    const signupUserId = sessionStorage.getItem('signup_user_id');
+    if (!signupUserId && !user) {
+      toast.error('회원가입 정보를 찾을 수 없습니다.');
+      navigate('/auth/signup', { replace: true });
+    }
+  }, [user, navigate]);
+
   const isFormValid = useMemo(() => {
     return nickname.trim().length >= 2;
   }, [nickname]);
@@ -109,7 +117,6 @@ export default function ProfileSetupPage() {
     };
     reader.readAsDataURL(file);
 
-    // input 초기화
     e.target.value = '';
   }, []);
 
@@ -140,10 +147,11 @@ export default function ProfileSetupPage() {
   }, [tempImageSrc, croppedAreaPixels, currentImageType, avatarUrl, backgroundUrl]);
 
   const uploadImage = useCallback(async (blob: Blob, type: ImageType): Promise<string | null> => {
-    if (!user?.id) return null;
+    const userId = user?.id || sessionStorage.getItem('signup_user_id');
+    if (!userId) return null;
 
     const fileExt = 'jpg';
-    const fileName = `${user.id}/${type}_${Date.now()}.${fileExt}`;
+    const fileName = `${userId}/${type}_${Date.now()}.${fileExt}`;
 
     try {
       const { data, error } = await supabase.storage
@@ -167,7 +175,9 @@ export default function ProfileSetupPage() {
   }, [user]);
 
   const handleComplete = useCallback(async () => {
-    if (!user?.id) {
+    const userId = user?.id || sessionStorage.getItem('signup_user_id');
+    
+    if (!userId) {
       toast.error('사용자 정보를 찾을 수 없습니다.');
       return;
     }
@@ -177,7 +187,6 @@ export default function ProfileSetupPage() {
       return;
     }
 
-    const loadingToast = toast.loading('프로필을 저장하고 있습니다...');
     setIsSaving(true);
 
     try {
@@ -201,14 +210,18 @@ export default function ProfileSetupPage() {
           status_message: statusMessage.trim() || '그레인을 시작했어요!',
           avatar: finalAvatar,
           bg_image: finalBg,
-          is_profile_complete: true,
           updated_at: new Date().toISOString()
         })
-        .eq('id', user.id);
+        .eq('id', userId);
 
       if (updateError) throw updateError;
 
-      toast.success('그레인 가입을 환영합니다! 🎉', { id: loadingToast });
+      // 세션 스토리지 정리
+      sessionStorage.removeItem('signup_email');
+      sessionStorage.removeItem('signup_password');
+      sessionStorage.removeItem('signup_user_id');
+
+      toast.success('그레인 가입을 환영합니다! 🎉');
 
       // 메인 페이지로 이동
       setTimeout(() => {
@@ -217,7 +230,7 @@ export default function ProfileSetupPage() {
       
     } catch (error) {
       console.error('Profile save error:', error);
-      toast.error('프로필 저장에 실패했습니다.', { id: loadingToast });
+      toast.error('프로필 저장에 실패했습니다.');
     } finally {
       setIsSaving(false);
     }
@@ -225,9 +238,7 @@ export default function ProfileSetupPage() {
 
   return (
     <div className="h-[100dvh] flex flex-col bg-dark-bg text-white overflow-hidden font-sans">
-      {/* 스크롤 가능 영역 */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {/* 배경 이미지 영역 */}
         <div className="relative w-full shrink-0">
           <div 
             onClick={() => backgroundInputRef.current?.click()} 
@@ -250,7 +261,6 @@ export default function ProfileSetupPage() {
             </div>
           </div>
 
-          {/* 프로필 사진 */}
           <div className="absolute -bottom-14 left-1/2 -translate-x-1/2">
             <div 
               onClick={() => avatarInputRef.current?.click()} 
@@ -277,7 +287,6 @@ export default function ProfileSetupPage() {
           </div>
         </div>
 
-        {/* 입력 폼 */}
         <div className="px-6 pt-20 pb-36">
           <div className="text-center mb-10">
             <h2 className="text-2xl font-black mb-2 tracking-tight">프로필 설정</h2>
@@ -287,7 +296,6 @@ export default function ProfileSetupPage() {
           </div>
 
           <div className="space-y-6">
-            {/* 닉네임 */}
             <div className="space-y-2">
               <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">
                 Nickname
@@ -305,7 +313,6 @@ export default function ProfileSetupPage() {
               </p>
             </div>
 
-            {/* 상태 메시지 */}
             <div className="space-y-2">
               <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">
                 상태 메시지
@@ -323,7 +330,6 @@ export default function ProfileSetupPage() {
               </p>
             </div>
 
-            {/* 미리보기 버튼 */}
             <button 
               onClick={() => setIsPreviewOpen(true)} 
               className="w-full py-4 rounded-2xl bg-[#2C2C2E] border border-[#3A3A3C] text-[#E5E5EA] font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:bg-[#3A3A3C]"
@@ -334,7 +340,6 @@ export default function ProfileSetupPage() {
         </div>
       </div>
 
-      {/* 완료 버튼 */}
       <div className="shrink-0 p-6 bg-gradient-to-t from-dark-bg via-dark-bg to-transparent pb-safe">
         <button 
           onClick={handleComplete} 
@@ -358,7 +363,6 @@ export default function ProfileSetupPage() {
         </button>
       </div>
 
-      {/* 파일 입력 */}
       <input 
         type="file" 
         ref={avatarInputRef} 
@@ -374,7 +378,6 @@ export default function ProfileSetupPage() {
         onChange={e => onFileChange(e, 'background')} 
       />
 
-      {/* 미리보기 모달 */}
       <AnimatePresence>
         {isPreviewOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
@@ -425,7 +428,6 @@ export default function ProfileSetupPage() {
         )}
       </AnimatePresence>
 
-      {/* 이미지 편집 모달 */}
       <AnimatePresence>
         {isCropOpen && tempImageSrc && (
           <motion.div 

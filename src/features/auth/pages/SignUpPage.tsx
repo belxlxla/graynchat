@@ -44,7 +44,6 @@ export default function SignUpPage() {
     marketing: 'https://www.notion.so',
   };
 
-  // 비밀번호 유효성 검사
   const validatePassword = (password: string): string => {
     if (password.length === 0) return '';
     if (password.length < 8) return '비밀번호는 8자리 이상이어야 합니다.';
@@ -130,53 +129,96 @@ export default function SignUpPage() {
     setIsLoading(true);
     
     try {
-      // 1단계: Supabase Auth 회원가입
+      // 먼저 이메일 중복 체크
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', accountData.email.trim())
+        .maybeSingle();
+
+      if (existingUser) {
+        toast.error('이미 가입된 이메일입니다.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Auth 회원가입
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: accountData.email.trim(),
         password: accountData.password,
         options: { 
           data: { 
-            full_name: accountData.name.trim() 
-          }
+            full_name: accountData.name.trim()
+          },
+          emailRedirectTo: undefined // 이메일 확인 비활성화
         }
       });
 
-      if (signUpError) {
-        console.error('SignUp Error:', signUpError);
-        throw signUpError;
-      }
+      if (signUpError) throw signUpError;
+      if (!authData.user) throw new Error('회원가입에 실패했습니다.');
 
-      if (!authData.user) {
-        throw new Error('회원가입에 실패했습니다.');
-      }
+      // 약간의 딜레이 후 users 테이블 확인 (트리거가 작동할 시간)
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // 2단계: users 테이블에 기본 정보만 저장 (phone, avatar, bg_image 제외)
-      const { error: dbError } = await supabase
+      // users 테이블에 데이터가 이미 있는지 확인
+      const { data: userData } = await supabase
         .from('users')
-        .insert({
-          id: authData.user.id,
-          email: accountData.email.trim(),
-          name: accountData.name.trim(),
-          is_terms_agreed: true,
-          is_marketing_agreed: agreedTerms.marketing,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
+        .select('*')
+        .eq('id', authData.user.id)
+        .maybeSingle();
 
-      if (dbError) {
-        console.error('Database Error:', dbError);
-        
-        // users 테이블 삽입 실패 시 auth 사용자 삭제 시도
-        await supabase.auth.admin.deleteUser(authData.user.id);
-        
-        throw new Error('데이터베이스 저장 중 오류가 발생했습니다.');
+      if (userData) {
+        // 이미 데이터가 있다면 업데이트
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            name: accountData.name.trim(),
+            email: accountData.email.trim(),
+            is_terms_agreed: true,
+            is_marketing_agreed: agreedTerms.marketing,
+            phone: null,
+            status_message: null,
+            avatar: null,
+            bg_image: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', authData.user.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // 데이터가 없다면 삽입
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert({
+            id: authData.user.id,
+            email: accountData.email.trim(),
+            name: accountData.name.trim(),
+            is_terms_agreed: true,
+            is_marketing_agreed: agreedTerms.marketing,
+            phone: null,
+            status_message: null,
+            avatar: null,
+            bg_image: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        if (insertError) throw insertError;
       }
+
+      // 로그아웃 (본인인증 전까지 로그인 상태 유지하지 않음)
+      await supabase.auth.signOut();
 
       toast.success('계정이 생성되었습니다!');
       
+      // 계정 정보를 세션 스토리지에 임시 저장
+      sessionStorage.setItem('signup_email', accountData.email.trim());
+      sessionStorage.setItem('signup_password', accountData.password);
+      sessionStorage.setItem('signup_user_id', authData.user.id);
+
       // 본인인증 페이지로 이동
       setTimeout(() => {
-        navigate('/auth/phone');
+        navigate('/auth/phone', { replace: true });
       }, 500);
 
     } catch (error: any) {
@@ -186,8 +228,6 @@ export default function SignUpPage() {
         toast.error('이미 가입된 이메일입니다.');
       } else if (error.message?.includes('Invalid email')) {
         toast.error('유효하지 않은 이메일 형식입니다.');
-      } else if (error.message?.includes('Password')) {
-        toast.error('비밀번호가 요구사항을 충족하지 않습니다.');
       } else {
         toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
       }
@@ -222,7 +262,6 @@ export default function SignUpPage() {
           </div>
           <form className="space-y-5" onSubmit={handleCreateAccount}>
             <div className="space-y-4">
-              {/* 이름 */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
                 <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
@@ -238,7 +277,6 @@ export default function SignUpPage() {
                 </div>
               </div>
 
-              {/* 이메일 */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
                 <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
@@ -254,7 +292,6 @@ export default function SignUpPage() {
                 </div>
               </div>
 
-              {/* 비밀번호 */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
                 <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${
@@ -315,7 +352,6 @@ export default function SignUpPage() {
                 )}
               </div>
 
-              {/* 비밀번호 확인 */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호 확인</label>
                 <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${
@@ -372,7 +408,6 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* 약관 동의 */}
             <div className="pt-4 space-y-4">
               <div 
                 className="flex items-center justify-between p-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] cursor-pointer" 
@@ -417,7 +452,6 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {/* 제출 버튼 */}
             <button 
               type="submit" 
               disabled={isLoading || !isRequiredAgreed || !isPasswordValid || !isConfirmPasswordValid} 

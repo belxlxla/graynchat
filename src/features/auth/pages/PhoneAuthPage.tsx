@@ -4,17 +4,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
-import { useAuth } from '../contexts/AuthContext';
 
 const CARRIERS = ['SKT', 'KT', 'LG U+', '알뜰폰'] as const;
-const VERIFY_TIME = 180; // 3분
-const DEMO_CODE = '000000'; // 데모용 인증번호
+const VERIFY_TIME = 180;
+const DEMO_CODE = '000000';
 
 type StepType = 'input' | 'verify';
 
 export default function PhoneAuthPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   
   const [carrier, setCarrier] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -27,7 +25,15 @@ export default function PhoneAuthPage() {
   const [showQuitAlert, setShowQuitAlert] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  // 타이머 효과
+  // 회원가입 정보 확인
+  useEffect(() => {
+    const signupUserId = sessionStorage.getItem('signup_user_id');
+    if (!signupUserId) {
+      toast.error('회원가입 정보를 찾을 수 없습니다.');
+      navigate('/auth/signup', { replace: true });
+    }
+  }, [navigate]);
+
   useEffect(() => {
     if (step !== 'verify' || timer <= 0) return;
     
@@ -38,7 +44,6 @@ export default function PhoneAuthPage() {
     return () => clearInterval(interval);
   }, [step, timer]);
 
-  // 타이머 만료 처리
   useEffect(() => {
     if (timer === 0) {
       toast.error('인증 시간이 만료되었습니다. 다시 시도해주세요.');
@@ -95,8 +100,13 @@ export default function PhoneAuthPage() {
   }, [carrier, validatePhoneNumber]);
 
   const handleVerify = useCallback(async () => {
-    if (!user?.id) {
-      toast.error('사용자 정보를 찾을 수 없습니다.');
+    const signupUserId = sessionStorage.getItem('signup_user_id');
+    const signupEmail = sessionStorage.getItem('signup_email');
+    const signupPassword = sessionStorage.getItem('signup_password');
+
+    if (!signupUserId) {
+      toast.error('회원가입 정보를 찾을 수 없습니다.');
+      navigate('/auth/signup', { replace: true });
       return;
     }
 
@@ -105,7 +115,6 @@ export default function PhoneAuthPage() {
       return;
     }
 
-    // 데모용 인증번호 검증
     if (verifyCode !== DEMO_CODE) {
       setCodeError(true);
       toast.error('인증번호가 일치하지 않습니다.');
@@ -113,23 +122,32 @@ export default function PhoneAuthPage() {
     }
 
     setIsVerifying(true);
-    const loadingToast = toast.loading('인증 처리 중...');
     
     try {
       const cleanPhone = phoneNumber.replace(/-/g, '');
       
       // 휴대폰 번호 저장
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from('users')
         .update({ 
           phone: cleanPhone,
           updated_at: new Date().toISOString()
         })
-        .eq('id', user.id);
+        .eq('id', signupUserId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
-      toast.success('본인 인증이 완료되었습니다.', { id: loadingToast });
+      // 로그인 처리
+      if (signupEmail && signupPassword) {
+        const { error: loginError } = await supabase.auth.signInWithPassword({
+          email: signupEmail,
+          password: signupPassword
+        });
+
+        if (loginError) throw loginError;
+      }
+
+      toast.success('본인 인증이 완료되었습니다.');
       
       // 프로필 설정 페이지로 이동
       setTimeout(() => {
@@ -138,21 +156,25 @@ export default function PhoneAuthPage() {
       
     } catch (error) {
       console.error('Phone verification error:', error);
-      toast.error('인증 처리 중 오류가 발생했습니다.', { id: loadingToast });
+      toast.error('인증 처리 중 오류가 발생했습니다.');
     } finally {
       setIsVerifying(false);
     }
-  }, [user, verifyCode, phoneNumber, navigate]);
+  }, [verifyCode, phoneNumber, navigate]);
 
   const handleQuit = useCallback(() => {
-    navigate('/auth/login');
+    // 세션 스토리지 정리
+    sessionStorage.removeItem('signup_email');
+    sessionStorage.removeItem('signup_password');
+    sessionStorage.removeItem('signup_user_id');
+    
+    navigate('/auth/login', { replace: true });
   }, [navigate]);
 
   const displayTime = `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}`;
 
   return (
     <div className="min-h-screen flex flex-col bg-dark-bg text-white px-6 relative">
-      {/* 헤더 */}
       <div className="h-14 flex items-center -ml-2 mb-6 mt-4">
         <button 
           onClick={handleBack} 
@@ -163,7 +185,6 @@ export default function PhoneAuthPage() {
         </button>
       </div>
 
-      {/* 타이틀 */}
       <motion.div 
         className="mb-10 space-y-2" 
         initial={{ opacity: 0, y: 10 }} 
@@ -179,13 +200,10 @@ export default function PhoneAuthPage() {
         )}
       </motion.div>
 
-      {/* 메인 컨텐츠 */}
       <div className="flex-1 flex flex-col gap-8">
-        {/* 휴대폰 입력 영역 */}
         <div className={`space-y-6 transition-opacity duration-300 ${
           step === 'verify' ? 'opacity-40 pointer-events-none' : ''
         }`}>
-          {/* 통신사 선택 */}
           <div className="grid grid-cols-4 gap-2">
             {CARRIERS.map(c => (
               <button 
@@ -202,7 +220,6 @@ export default function PhoneAuthPage() {
             ))}
           </div>
 
-          {/* 휴대폰 번호 입력 */}
           <div className={`bg-[#2C2C2E] rounded-xl border transition-colors ${
             phoneError ? 'border-[#EC5022]' : 'border-transparent'
           }`}>
@@ -217,7 +234,6 @@ export default function PhoneAuthPage() {
             />
           </div>
 
-          {/* 인증번호 받기 버튼 */}
           {step === 'input' && (
             <button 
               onClick={handleSendCode} 
@@ -229,7 +245,6 @@ export default function PhoneAuthPage() {
           )}
         </div>
 
-        {/* 인증번호 입력 영역 */}
         <AnimatePresence>
           {step === 'verify' && (
             <motion.div 
@@ -238,7 +253,6 @@ export default function PhoneAuthPage() {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-6 -mt-4"
             >
-              {/* 인증번호 입력 */}
               <div className={`relative bg-[#2C2C2E] rounded-xl border transition-colors ${
                 codeError ? 'border-[#EC5022]' : 'border-transparent'
               }`}>
@@ -261,7 +275,6 @@ export default function PhoneAuthPage() {
                 </span>
               </div>
 
-              {/* 인증 완료 버튼 */}
               <button 
                 onClick={handleVerify} 
                 disabled={verifyCode.length !== 6 || isVerifying}
@@ -277,7 +290,6 @@ export default function PhoneAuthPage() {
                 )}
               </button>
 
-              {/* 재전송 버튼 */}
               <button
                 onClick={() => {
                   setStep('input');
@@ -294,7 +306,6 @@ export default function PhoneAuthPage() {
         </AnimatePresence>
       </div>
 
-      {/* 가입 중단 확인 모달 */}
       <AnimatePresence>
         {showQuitAlert && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
