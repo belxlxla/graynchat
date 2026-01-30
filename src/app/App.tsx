@@ -85,7 +85,7 @@ function AppContent() {
 
       <Route element={<PrivateRoute />}>
         <Route path="/auth/phone" element={<PhoneAuthPage />} />
-        <Route path="/auth/profile" element={<ProfileSetupPage />} />
+        <Route path="/auth/profile-setup" element={<ProfileSetupPage />} />
 
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />

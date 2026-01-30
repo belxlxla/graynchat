@@ -113,9 +113,12 @@ export default function PhoneAuthPage() {
     }
 
     setIsVerifying(true);
+    const loadingToast = toast.loading('인증 처리 중...');
+    
     try {
       const cleanPhone = phoneNumber.replace(/-/g, '');
       
+      // 휴대폰 번호 저장
       const { error } = await supabase
         .from('users')
         .update({ 
@@ -126,15 +129,16 @@ export default function PhoneAuthPage() {
 
       if (error) throw error;
 
-      toast.success('본인 인증이 완료되었습니다.');
+      toast.success('본인 인증이 완료되었습니다.', { id: loadingToast });
       
       // 프로필 설정 페이지로 이동
       setTimeout(() => {
-        navigate('/auth/profile-setup');
+        navigate('/auth/profile-setup', { replace: true });
       }, 500);
+      
     } catch (error) {
       console.error('Phone verification error:', error);
-      toast.error('인증 처리 중 오류가 발생했습니다.');
+      toast.error('인증 처리 중 오류가 발생했습니다.', { id: loadingToast });
     } finally {
       setIsVerifying(false);
     }

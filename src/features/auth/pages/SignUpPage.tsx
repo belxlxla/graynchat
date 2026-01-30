@@ -63,7 +63,6 @@ export default function SignUpPage() {
       const error = validatePassword(value);
       setPasswordError(error);
       
-      // 비밀번호 확인 필드가 채워져 있으면 일치 여부 검사
       if (accountData.confirmPassword) {
         if (value !== accountData.confirmPassword) {
           setConfirmPasswordError('비밀번호가 일치하지 않습니다.');
@@ -129,40 +128,69 @@ export default function SignUpPage() {
     if (!isRequiredAgreed) return toast.error('필수 약관에 동의해 주세요.');
 
     setIsLoading(true);
+    
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: accountData.email,
+      // 1단계: Supabase Auth 회원가입
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: accountData.email.trim(),
         password: accountData.password,
         options: { 
-          data: { full_name: accountData.name },
-          emailRedirectTo: `${window.location.origin}/auth/callback`
+          data: { 
+            full_name: accountData.name.trim() 
+          }
         }
       });
 
-      if (signUpError) throw signUpError;
+      if (signUpError) {
+        console.error('SignUp Error:', signUpError);
+        throw signUpError;
+      }
 
-      if (data.user) {
-        const { error: dbError } = await supabase.from('users').upsert({
-          id: data.user.id,
-          email: accountData.email,
-          name: accountData.name,
-          status_message: '',
+      if (!authData.user) {
+        throw new Error('회원가입에 실패했습니다.');
+      }
+
+      // 2단계: users 테이블에 기본 정보만 저장 (phone, avatar, bg_image 제외)
+      const { error: dbError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          email: accountData.email.trim(),
+          name: accountData.name.trim(),
           is_terms_agreed: true,
           is_marketing_agreed: agreedTerms.marketing,
-          phone: null,
-          avatar: null,
-          bg_image: null,
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+        });
 
-        if (dbError) throw dbError;
-
-        toast.success('계정이 생성되었습니다.');
-        navigate('/auth/phone');
+      if (dbError) {
+        console.error('Database Error:', dbError);
+        
+        // users 테이블 삽입 실패 시 auth 사용자 삭제 시도
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        
+        throw new Error('데이터베이스 저장 중 오류가 발생했습니다.');
       }
+
+      toast.success('계정이 생성되었습니다!');
+      
+      // 본인인증 페이지로 이동
+      setTimeout(() => {
+        navigate('/auth/phone');
+      }, 500);
+
     } catch (error: any) {
       console.error('Signup Error:', error);
-      toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
+      
+      if (error.message?.includes('already registered')) {
+        toast.error('이미 가입된 이메일입니다.');
+      } else if (error.message?.includes('Invalid email')) {
+        toast.error('유효하지 않은 이메일 형식입니다.');
+      } else if (error.message?.includes('Password')) {
+        toast.error('비밀번호가 요구사항을 충족하지 않습니다.');
+      } else {
+        toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
+      }
     } finally {
       setIsLoading(false);
     }

@@ -181,28 +181,17 @@ export default function ProfileSetupPage() {
     setIsSaving(true);
 
     try {
-      let finalAvatar = avatarUrl;
-      let finalBg = backgroundUrl;
+      let finalAvatar: string | null = null;
+      let finalBg: string | null = null;
 
       // 이미지 업로드
-      const uploadPromises: Promise<string | null>[] = [];
-      
       if (avatarBlob) {
-        uploadPromises.push(uploadImage(avatarBlob, 'avatar'));
-      } else {
-        uploadPromises.push(Promise.resolve(null));
+        finalAvatar = await uploadImage(avatarBlob, 'avatar');
       }
 
       if (bgBlob) {
-        uploadPromises.push(uploadImage(bgBlob, 'background'));
-      } else {
-        uploadPromises.push(Promise.resolve(null));
+        finalBg = await uploadImage(bgBlob, 'background');
       }
-
-      const [uploadedAvatar, uploadedBg] = await Promise.all(uploadPromises);
-
-      if (uploadedAvatar) finalAvatar = uploadedAvatar;
-      if (uploadedBg) finalBg = uploadedBg;
 
       // 프로필 저장
       const { error: updateError } = await supabase
@@ -212,6 +201,7 @@ export default function ProfileSetupPage() {
           status_message: statusMessage.trim() || '그레인을 시작했어요!',
           avatar: finalAvatar,
           bg_image: finalBg,
+          is_profile_complete: true,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
@@ -223,14 +213,15 @@ export default function ProfileSetupPage() {
       // 메인 페이지로 이동
       setTimeout(() => {
         navigate('/main/friends', { replace: true });
-      }, 500);
+      }, 800);
+      
     } catch (error) {
       console.error('Profile save error:', error);
       toast.error('프로필 저장에 실패했습니다.', { id: loadingToast });
     } finally {
       setIsSaving(false);
     }
-  }, [user, nickname, statusMessage, avatarUrl, backgroundUrl, avatarBlob, bgBlob, isFormValid, uploadImage, navigate]);
+  }, [user, nickname, statusMessage, avatarBlob, bgBlob, isFormValid, uploadImage, navigate]);
 
   return (
     <div className="h-[100dvh] flex flex-col bg-dark-bg text-white overflow-hidden font-sans">
