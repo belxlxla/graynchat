@@ -33,6 +33,7 @@ interface MyProfile {
 
 type StepType = 'permission' | 'complete' | 'list';
 
+// === [Main Component] ===
 export default function FriendsListPage() {
   const navigate = useNavigate();
 
@@ -211,6 +212,7 @@ export default function FriendsListPage() {
 
       const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
 
+      // 1. 방이 이미 존재하는지 확인
       const { data: existingRoom, error: searchError } = await supabase
         .from('chat_rooms')
         .select('id')
@@ -219,6 +221,7 @@ export default function FriendsListPage() {
 
       if (searchError) throw searchError;
 
+      // 2. 방이 없으면 생성
       if (!existingRoom) {
         const { error: insertError } = await supabase
           .from('chat_rooms')
@@ -231,10 +234,15 @@ export default function FriendsListPage() {
             unread_count: 0,
             updated_at: new Date().toISOString(),
             members_count: 2
-          }], { onConflict: 'id' });
+          }]); 
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          if (!insertError.message.includes('duplicate key')) {
+            throw insertError;
+          }
+        }
 
+        // 3. 참여자 추가
         const { error: membersError } = await supabase
           .from('room_members')
           .upsert([
@@ -252,7 +260,7 @@ export default function FriendsListPage() {
       toast.dismiss(loadingToast);
       console.error("Chat Enter Error:", e);
       if (e.code === '42501') {
-        toast.error("채팅방 생성 권한이 없습니다. (DB 정책 확인)");
+        toast.error("채팅방 생성 권한이 없습니다.");
       } else {
         toast.error("채팅방 입장에 실패했습니다.");
       }
@@ -547,6 +555,7 @@ export default function FriendsListPage() {
         </>
       )}
 
+      {/* Modals */}
       {selectedFriend && (
         <ModalBackdrop onClick={() => setSelectedFriend(null)}>
           <motion.div 
@@ -642,7 +651,8 @@ export default function FriendsListPage() {
   );
 }
 
-// === Sub Components ===
+// === Sub Components Definitions ===
+
 function FriendItem({ friend, onClick, onBlock, onDelete }: { 
   friend: Friend; 
   onClick: () => void; 
@@ -704,7 +714,7 @@ function FriendItem({ friend, onClick, onBlock, onDelete }: {
       >
         <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4 border border-white/5 shadow-sm">
           {friend.avatar ? (
-            <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" />
+            <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" alt="Avatar" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-[#8E8E93]">
               <UserIcon className="w-6 h-6 opacity-50" />
@@ -1107,14 +1117,21 @@ function CreateChatModal({ isOpen, onClose, friends }: {
       if (!isGroup) {
         roomId = [session.user.id, selectedIds[0]].sort().join("_");
       } else {
-        roomId = `group_${Date.now()}`;
+        // [수정] 그룹 채팅은 고유 UUID 생성 (Date.now() 대신 randomUUID 사용 권장)
+        roomId = `group_${crypto.randomUUID()}`;
       }
       
+      // [수정] 그룹명: 나를 제외한 참여자 이름 나열
+      const memberNames = friends
+        .filter(f => selectedIds.includes(f.friend_user_id))
+        .map(f => f.name)
+        .join(', ');
+      
       const title = isGroup 
-        ? `나 외 ${selectedIds.length}명` 
+        ? (memberNames || '새로운 그룹 채팅')
         : (friends.find(f => f.friend_user_id === selectedIds[0])?.name || '새 대화');
 
-      // [핵심 수정] user_id 컬럼 제거 (스키마 오류 원인)
+      // 1. 채팅방 생성 (upsert 사용, 충돌 시 업데이트)
       const { error } = await supabase
         .from('chat_rooms')
         .upsert([{ 
@@ -1130,10 +1147,22 @@ function CreateChatModal({ isOpen, onClose, friends }: {
 
       if (error) throw error;
 
-      toast.success(`${isGroup ? '그룹' : '1:1'} 채팅방이 준비되었습니다.`);
+      // 2. 멤버 추가 (나 + 선택된 친구들)
+      const membersToAdd = [
+        { room_id: roomId, user_id: session.user.id },
+        ...selectedIds.map(friendId => ({ room_id: roomId, user_id: friendId }))
+      ];
+
+      const { error: membersError } = await supabase
+        .from('room_members')
+        .upsert(membersToAdd, { onConflict: 'room_id,user_id' });
+
+      if (membersError) throw membersError;
+
+      toast.success(`${isGroup ? '그룹' : '1:1'} 채팅방이 생성되었습니다.`);
       onClose(); 
       navigate(`/chat/room/${roomId}`);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Create Chat Error:', e);
       toast.error('채팅방 생성에 실패했습니다.');
     }
