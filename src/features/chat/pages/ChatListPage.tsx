@@ -423,13 +423,20 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
       <motion.div 
         drag="x" 
         dragConstraints={{ left: SWIPE_WIDTH, right: 0 }} 
+        dragElastic={0.1}
         onDragEnd={async (_, info) => { 
           if (info.offset.x < -50) await controls.start({ x: SWIPE_WIDTH }); 
           else await controls.start({ x: 0 }); 
         }} 
+        onClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (!target.closest('button')) {
+            navigate(`/chat/room/${data.id}`);
+          }
+        }}
         animate={controls} 
-        onClick={() => navigate(`/chat/room/${data.id}`)} 
         className="relative w-full h-full bg-dark-bg flex items-center px-4 z-10 cursor-pointer active:bg-white/5 transition-colors"
+        style={{ touchAction: 'pan-y' }}
       >
         <div className="w-[52px] h-[52px] rounded-[20px] bg-[#3A3A3C] mr-4 flex items-center justify-center overflow-hidden border border-[#2C2C2E]">
           {data.avatar ? (
