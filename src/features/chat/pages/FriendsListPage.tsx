@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
-import { useAuth } from '../../auth/contexts/AuthContext';
 
 // === [Types] ===
 interface Friend {
@@ -37,6 +36,7 @@ type StepType = 'permission' | 'complete' | 'list';
 // === [Main Component] ===
 export default function FriendsListPage() {
   const navigate = useNavigate();
+  // useAuth 제거 (session 직접 조회로 대체하여 TS6133 해결)
 
   const [step, setStep] = useState<StepType>(() => {
     const savedPermission = localStorage.getItem('grayn_contact_permission');
@@ -1181,8 +1181,8 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       onClose(); 
       if (onCreated) onCreated(roomId);
 
-    } catch (e: any) {
-      console.error('Create Chat Error:', e);
+    } catch (error: any) {
+      console.error('Create Chat Error:', error);
       toast.error('채팅방 생성에 실패했습니다.');
     }
   };
@@ -1261,6 +1261,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)} 
                   className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none" 
+                  autoFocus 
                 />
                 {searchTerm && (
                   <button onClick={() => setSearchTerm('')}>
@@ -1272,26 +1273,26 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
               {filteredFriends.length > 0 ? (
-                filteredFriends.map(f => { 
-                  const isSelected = selectedIds.includes(f.id); 
+                filteredFriends.map(friend => { 
+                  const isSelected = selectedIds.includes(friend.id); 
                   return (
                     <div 
-                      key={f.id} 
-                      onClick={() => toggleSelection(f.id)} 
+                      key={friend.id} 
+                      onClick={() => toggleSelection(friend.id)} 
                       className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
                         isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
                       }`}
                     >
                       <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
-                        {f.avatar ? (
-                          <img src={f.avatar} className="w-full h-full object-cover" alt="" />
+                        {friend.avatar ? (
+                          <img src={friend.avatar} className="w-full h-full object-cover" alt="" />
                         ) : (
                           <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50" />
                         )}
                       </div>
                       <div className="flex-1">
                         <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
-                          {f.name}
+                          {friend.name}
                         </p>
                       </div>
                       {isSelected ? (
