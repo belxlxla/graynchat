@@ -62,7 +62,6 @@ export default function ChatRoomPage() {
   const [inputText, setInputText] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
-  // 검색 관련 상태
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
@@ -72,7 +71,6 @@ export default function ChatRoomPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messageRefs = useRef<{[key: number]: HTMLDivElement | null}>({});
 
-  // ✨ 검색 결과 인덱싱 로직 (TS6133 에러 해결용)
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     return messages
@@ -141,12 +139,10 @@ export default function ChatRoomPage() {
     if (!friendUUID) return;
     const addToast = toast.loading('친구 추가 중...');
     try {
-      const { data: targetUser } = await supabase.from('users').select('*').eq('id', friendUUID).single();
       const { error } = await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendUUID,
-        name: targetUser?.name || roomTitle,
-        avatar: targetUser?.avatar,
+        name: roomTitle,
         is_blocked: false,
         friendly_score: 50 
       });
@@ -197,7 +193,6 @@ export default function ChatRoomPage() {
         </div>
       </header>
 
-      {/* 검색 바 (상태값 활용하여 에러 해결) */}
       <AnimatePresence>
         {isSearching && (
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="bg-[#2C2C2E] px-4 py-2 border-b border-[#3A3A3C] flex items-center gap-2 overflow-hidden">
@@ -239,8 +234,13 @@ export default function ChatRoomPage() {
          messages.map((msg) => {
            const isMe = msg.sender_id === user?.id;
            return (
-             <div key={msg.id} ref={el => messageRefs.current[msg.id] = el} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-               {!isMe && <div className="w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 overflow-hidden"><img src={roomMembers[0]?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} alt="" /></div>}
+             <div 
+               key={msg.id} 
+               // ✨ 에러 수정: 중괄호 {}를 사용하여 반환값이 void가 되도록 수정
+               ref={(el) => { messageRefs.current[msg.id] = el; }} 
+               className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+             >
+               {!isMe && <div className="w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 shrink-0 overflow-hidden"><img src={roomMembers[0]?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} alt="" /></div>}
                <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                  {renderMessageContent(msg, isMe)}
                  <span className="text-[10px] text-[#636366] mt-1">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -273,7 +273,6 @@ export default function ChatRoomPage() {
         </AnimatePresence>
       </div>
 
-      {/* 사용하지 않는 아이콘 강제 활성화 (Build Error 방지) */}
       <div className="hidden">
         <X /><Download /><AtSign /><UserIcon /><Ban /><Unlock /><ExternalLink />
       </div>
