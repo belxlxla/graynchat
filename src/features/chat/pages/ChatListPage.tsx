@@ -58,11 +58,19 @@ export default function ChatListPage() {
       if (error) throw error;
 
       if (rooms) {
-        // ✨ [400 에러 해결]: UUID 형식이 아닌 ID(예: 10)가 쿼리에 포함되지 않도록 필터링
         const friendUUIDs = rooms
           .filter(r => (r.type === 'individual' || !r.type) && r.id.includes('_'))
           .map(r => r.id.split('_').find((id: string) => id !== user.id))
           .filter((id): id is string => !!id && id.length > 20);
+
+        let usersData: Array<{ id: string; name: string; avatar: string | null }> = [];
+        if (friendUUIDs.length > 0) {
+          const { data: profiles } = await supabase
+            .from('users')
+            .select('id, name, avatar')
+            .in('id', friendUUIDs);
+          if (profiles) usersData = profiles;
+        }
 
         let friendsData: Friend[] = [];
         if (friendUUIDs.length > 0) {
@@ -77,13 +85,19 @@ export default function ChatListPage() {
         const formattedData: ChatRoom[] = rooms.map((room: any) => {
           const isGroup = room.type === 'group';
           const friendIdFromRoom = !isGroup ? room.id.split('_').find((id: string) => id !== user.id) : null;
-          const matchedProfile = !isGroup ? friendsData?.find(f => f.friend_user_id === friendIdFromRoom) : null;
+          
+          const userProfile = !isGroup ? usersData?.find(u => u.id === friendIdFromRoom) : null;
+          const friendProfile = !isGroup ? friendsData?.find(f => f.friend_user_id === friendIdFromRoom) : null;
           
           return {
             id: room.id.toString(),
             type: room.type || 'individual',
-            title: isGroup ? room.title : (matchedProfile?.name || room.title || '알 수 없는 사용자'),
-            avatar: !isGroup && matchedProfile ? matchedProfile.avatar : (room.avatar || null),
+            title: isGroup 
+              ? room.title 
+              : (userProfile?.name || friendProfile?.name || room.title || '알 수 없는 사용자'),
+            avatar: !isGroup && userProfile 
+              ? userProfile.avatar 
+              : (!isGroup && friendProfile ? friendProfile.avatar : (room.avatar || null)),
             membersCount: room.members_count || (isGroup ? 3 : 1),
             lastMessage: room.last_message || '대화를 시작해보세요!',
             timestamp: new Date(room.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -100,7 +114,7 @@ export default function ChatListPage() {
     }
   }, [user]);
 
-  // ✨ 리스트 실시간 업데이트 및 원복 현상 해결
+  // ✅ 실시간 업데이트 강화 (INSERT, UPDATE 모두 감지)
   useEffect(() => {
     if (!user) return;
     fetchChats();
@@ -116,10 +130,13 @@ export default function ChatListPage() {
           filter: `user_id=eq.${user.id}` 
         }, 
         (payload) => {
+          console.log('💬 Chat Rooms Realtime Event:', payload.eventType, payload);
+          
           if (payload.eventType === 'DELETE') {
             setChats(prev => prev.filter(c => c.id !== payload.old.id));
-          } else {
-            fetchChats(); 
+          } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            // 새 채팅방 생성 or 업데이트 시 즉시 반영
+            fetchChats();
           }
         }
       )
@@ -153,7 +170,6 @@ export default function ChatListPage() {
   const handleLeaveChat = async (id: string) => {
     if (!user) return;
     if (confirm('채팅방을 나가시겠습니까?')) { 
-      // 즉시 UI에서 제거
       setChats(prev => prev.filter(chat => chat.id !== id));
       
       const { error } = await supabase
@@ -313,7 +329,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
       const isGroup = selectedIds.length > 1;
       let roomId = "";
       if (!isGroup) {
-        // ✨ [실시간 통신 해결]: ID 정렬을 통해 User A와 User B가 동일한 roomId를 공유하도록 보장
         const friendId = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
         if (!friendId) throw new Error("Friend ID not found");
         roomId = [user.id, friendId].sort().join("_");
@@ -323,7 +338,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
       
       const title = isGroup ? `나 외 ${selectedIds.length}명` : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
       
-      // 내 채팅방 리스트에 추가
       await supabase.from('chat_rooms').upsert([{ 
         id: roomId, 
         user_id: user.id,
@@ -333,7 +347,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
         unread_count: 0, 
         updated_at: new Date().toISOString(),
         members_count: selectedIds.length + 1 
-      }]);
+      }], { onConflict: 'id,user_id' });
       
       if (onCreated) onCreated(roomId); 
     } catch (error) { 

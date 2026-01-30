@@ -10,7 +10,6 @@ import {
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
-// === [Types] ===
 interface MediaItem {
   id: number;
   url: string;
@@ -42,7 +41,6 @@ interface Friend {
 
 type ViewState = 'main' | 'media' | 'files' | 'links';
 
-// === [Utils] ===
 const getFileName = (url: string) => {
   try {
     const decodedUrl = decodeURIComponent(url);
@@ -96,11 +94,9 @@ export default function ChatRoomSettingsPage() {
         const { data: { session } } = await supabase.auth.getSession();
         const myId = session?.user.id;
 
-        // 1. ✨ 상대방 실제 프로필 조회 (users 테이블 우선)
         if (chatId.includes('_') && !chatId.includes('group_')) {
           const friendId = chatId.split('_').find(id => id !== myId);
           if (friendId) {
-            // ✨ users 테이블에서 실제 닉네임 조회
             const { data: userProfile } = await supabase
               .from('users')
               .select('name, avatar, status_message')
@@ -115,7 +111,6 @@ export default function ChatRoomSettingsPage() {
                 status: userProfile.status_message || '상태메시지 없음'
               });
             } else {
-              // users에 없으면 friends에서 찾기
               const { data: friendProfile } = await supabase
                 .from('friends')
                 .select('name, avatar')
@@ -138,7 +133,6 @@ export default function ChatRoomSettingsPage() {
           setRoomInfo({ title: room?.title || '알 수 없는 대화방', count: 0, avatar: null, status: null });
         }
 
-        // 2. 메시지 내역에서 미디어 분류
         const { data: messages } = await supabase
           .from('messages')
           .select('id, content, created_at')
@@ -172,7 +166,6 @@ export default function ChatRoomSettingsPage() {
           setLinkList(links);
         }
 
-        // 3. 친구 목록 (초대용)
         const { data: friends } = await supabase.from('friends').select('*').eq('user_id', myId);
         if (friends) setFriendsList(friends);
 
@@ -199,7 +192,6 @@ export default function ChatRoomSettingsPage() {
       if (!chatId) return;
       const { data: { session } } = await supabase.auth.getSession();
       
-      // ✨ match를 사용하여 정확한 문자열 ID와 사용자 ID로 삭제
       const { error } = await supabase
         .from('chat_rooms')
         .delete()
