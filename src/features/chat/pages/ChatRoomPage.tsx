@@ -62,7 +62,6 @@ export default function ChatRoomPage() {
         .eq('user_id', user.id);
 
       if (error) {
-        // 방이 없어서 실패하는 경우 등이 있으므로 로그만 남김
         console.warn('[ChatRoom] 읽음 처리 스킵:', error.message);
       }
     } catch (err) {
@@ -77,21 +76,19 @@ export default function ChatRoomPage() {
     }
 
     try {
-      // 1. 채팅방 정보 가져오기 (수정됨: .single() -> .maybeSingle() 사용으로 406 에러 방지)
+      // 1. 채팅방 정보 가져오기
       const { data: room, error: roomError } = await supabase
         .from('chat_rooms')
         .select('id, type, title, created_by, members_count')
         .eq('id', chatId)
-        .maybeSingle(); 
+        .maybeSingle();
 
-      // 406 에러 방지: 방이 없어도 에러를 던지지 않고 아래 로직으로 넘어갑니다.
       if (roomError) throw roomError;
 
-      // 방 정보가 있으면 제목 설정, 없으면 멤버 정보 추론 시도
       let memberIds: string[] = [];
 
       if (room) {
-        // 2. 기존 방이 있는 경우: 참여 멤버 목록 가져오기
+        // 기존 방이 있는 경우
         const { data: members, error: membersError } = await supabase
           .from('room_members')
           .select('user_id')
@@ -100,10 +97,10 @@ export default function ChatRoomPage() {
         if (membersError) throw membersError;
         memberIds = members?.map(m => m.user_id) || [];
       } else {
-        // 방이 없는 경우 (첫 대화): URL에서 상대방 ID 추출
+        // 방이 없는 경우 (첫 대화 등)
         if (!isGroupChat) {
           const ids = chatId.split('_');
-          memberIds = ids.filter(id => id.length > 0); // URL에 포함된 모든 ID
+          memberIds = ids.filter(id => id.length > 0);
         }
       }
 
@@ -122,7 +119,7 @@ export default function ChatRoomPage() {
         });
         setMemberProfiles(profileMap);
 
-        // 4. 방 제목 설정 로직
+        // 4. 방 제목 설정
         if (isGroupChat) {
           setRoomTitle(room?.title || `그룹 채팅 (${memberIds.length}명)`);
         } else {
@@ -148,7 +145,7 @@ export default function ChatRoomPage() {
         }
       }
 
-      // 5. 메시지 불러오기 (방이 없어도 메시지가 있을 수 있음 - 희박하지만 안전하게)
+      // 5. 메시지 불러오기
       const { data: msgData, error: msgError } = await supabase
         .from('messages')
         .select('*')
@@ -159,15 +156,12 @@ export default function ChatRoomPage() {
 
       setMessages(msgData || []);
       
-      // 데이터 로드 후 읽음 처리
       if (room) {
         markAsRead();
       }
 
     } catch (e) {
       console.error("초기 데이터 로드 오류:", e);
-      // 406 에러 등으로 실패해도 화면은 보여주도록 toast 생략 가능하나 일단 유지
-      // toast.error("채팅방을 불러오는 중 오류가 발생했습니다.");
     } finally {
       setIsLoading(false);
     }
@@ -185,7 +179,6 @@ export default function ChatRoomPage() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', markAsRead);
 
-    // 실시간 메시지 수신 채널
     const channel = supabase.channel(`room_messages_${chatId}`)
       .on(
         'postgres_changes',
@@ -236,39 +229,7 @@ export default function ChatRoomPage() {
     setInputText(''); // UI 즉시 초기화
 
     try {
-      // [중요 수정] 메시지 보내기 전에 방이 존재하는지 확인하고 없으면 생성 (Upsert)
-      // 이전 에러로 인해 방이 없을 수 있으므로 update 대신 upsert 사용
-      
-      // 1. 방 정보 Upsert (없으면 생성, 있으면 업데이트)
-      // 주의: title 등은 1:1일 경우 상대방 이름 등으로 설정 필요하나 여기선 간단히 처리
-      // 기존에 방이 없던 경우를 대비해 기본값 설정
-      await supabase
-        .from('chat_rooms')
-        .upsert({
-          id: chatId,
-          last_message: textToSend.length > 50 ? textToSend.substring(0, 47) + '...' : textToSend,
-          last_message_at: new Date().toISOString(),
-          // 아래 필드들은 새로 생성될 때만 들어감 (기존 방이 있으면 무시됨 - onConflict 설정 따라 다름, 보통 update됨)
-          // 하지만 Supabase upsert는 전체 덮어쓰기일 수 있으므로 주의. 
-          // 안전하게 update를 먼저 시도하고 실패하면 insert하는 방식이 좋으나,
-          // 여기서는 RLS 에러 방지를 위해 간단히 메시지 전송을 우선시함.
-        }, { onConflict: 'id', ignoreDuplicates: false })
-        .select()
-        .maybeSingle();
-
-      // 2. 방 멤버 정보도 안전하게 Upsert (내가 멤버로 있는지 확인)
-      // 방금 방이 생성되었다면 멤버 정보도 없을 수 있음
-      if (!isGroupChat) {
-        const friendId = chatId.split('_').find(id => id !== user.id);
-        if (friendId) {
-           await supabase.from('room_members').upsert([
-             { room_id: chatId, user_id: user.id },
-             { room_id: chatId, user_id: friendId }
-           ], { onConflict: 'room_id,user_id', ignoreDuplicates: true });
-        }
-      }
-
-      // 3. 메시지 전송 (Messages 테이블 Insert)
+      // 1. 메시지 전송 (Messages 테이블 Insert) - 이건 잘 되고 있음
       const { data: inserted, error: sendError } = await supabase
         .from('messages')
         .insert({
@@ -291,10 +252,26 @@ export default function ChatRoomPage() {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
 
+      // 2. [수정됨] 방 정보 업데이트 (upsert -> update)
+      // 이미 방이 있으므로 upsert 대신 update를 사용합니다.
+      // 이렇게 하면 필수 컬럼(created_by 등) 부족으로 인한 400 에러가 발생하지 않습니다.
+      try {
+        await supabase
+          .from('chat_rooms')
+          .update({
+            last_message: textToSend.length > 50 ? textToSend.substring(0, 47) + '...' : textToSend,
+            last_message_at: new Date().toISOString(),
+          })
+          .eq('id', chatId);
+          
+      } catch (roomError) {
+        console.warn('방 정보 업데이트 실패 (무시):', roomError);
+      }
+
     } catch (err: any) {
       console.error('메시지 전송 실패:', err);
       toast.error('메시지 전송에 실패했습니다.');
-      setInputText(textToSend); // 실패 시 입력값 복구
+      setInputText(textToSend); // 실패 시 복구
     }
   };
 
