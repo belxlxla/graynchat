@@ -32,10 +32,7 @@ interface MyProfile {
 }
 
 type StepType = 'permission' | 'complete' | 'list';
-<<<<<<< HEAD
 type ChatStepType = 'select-type' | 'select-friends';
-=======
->>>>>>> 51c1227 (Chat Edit)
 
 export default function FriendsListPage() {
   const navigate = useNavigate();
@@ -68,11 +65,7 @@ export default function FriendsListPage() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-<<<<<<< HEAD
   const handleAllowContacts = useCallback(() => {
-=======
-  const handleAllowContacts = () => {
->>>>>>> 51c1227 (Chat Edit)
     localStorage.setItem('grayn_contact_permission', 'granted');
     setStep('complete');
     setTimeout(() => {
@@ -190,103 +183,7 @@ export default function FriendsListPage() {
       setSelectedFriend(prev => prev ? { ...prev, isFavorite: newStatus } : null); 
     }
 
-<<<<<<< HEAD
-=======
     try {
-      const { error } = await supabase
-        .from('friends')
-        .update({ is_favorite: newStatus })
-        .eq('id', id);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Toggle Favorite Error:', error);
-      toast.error('변경사항 저장 실패');
-      setFriends(prev => prev.map(f => 
-        f.id === id ? { ...f, isFavorite: !newStatus } : f
-      ));
-    }
-  };
-
-  const handleEnterChat = async (friend: Friend) => {
-    const loadingToast = toast.loading("채팅방 연결 중...");
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id || !friend.friend_user_id) {
-        toast.dismiss(loadingToast);
-        toast.error("채팅방 정보를 불러올 수 없습니다.");
-        return;
-      }
-
-      const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
-
-      const { data: existingRoom, error: searchError } = await supabase
-        .from('chat_rooms')
-        .select('id')
-        .eq('id', sharedRoomId)
-        .maybeSingle();
-
-      if (searchError) throw searchError;
-
-      if (!existingRoom) {
-        const { error: insertError } = await supabase
-          .from('chat_rooms')
-          .upsert([{ 
-            id: sharedRoomId,
-            created_by: session.user.id,
-            title: friend.name,
-            type: 'individual',
-            last_message: '새로운 대화를 시작해보세요!',
-            unread_count: 0,
-            updated_at: new Date().toISOString(),
-            members_count: 2
-          }], { onConflict: 'id' });
-
-        if (insertError) {
-          if (!insertError.message.includes('duplicate key')) {
-            throw insertError;
-          }
-        }
-
-        const { error: membersError } = await supabase
-          .from('room_members')
-          .upsert([
-            { room_id: sharedRoomId, user_id: session.user.id },
-            { room_id: sharedRoomId, user_id: friend.friend_user_id }
-          ], { onConflict: 'room_id,user_id' });
-
-        if (membersError) throw membersError;
-      }
-
-      toast.dismiss(loadingToast);
-      setSelectedFriend(null); 
-      navigate(`/chat/room/${sharedRoomId}`); 
-    } catch (e: any) {
-      toast.dismiss(loadingToast);
-      console.error("Chat Enter Error:", e);
-      if (e.code === '42501') {
-        toast.error("채팅방 생성 권한이 없습니다.");
-      } else {
-        toast.error("채팅방 입장에 실패했습니다.");
-      }
-    }
-  };
-
-  const handleDeleteClick = (id: number) => {
-    const target = friends.find(f => f.id === id);
-    if (target) {
-      setDeleteTarget(target);
-    }
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
-
->>>>>>> 51c1227 (Chat Edit)
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
-
       const { error } = await supabase
         .from('friends')
         .update({ is_favorite: newStatus })
@@ -414,11 +311,7 @@ export default function FriendsListPage() {
     setIsSettingsOpen(false);
   }, [navigate]);
 
-<<<<<<< HEAD
   const handleGoSettings = useCallback(() => {
-=======
-  const handleGoSettings = () => {
->>>>>>> 51c1227 (Chat Edit)
     navigate('/main/settings');
     setIsSettingsOpen(false);
   }, [navigate]);
@@ -741,10 +634,6 @@ export default function FriendsListPage() {
   );
 }
 
-<<<<<<< HEAD
-=======
-// === Sub Components ===
->>>>>>> 51c1227 (Chat Edit)
 function FriendItem({ friend, onClick, onBlock, onDelete }: { 
   friend: Friend; 
   onClick: () => void; 
@@ -806,11 +695,7 @@ function FriendItem({ friend, onClick, onBlock, onDelete }: {
       >
         <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4 border border-white/5 shadow-sm">
           {friend.avatar ? (
-<<<<<<< HEAD
             <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" />
-=======
-            <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" alt="Avatar" />
->>>>>>> 51c1227 (Chat Edit)
           ) : (
             <div className="w-full h-full flex items-center justify-center text-[#8E8E93]">
               <UserIcon className="w-6 h-6 opacity-50" />
@@ -1166,7 +1051,6 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
   );
 }
 
-<<<<<<< HEAD
 function CreateChatModal({ isOpen, onClose, friends }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -1185,25 +1069,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
       setStep('select-type');
       setSelectedIds([]);
       setSearchTerm(''); 
-=======
-function CreateChatModal({ isOpen, onClose, friends, onCreated }: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  friends: Friend[]; 
-  onCreated?: (id: string) => void; 
-}) {
-  const { user } = useAuth();
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  // [수정] chatType 상태를 모달 내부에서 관리하여 UI와 동기화
-  const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
-
-  useEffect(() => { 
-    if (isOpen) {
-      setSelectedIds([]);
-      setSearchTerm('');
-      setChatType('individual'); // 모달 열릴 때 초기화
->>>>>>> 51c1227 (Chat Edit)
     }
   }, [isOpen]);
 
@@ -1213,11 +1078,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
     return friends.filter(f => f.name.toLowerCase().includes(query));
   }, [friends, searchTerm]);
 
-<<<<<<< HEAD
   const toggleSelection = useCallback((id: number) => { 
-=======
-  const toggleSelection = (id: number) => { 
->>>>>>> 51c1227 (Chat Edit)
     if (chatType === 'individual') { 
       setSelectedIds([id]); 
     } else { 
@@ -1225,19 +1086,11 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
         prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id]
       ); 
     } 
-<<<<<<< HEAD
   }, [chatType]);
 
   const handleCreate = useCallback(async () => { 
     if (selectedIds.length === 0 || !user?.id) {
       toast.error('상대를 선택해주세요.');
-=======
-  };
-
-  const handleCreate = async () => { 
-    if (selectedIds.length === 0) {
-      toast.error('대화 상대를 선택해주세요.');
->>>>>>> 51c1227 (Chat Edit)
       return;
     }
     
@@ -1245,11 +1098,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
 
-<<<<<<< HEAD
       const isGroup = selectedIds.length > 1;
-=======
-      const isGroup = chatType === 'group' || selectedIds.length > 1;
->>>>>>> 51c1227 (Chat Edit)
       let roomId = "";
 
       if (!isGroup) {
@@ -1265,7 +1114,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
           .maybeSingle();
 
         if (existingRoom) {
-<<<<<<< HEAD
           navigate(`/chat/room/${roomId}`);
           onClose();
           return;
@@ -1344,78 +1192,13 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
 
   if (!isOpen) return null;
   
-=======
-          if (onCreated) onCreated(roomId);
-          return;
-        }
-      } else {
-        // [중요] 그룹 채팅 ID 생성 로직 유지
-        roomId = `group_${crypto.randomUUID()}`;
-      }
-      
-      const memberNames = friends
-        .filter(f => selectedIds.includes(f.id))
-        .map(f => f.name)
-        .join(', ');
-      
-      const title = isGroup 
-        ? (memberNames || '새로운 그룹 채팅')
-        : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
-
-      const { error: roomError } = await supabase
-        .from('chat_rooms')
-        .upsert([{ 
-          id: roomId, 
-          created_by: session.user.id,
-          title: title, 
-          type: isGroup ? 'group' : 'individual', 
-          last_message: '대화를 시작해보세요!', 
-          unread_count: 0,
-          updated_at: new Date().toISOString(),
-          members_count: selectedIds.length + 1 
-        }], { onConflict: 'id' });
-      
-      if (roomError) throw roomError;
-
-      const membersToAdd = [
-        { room_id: roomId, user_id: session.user.id },
-        ...selectedIds.map(id => {
-            const friend = friends.find(f => f.id === id);
-            return { room_id: roomId, user_id: friend?.friend_user_id };
-        }).filter(m => m.user_id) // 유효한 ID만 필터링
-      ];
-
-      const { error: membersError } = await supabase
-        .from('room_members')
-        .upsert(membersToAdd, { onConflict: 'room_id,user_id' });
-      
-      if (membersError) throw membersError;
-
-      toast.success(`${isGroup ? '그룹' : '1:1'} 채팅방이 생성되었습니다.`);
-      onClose(); 
-      if (onCreated) onCreated(roomId);
-
-    } catch (error: any) {
-      console.error('Create Chat Error:', error);
-      toast.error('채팅방 생성에 실패했습니다.');
-    }
-  };
-
-  if (!isOpen) return null;
-
->>>>>>> 51c1227 (Chat Edit)
   return (
     <ModalBackdrop onClick={onClose}>
       <motion.div 
         initial={{ y: 50, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
-<<<<<<< HEAD
         onClick={(e) => e.stopPropagation()} 
         className="w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl overflow-hidden border border-[#2C2C2E] shadow-2xl h-[520px] flex flex-col"
-=======
-        onClick={e => e.stopPropagation()} 
-        className="w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl border border-[#2C2C2E] shadow-2xl h-[520px] flex flex-col overflow-hidden"
->>>>>>> 51c1227 (Chat Edit)
       >
         <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4 shrink-0">
           {step === 'select-friends' ? (
@@ -1528,11 +1311,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
                 </div>
               )}
             </div>
-<<<<<<< HEAD
             <div className="p-4 border-t border-[#2C2C2E] shrink-0">
-=======
-            <div className="p-4 border-t border-[#2C2C2E] bg-[#1C1C1E] shrink-0">
->>>>>>> 51c1227 (Chat Edit)
               <button 
                 onClick={handleCreate} 
                 disabled={selectedIds.length === 0} 
