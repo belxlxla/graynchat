@@ -229,7 +229,7 @@ export default function ChatRoomPage() {
     setInputText(''); // UI 즉시 초기화
 
     try {
-      // 1. 메시지 전송 (Messages 테이블 Insert) - 이건 잘 되고 있음
+      // 1. 메시지 전송 (Messages 테이블 Insert)
       const { data: inserted, error: sendError } = await supabase
         .from('messages')
         .insert({
@@ -252,9 +252,7 @@ export default function ChatRoomPage() {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
 
-      // 2. [수정됨] 방 정보 업데이트 (upsert -> update)
-      // 이미 방이 있으므로 upsert 대신 update를 사용합니다.
-      // 이렇게 하면 필수 컬럼(created_by 등) 부족으로 인한 400 에러가 발생하지 않습니다.
+      // 2. 방 정보 업데이트 (update)
       try {
         await supabase
           .from('chat_rooms')
@@ -293,11 +291,40 @@ export default function ChatRoomPage() {
         });
 
       setIsFriend(true);
+      setIsBlocked(false);
       toast.success('친구로 추가되었습니다.');
       fetchInitialData();
     } catch (err) {
       console.error('친구 추가 실패:', err);
       toast.error('친구 추가에 실패했습니다.');
+    }
+  };
+
+  // [추가] 사용자 차단 기능
+  const handleBlockUser = async () => {
+    if (!chatId || !user) return;
+
+    const friendId = chatId.split('_').find(id => id !== user.id);
+    if (!friendId) return;
+
+    if (!window.confirm('차단하시겠습니까? 차단하면 메시지를 받을 수 없습니다.')) return;
+
+    try {
+      await supabase
+        .from('friends')
+        .upsert({
+          user_id: user.id,
+          friend_user_id: friendId,
+          name: roomTitle,
+          is_blocked: true
+        });
+
+      setIsBlocked(true);
+      toast.success('사용자가 차단되었습니다.');
+      // 차단 후 추가 조치(예: 목록으로 이동)가 필요하면 여기에 추가
+    } catch (err) {
+      console.error('차단 실패:', err);
+      toast.error('차단에 실패했습니다.');
     }
   };
 
@@ -378,14 +405,46 @@ export default function ChatRoomPage() {
         )}
       </AnimatePresence>
 
-      {!isLoading && !isGroupChat && (!isFriend || isBlocked) && (
+      {/* [수정됨] 미등록 사용자 안내 (친구 추가 / 차단 버튼) */}
+      {!isLoading && !isGroupChat && !isFriend && !isBlocked && (
         <div className="bg-[#2C2C2E] p-4 flex items-center justify-between border-b border-[#3A3A3C] z-20">
-          <ShieldAlert className="w-6 h-6 text-brand-DEFAULT" />
-          <div className="flex-1 ml-3">
-            <p className="text-sm font-bold">미등록 사용자</p>
+          <div className="flex items-center">
+            <ShieldAlert className="w-6 h-6 text-brand-DEFAULT" />
+            <div className="ml-3">
+              <p className="text-sm font-bold">미등록 사용자</p>
+            </div>
           </div>
-          <button onClick={handleAddFriend} className="bg-brand-DEFAULT px-4 py-2 rounded-xl text-xs font-bold">
-            친구 추가
+          <div className="flex gap-2">
+            <button 
+              onClick={handleBlockUser} 
+              className="bg-[#3A3A3C] px-3 py-2 rounded-xl text-xs font-medium text-white border border-white/10"
+            >
+              차단
+            </button>
+            <button 
+              onClick={handleAddFriend} 
+              className="bg-brand-DEFAULT px-3 py-2 rounded-xl text-xs font-bold text-white"
+            >
+              친구 추가
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 차단된 사용자 안내 */}
+      {!isLoading && !isGroupChat && isBlocked && (
+        <div className="bg-[#2C2C2E] p-4 flex items-center justify-between border-b border-[#3A3A3C] z-20">
+          <div className="flex items-center">
+            <Ban className="w-6 h-6 text-[#EC5022]" />
+            <div className="ml-3">
+              <p className="text-sm font-bold text-[#EC5022]">차단된 사용자</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleAddFriend} // 친구 추가 시 차단 해제됨
+            className="bg-[#3A3A3C] px-4 py-2 rounded-xl text-xs font-bold text-white border border-white/10"
+          >
+            차단 해제
           </button>
         </div>
       )}

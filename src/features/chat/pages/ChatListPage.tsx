@@ -54,6 +54,7 @@ export default function ChatListPage() {
   
   const [leaveChatTarget, setLeaveChatTarget] = useState<ChatRoom | null>(null);
 
+  // 채팅방 목록 불러오기
   const fetchChats = useCallback(async () => {
     if (!user?.id) return;
     
@@ -73,7 +74,7 @@ export default function ChatListPage() {
           )
         `)
         .eq('user_id', user.id)
-        // [수정 1] nullsLast 제거 및 foreignTable 옵션 사용
+        // [수정] 정렬 옵션 문법 준수
         .order('last_message_at', { foreignTable: 'room', ascending: false });
 
       if (error) throw error;
@@ -110,7 +111,7 @@ export default function ChatListPage() {
         if (friendsResult.data) friendsData = friendsResult.data;
       }
 
-      // [수정 2] map의 반환 타입을 명시하여 TS 에러 해결
+      // [수정] 타입 명시로 빌드 에러 해결
       const formattedData = validData.map((member: any): ChatRoom | null => {
         const room = member.room;
         if (!room) return null;
@@ -141,7 +142,6 @@ export default function ChatListPage() {
       }).filter((chat): chat is ChatRoom => chat !== null);
       
       setChats(formattedData);
-      console.log('[ChatList] 채팅방 목록 로드 완료:', formattedData.length, '개');
     } catch (error) {
       console.error('Fetch Chats Error:', error);
     } finally {
@@ -149,6 +149,7 @@ export default function ChatListPage() {
     }
   }, [user]);
 
+  // [중요 수정] 실시간 업데이트 로직 강화 (메시지 수신 시 즉시 반영)
   useEffect(() => {
     if (!user?.id) return;
     
@@ -156,6 +157,43 @@ export default function ChatListPage() {
 
     const channel = supabase
       .channel(`chat_list_realtime_${user.id}`)
+      // 1. 새 메시지가 오면 (messages 테이블 INSERT 감지)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const newMsg = payload.new as any;
+          
+          setChats(prevChats => {
+            const chatIndex = prevChats.findIndex(c => c.id === newMsg.room_id);
+            
+            // 목록에 없는 방이면(새로운 방) 전체 다시 로드
+            if (chatIndex === -1) {
+              fetchChats();
+              return prevChats;
+            }
+
+            // 기존 방 업데이트: 마지막 메시지 갱신, 시간 갱신, 순서 맨 위로, 안 읽음 카운트 증가
+            const updatedChats = [...prevChats];
+            const chatToUpdate = { ...updatedChats[chatIndex] };
+            
+            chatToUpdate.lastMessage = newMsg.content;
+            chatToUpdate.timestamp = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            // 내가 보낸 게 아니면 안 읽음 카운트 1 증가 (UI 즉시 반영)
+            if (newMsg.sender_id !== user.id) {
+              chatToUpdate.unreadCount = (chatToUpdate.unreadCount || 0) + 1;
+            }
+
+            // 배열에서 제거하고 맨 앞에 추가
+            updatedChats.splice(chatIndex, 1);
+            updatedChats.unshift(chatToUpdate);
+            
+            return updatedChats;
+          });
+        }
+      )
+      // 2. 방 정보 변경 (예: unread_count 초기화 등 room_members 변경 감지)
       .on(
         'postgres_changes', 
         { 
@@ -165,18 +203,11 @@ export default function ChatListPage() {
           filter: `user_id=eq.${user.id}` 
         }, 
         (payload) => {
-          console.log('💬 room_members 실시간 이벤트:', payload.eventType);
-          
-          if (payload.eventType === 'DELETE') {
-            setChats(prev => prev.filter(c => c.id !== payload.old?.room_id));
-          } else {
-            fetchChats();
-          }
+          // 읽음 처리 등으로 내 상태가 변하면 목록 새로고침
+          fetchChats();
         }
       )
-      .subscribe((status) => {
-        console.log('Realtime subscription 상태:', status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -577,7 +608,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   onCreated?: (id: string) => void; 
 }) {
   const { user } = useAuth();
-  // [수정 3] 사용하지 않는 navigate 제거
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -617,7 +647,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
           .maybeSingle();
 
         if (existingRoom) {
-          console.log('[CreateChat] 기존 1:1 채팅방 존재 → 바로 이동:', roomId);
           if (onCreated) onCreated(roomId);
           return;
         }
@@ -659,7 +688,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       
       if (membersError) throw membersError;
 
-      console.log('[CreateChat] 새 채팅방 생성 성공:', roomId, isGroup ? '(그룹)' : '(1:1)');
       toast.success('채팅방이 생성되었습니다.');
       
       if (onCreated) onCreated(roomId);

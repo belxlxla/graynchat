@@ -1,4 +1,3 @@
-// src/components/layout/BottomNavigation.tsx
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,10 +12,7 @@ export default function BottomNavigation() {
   const location = useLocation();
   const { user } = useAuth();
   
-  // 콘텐츠 준비중 팝업 상태 관리
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
-  
-  // 채팅 알림 상태 관리 (초기값 false)
   const [hasUnreadChats, setHasUnreadChats] = useState<boolean>(false);
 
   const navItems = [
@@ -26,22 +22,24 @@ export default function BottomNavigation() {
     { id: 'settings', path: '/main/settings', icon: <MoreHorizontal className="w-7 h-7" />, label: '설정' },
   ];
 
-  // 채팅 알림 확인
   useEffect(() => {
     if (!user?.id) return;
 
     const checkUnreadChats = async () => {
       try {
+        // [수정] 500 에러 방지를 위해 head: true 대신 일반 select count 사용
         const { count, error } = await supabase
           .from('room_members')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .gt('unread_count', 0);
 
-        if (error) throw error;
+        if (error) {
+            // 에러가 나더라도 앱이 멈추지 않게 로그만 남김
+            console.error('Unread check failed (ignoring):', error.message);
+            return;
+        }
         
-        // [수정] count가 0일 때 숫자 0이 렌더링되지 않도록 명확한 boolean으로 변환
-        // (count ?? 0) > 0 구문을 사용하여 0, null, undefined 모두 false 처리
         setHasUnreadChats((count ?? 0) > 0);
 
       } catch (error) {
@@ -51,11 +49,11 @@ export default function BottomNavigation() {
 
     checkUnreadChats();
 
-    // 실시간 구독
+    // 실시간 구독 (내 멤버십 정보가 바뀌면 뱃지 갱신)
     const channel = supabase
       .channel(`bottom_nav_${user.id}`)
       .on('postgres_changes', {
-        event: '*',
+        event: 'UPDATE',
         schema: 'public',
         table: 'room_members',
         filter: `user_id=eq.${user.id}`
@@ -69,12 +67,11 @@ export default function BottomNavigation() {
     };
   }, [user]);
 
-  // 탭 클릭 핸들러
   const handleNavClick = (id: string, path: string) => {
     if (id === 'contents') {
-      setIsContentModalOpen(true); // 콘텐츠 탭은 팝업 오픈
+      setIsContentModalOpen(true);
     } else {
-      navigate(path); // 나머지는 페이지 이동
+      navigate(path);
     }
   };
 
@@ -104,8 +101,7 @@ export default function BottomNavigation() {
                 )}
               </div>
               
-              {/* 채팅 알림 뱃지: hasUnreadChats가 true일 때만 렌더링 (숫자 노출 방지) */}
-              {item.id === 'chats' && hasUnreadChats === true && (
+              {item.id === 'chats' && hasUnreadChats && (
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -124,11 +120,9 @@ export default function BottomNavigation() {
         })}
       </nav>
 
-      {/* 콘텐츠 준비중 모달 (Premium Dark Custom Popup) */}
       <AnimatePresence>
         {isContentModalOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-            {/* Backdrop */}
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
@@ -137,7 +131,6 @@ export default function BottomNavigation() {
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
             
-            {/* Modal Card */}
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }} 
               animate={{ scale: 1, opacity: 1, y: 0 }} 
@@ -145,10 +138,8 @@ export default function BottomNavigation() {
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               className="relative w-full max-w-[320px] bg-[#1C1C1E] border border-white/10 rounded-3xl p-8 overflow-hidden shadow-2xl text-center"
             >
-              {/* Background Glow Effect */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-40 bg-brand-DEFAULT/20 blur-[60px] rounded-full pointer-events-none" />
 
-              {/* Close Button */}
               <button 
                 onClick={() => setIsContentModalOpen(false)}
                 className="absolute top-4 right-4 text-[#8E8E93] hover:text-white transition-colors"
@@ -156,13 +147,11 @@ export default function BottomNavigation() {
                 <X className="w-5 h-5" />
               </button>
 
-              {/* Icon / Illustration */}
               <div className="relative mb-6 flex justify-center">
                 <div className="w-20 h-20 bg-gradient-to-br from-[#3A3A3C] to-[#2C2C2E] rounded-full flex items-center justify-center shadow-inner border border-white/5 relative z-10">
                   <Rocket className="w-10 h-10 text-brand-DEFAULT fill-brand-DEFAULT/20 -ml-1 -mt-1" />
                 </div>
                 
-                {/* ✨ 별 애니메이션 */}
                 <motion.div 
                   className="absolute -top-3 -right-2 z-20"
                   animate={{ 
@@ -182,7 +171,6 @@ export default function BottomNavigation() {
                 </motion.div>
               </div>
 
-              {/* Text Content */}
               <h3 className="text-xl font-bold text-white mb-3">그레인 콘텐츠</h3>
               <div className="text-[13px] text-[#8E8E93] leading-relaxed space-y-1 mb-8">
                 <p>해당 페이지는 현재 그레인이</p>
@@ -190,7 +178,6 @@ export default function BottomNavigation() {
                 <p className="pt-2">잠시만 기다려주시면 곧 오픈하겠습니다!</p>
               </div>
 
-              {/* Action Button */}
               <button 
                 onClick={() => setIsContentModalOpen(false)}
                 className="w-full py-3.5 bg-brand-DEFAULT rounded-xl text-white font-bold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20"

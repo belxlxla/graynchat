@@ -211,7 +211,6 @@ export default function FriendsListPage() {
 
       const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
 
-      // 1. 방이 이미 존재하는지 확인
       const { data: existingRoom, error: searchError } = await supabase
         .from('chat_rooms')
         .select('id')
@@ -220,11 +219,10 @@ export default function FriendsListPage() {
 
       if (searchError) throw searchError;
 
-      // 2. 방이 없으면 생성 (insert 사용 - 권한 문제 최소화)
       if (!existingRoom) {
         const { error: insertError } = await supabase
           .from('chat_rooms')
-          .insert([{ 
+          .upsert([{ 
             id: sharedRoomId,
             created_by: session.user.id,
             title: friend.name,
@@ -233,18 +231,10 @@ export default function FriendsListPage() {
             unread_count: 0,
             updated_at: new Date().toISOString(),
             members_count: 2
-          }]); 
-          // insert는 중복 시 에러가 나므로, upsert 대신 insert를 쓰고 에러를 잡는게 안전할 수 있음
-          // 하지만 여기선 upsert가 편하므로 위 SQL에서 UPDATE 권한도 줬습니다.
+          }], { onConflict: 'id' });
 
-        if (insertError) {
-          // 이미 존재한다고 에러가 나면 무시하고 진행 (동시성 이슈 등)
-          if (!insertError.message.includes('duplicate key')) {
-            throw insertError;
-          }
-        }
+        if (insertError) throw insertError;
 
-        // 3. 참여자 추가
         const { error: membersError } = await supabase
           .from('room_members')
           .upsert([
