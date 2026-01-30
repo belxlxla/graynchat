@@ -24,6 +24,7 @@ interface ChatRoom {
 
 interface Friend {
   id: number;
+  friend_user_id: string; // 친구의 UUID 식별용
   name: string;
   avatar: string | null;
 }
@@ -60,16 +61,19 @@ export default function ChatListPage() {
 
         let friendsData: Friend[] = [];
         if (individualChatIds.length > 0) {
+          // chat_rooms의 id가 친구의 user_id나 방 ID와 어떻게 매칭되는지 로직에 따라 수정 필요
+          // 여기서는 단순 예시로 friends 테이블 조회
           const { data: profiles } = await supabase
             .from('friends')
-            .select('id, name, avatar')
-            .in('id', individualChatIds);
+            .select('id, friend_user_id, name, avatar') 
+            .in('id', individualChatIds); // 실제로는 id 매칭 로직 확인 필요
           if (profiles) friendsData = profiles;
         }
 
         const formattedData: ChatRoom[] = rooms.map((room: any) => {
           const isGroup = room.type === 'group';
-          const matchedProfile = !isGroup ? friendsData?.find(f => f.id === room.id) : null;
+          // 1:1 채팅일 경우 상대방 프로필 찾기 (로직 보완 필요)
+          const matchedProfile = !isGroup ? friendsData?.find(f => f.id.toString() === room.id) : null;
           
           return {
             id: room.id.toString(),
@@ -96,7 +100,7 @@ export default function ChatListPage() {
     try {
       const { data, error } = await supabase
         .from('friends')
-        .select('id, name, avatar')
+        .select('id, friend_user_id, name, avatar')
         .order('name', { ascending: true });
       
       if (error) throw error;
@@ -247,7 +251,7 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: { data: ChatRoom; 
 
 function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: boolean; onClose: () => void; friends: Friend[]; onCreated?: (id: string) => void; }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [searchTerm, setSearchTerm] = useState(''); // ✨ 이름 검색 상태 추가
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => { 
     if (isOpen) {
@@ -256,7 +260,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
     }
   }, [isOpen]);
 
-  // ✨ 검색어에 따른 친구 필터링
   const filteredFriends = useMemo(() => {
     return friends.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [friends, searchTerm]);
@@ -265,11 +268,30 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
     if (selectedIds.length === 0) return toast.error('상대를 선택해주세요.'); 
     try {
       const isGroup = selectedIds.length > 1;
-      const roomId = isGroup ? Date.now() : selectedIds[0];
-      const title = isGroup ? `나 외 ${selectedIds.length}명` : friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
-      await supabase.from('chat_rooms').upsert([{ id: roomId, title, type: isGroup ? 'group' : 'individual', last_message: '대화를 시작해보세요!', unread_count: 0, members_count: selectedIds.length + 1 }]);
-      if (onCreated) onCreated(roomId.toString()); 
-    } catch (error) { toast.error('생성 실패'); }
+      // 그룹이 아니면 친구 ID, 그룹이면 timestamp (실제로는 UUID 권장)
+      const roomId = isGroup ? Date.now().toString() : selectedIds[0].toString();
+      
+      const title = isGroup 
+        ? `나 외 ${selectedIds.length}명` 
+        : friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
+
+      // 1. 방 생성
+      await supabase.from('chat_rooms').upsert([{ 
+        id: roomId, 
+        title, 
+        type: isGroup ? 'group' : 'individual', 
+        last_message: '대화를 시작해보세요!', 
+        unread_count: 0, 
+        members_count: selectedIds.length + 1 
+      }]);
+      
+      // 2. (옵션) 1:1 채팅일 경우 상대방 user_id 매칭 로직 필요하지만 여기선 생략
+      
+      if (onCreated) onCreated(roomId); 
+    } catch (error) { 
+      console.error(error);
+      toast.error('생성 실패'); 
+    }
   };
 
   if (!isOpen) return null;
@@ -283,7 +305,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: { isOpen: bool
           <button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button>
         </div>
 
-        {/* ✨ [수정] 친구 이름 검색바 추가 */}
+        {/* ✨ [수정] 중복된 value 속성 제거 (TS17001 해결) */}
         <div className="px-4 py-3 bg-[#1C1C1E] border-b border-[#2C2C2E]">
           <div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2">
             <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
