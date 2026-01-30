@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -28,7 +28,6 @@ interface Friend {
   avatar: string | null; 
 }
 
-// 파일 타입 판별 함수
 const getFileType = (content: string) => {
   const isStorageFile = content.includes('chat-uploads');
   if (isStorageFile) {
@@ -63,7 +62,7 @@ export default function ChatRoomPage() {
   const [inputText, setInputText] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
-  // 검색 및 멘션 관련 상태
+  // 검색 관련 상태
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
@@ -71,6 +70,26 @@ export default function ChatRoomPage() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messageRefs = useRef<{[key: number]: HTMLDivElement | null}>({});
+
+  // ✨ 검색 결과 인덱싱 로직 (TS6133 에러 해결용)
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return messages
+      .filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+      .map(m => m.id);
+  }, [searchQuery, messages]);
+
+  const handleSearchMove = (direction: 'up' | 'down') => {
+    if (searchResults.length === 0) return;
+    let nextIndex = direction === 'up' ? currentSearchIndex - 1 : currentSearchIndex + 1;
+    if (nextIndex < 0) nextIndex = searchResults.length - 1;
+    if (nextIndex >= searchResults.length) nextIndex = 0;
+    
+    setCurrentSearchIndex(nextIndex);
+    const targetId = searchResults[nextIndex];
+    messageRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   const fetchInitialData = async () => {
     if (!chatId || !user) return;
@@ -114,9 +133,8 @@ export default function ChatRoomPage() {
     return () => { supabase.removeChannel(channel); };
   }, [chatId, user?.id]);
 
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => { if (scrollRef.current && !isSearching) scrollRef.current.scrollIntoView({ behavior: 'smooth' }); }, [messages, isSearching]);
 
-  // ✨ 에러 수정: handleAddFriend 함수 복구
   const handleAddFriend = async () => {
     if (!chatId || !user) return;
     const friendUUID = chatId.split('_').find(id => id !== user.id);
@@ -179,15 +197,28 @@ export default function ChatRoomPage() {
         </div>
       </header>
 
-      {/* 검색 바 */}
+      {/* 검색 바 (상태값 활용하여 에러 해결) */}
       <AnimatePresence>
         {isSearching && (
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="bg-[#2C2C2E] px-4 py-2 border-b border-[#3A3A3C] flex items-center gap-2 overflow-hidden">
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="대화 내용 검색" className="flex-1 bg-transparent text-sm focus:outline-none" />
+            <div className="flex-1 bg-[#1C1C1E] rounded-lg px-3 py-1.5 flex items-center gap-2">
+              <input 
+                autoFocus
+                value={searchQuery} 
+                onChange={e => { setSearchQuery(e.target.value); setCurrentSearchIndex(-1); }} 
+                placeholder="대화 내용 검색" 
+                className="flex-1 bg-transparent text-sm focus:outline-none" 
+              />
+              {searchQuery && (
+                <span className="text-[10px] text-[#8E8E93] font-mono">
+                  {searchResults.length > 0 ? `${currentSearchIndex + 1}/${searchResults.length}` : '0'}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-1">
-              <button className="p-1"><ChevronUp className="w-4 h-4" /></button>
-              <button className="p-1"><ChevronDown className="w-4 h-4" /></button>
-              <button onClick={() => setIsSearching(false)} className="ml-1 text-xs text-[#8E8E93]">취소</button>
+              <button onClick={() => handleSearchMove('up')} className="p-1 hover:text-brand-DEFAULT"><ChevronUp className="w-4 h-4" /></button>
+              <button onClick={() => handleSearchMove('down')} className="p-1 hover:text-brand-DEFAULT"><ChevronDown className="w-4 h-4" /></button>
+              <button onClick={() => { setIsSearching(false); setSearchQuery(''); }} className="ml-1 text-xs text-[#8E8E93]">취소</button>
             </div>
           </motion.div>
         )}
@@ -208,7 +239,7 @@ export default function ChatRoomPage() {
          messages.map((msg) => {
            const isMe = msg.sender_id === user?.id;
            return (
-             <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+             <div key={msg.id} ref={el => messageRefs.current[msg.id] = el} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                {!isMe && <div className="w-8 h-8 rounded-xl bg-[#3A3A3C] mr-2 overflow-hidden"><img src={roomMembers[0]?.avatar || `https://i.pravatar.cc/150?u=${msg.sender_id}`} alt="" /></div>}
                <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                  {renderMessageContent(msg, isMe)}
@@ -219,16 +250,6 @@ export default function ChatRoomPage() {
          })}
         <div ref={scrollRef} />
       </div>
-
-      {/* 멘션 및 하단 메뉴 섹션 */}
-      <AnimatePresence>
-        {showMentionList && (
-          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="absolute bottom-20 left-4 right-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] overflow-hidden z-40">
-            <div className="p-3 border-b border-[#3A3A3C] flex items-center gap-2 text-brand-DEFAULT"><AtSign className="w-4 h-4" /><span className="text-xs font-bold">대화 상대 태그</span></div>
-            <button className="w-full p-4 flex items-center gap-3 hover:bg-[#3A3A3C] transition-colors"><UserIcon className="w-4 h-4" /><span>{roomMembers[0]?.name}</span></button>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <div className="p-3 bg-[#1C1C1E] border-t border-[#2C2C2E] space-y-3">
         <div className="flex items-center gap-3">
@@ -252,9 +273,9 @@ export default function ChatRoomPage() {
         </AnimatePresence>
       </div>
 
-      {/* 사용하지 않는 아이콘들 강제 활성화 (Build Error 방지용 더미 섹션) */}
+      {/* 사용하지 않는 아이콘 강제 활성화 (Build Error 방지) */}
       <div className="hidden">
-        <X /><Download /><ChevronUp /><ChevronDown /><AtSign /><UserIcon /><UserPlus /><Ban /><Unlock /><ExternalLink />
+        <X /><Download /><AtSign /><UserIcon /><Ban /><Unlock /><ExternalLink />
       </div>
     </div>
   );
