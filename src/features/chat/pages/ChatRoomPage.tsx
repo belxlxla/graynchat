@@ -119,7 +119,22 @@ export default function ChatRoomPage() {
       }
     };
     
+    // 초기 읽음 처리
     markAsRead();
+
+    // 페이지 포커스/visibility 변경 시 읽음 처리 (모바일 브라우저 대응)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        markAsRead();
+      }
+    };
+
+    const handleFocus = () => {
+      markAsRead();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     const channel = supabase.channel(`room_${chatId}`)
       .on('postgres_changes', { 
@@ -136,13 +151,15 @@ export default function ChatRoomPage() {
         });
         
         // 실시간으로 메시지 받을 때도 읽음 처리
-        if (newMsg.sender_id !== user.id) {
-          markAsRead();
-        }
+        setTimeout(() => markAsRead(), 100);
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      supabase.removeChannel(channel); 
+    };
   }, [chatId, fetchInitialData, user]);
 
   useEffect(() => {

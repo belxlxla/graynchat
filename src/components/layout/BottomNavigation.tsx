@@ -1,17 +1,23 @@
 // src/components/layout/BottomNavigation.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, MoreHorizontal, Layers, Rocket, Sparkles, X } from 'lucide-react';
+import { supabase } from '../../shared/lib/supabaseClient';
+import { useAuth } from '../../features/auth/contexts/AuthContext';
 // 로고 경로 확인 필수!
 import GraynLogo from '../../assets/grayn_logo.svg';
 
 export default function BottomNavigation() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   
   // 콘텐츠 준비중 팝업 상태 관리
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
+  
+  // 채팅 알림 상태 관리
+  const [hasUnreadChats, setHasUnreadChats] = useState(false);
 
   const navItems = [
     { id: 'friends', path: '/main/friends', icon: 'custom', label: '홈' },
@@ -19,6 +25,45 @@ export default function BottomNavigation() {
     { id: 'contents', path: '/main/contents', icon: <Layers className="w-7 h-7" />, label: '콘텐츠' },
     { id: 'settings', path: '/main/settings', icon: <MoreHorizontal className="w-7 h-7" />, label: '설정' },
   ];
+
+  // 채팅 알림 확인
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const checkUnreadChats = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('chat_rooms')
+          .select('unread_count')
+          .eq('user_id', user.id)
+          .gt('unread_count', 0);
+
+        if (error) throw error;
+        setHasUnreadChats(data && data.length > 0);
+      } catch (error) {
+        console.error('Check unread error:', error);
+      }
+    };
+
+    checkUnreadChats();
+
+    // 실시간 구독
+    const channel = supabase
+      .channel(`bottom_nav_${user.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'chat_rooms',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        checkUnreadChats();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
 
   // 탭 클릭 핸들러
   const handleNavClick = (id: string, path: string) => {
@@ -54,6 +99,15 @@ export default function BottomNavigation() {
                   </span>
                 )}
               </div>
+              
+              {/* 채팅 알림 뱃지 */}
+              {item.id === 'chats' && hasUnreadChats && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute top-3 right-3 w-2 h-2 bg-[#EC5022] rounded-full border border-[#1C1C1E]"
+                />
+              )}
               
               {isActive && (
                 <motion.div
