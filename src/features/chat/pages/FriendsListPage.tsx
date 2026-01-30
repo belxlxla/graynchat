@@ -1339,7 +1339,7 @@ function ModalBackdrop({ children, onClick }: {
         <div className="pointer-events-auto w-full flex justify-center">
           {children}
         </div> 
-      </div>
+      </div> 
     </div>
   );
 }
