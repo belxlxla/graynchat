@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, Check, Image as ImageIcon, X, Eye, User as UserIcon } from 'lucide-react';
@@ -8,28 +8,57 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
-interface ProfileSetupPageProps {
-  onComplete?: () => void;
-}
+type ImageType = 'avatar' | 'background';
 
-async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
-  const image = await new Promise<HTMLImageElement>((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.src = imageSrc;
+// 이미지 크롭 헬퍼 함수
+async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        reject(new Error('Canvas context not available'));
+        return;
+      }
+
+      canvas.width = pixelCrop.width;
+      canvas.height = pixelCrop.height;
+
+      ctx.drawImage(
+        image,
+        pixelCrop.x,
+        pixelCrop.y,
+        pixelCrop.width,
+        pixelCrop.height,
+        0,
+        0,
+        pixelCrop.width,
+        pixelCrop.height
+      );
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Canvas toBlob failed'));
+          }
+        },
+        'image/jpeg',
+        0.95
+      );
+    };
+    image.onerror = () => reject(new Error('Image load failed'));
+    image.src = imageSrc;
   });
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
-  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(URL.createObjectURL(blob!)), 'image/jpeg'));
 }
 
-export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) {
+export default function ProfileSetupPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  
   const [nickname, setNickname] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -39,7 +68,8 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
 
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [currentImageType, setCurrentImageType] = useState<'avatar' | 'background'>('avatar');
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentImageType, setCurrentImageType] = useState<ImageType>('avatar');
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -48,83 +78,182 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'background') => {
-    if (e.target.files && e.target.files.length > 0) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setTempImageSrc(reader.result as string);
-        setCurrentImageType(type);
-        setCrop({ x: 0, y: 0 });
-        setZoom(1);
-        setIsCropOpen(true);
-      };
-      reader.readAsDataURL(e.target.files[0]);
-    }
-  };
+  const isFormValid = useMemo(() => {
+    return nickname.trim().length >= 2;
+  }, [nickname]);
 
-  const handleCropSave = async () => {
+  const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>, type: ImageType) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('이미지 파일만 업로드 가능합니다.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('파일 크기는 5MB 이하여야 합니다.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setTempImageSrc(reader.result as string);
+      setCurrentImageType(type);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setIsCropOpen(true);
+    };
+    reader.onerror = () => {
+      toast.error('파일을 읽는 중 오류가 발생했습니다.');
+    };
+    reader.readAsDataURL(file);
+
+    // input 초기화
+    e.target.value = '';
+  }, []);
+
+  const handleCropSave = useCallback(async () => {
     if (!tempImageSrc || !croppedAreaPixels) return;
+
     try {
-      const croppedImageUrl = await getCroppedImg(tempImageSrc, croppedAreaPixels);
-      const res = await fetch(croppedImageUrl);
-      const blob = await res.blob();
+      const blob = await getCroppedImg(tempImageSrc, croppedAreaPixels);
+      const url = URL.createObjectURL(blob);
+
       if (currentImageType === 'avatar') {
-        setAvatarUrl(croppedImageUrl);
+        if (avatarUrl) URL.revokeObjectURL(avatarUrl);
+        setAvatarUrl(url);
         setAvatarBlob(blob);
       } else {
-        setBackgroundUrl(croppedImageUrl);
+        if (backgroundUrl) URL.revokeObjectURL(backgroundUrl);
+        setBackgroundUrl(url);
         setBgBlob(blob);
       }
+
       setIsCropOpen(false);
-    } catch {
+      setTempImageSrc(null);
+      toast.success('이미지가 설정되었습니다.');
+    } catch (error) {
+      console.error('Image crop error:', error);
       toast.error('이미지 편집 중 오류가 발생했습니다.');
     }
-  };
+  }, [tempImageSrc, croppedAreaPixels, currentImageType, avatarUrl, backgroundUrl]);
 
-  const handleComplete = async () => {
-    if (!user) return;
-    const loadToast = toast.loading('프로필 정보를 저장하고 있습니다...');
+  const uploadImage = useCallback(async (blob: Blob, type: ImageType): Promise<string | null> => {
+    if (!user?.id) return null;
+
+    const fileExt = 'jpg';
+    const fileName = `${user.id}/${type}_${Date.now()}.${fileExt}`;
+
     try {
-      let finalAv = avatarUrl;
+      const { data, error } = await supabase.storage
+        .from('profiles')
+        .upload(fileName, blob, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+
+      if (error) throw error;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('profiles')
+        .getPublicUrl(data.path);
+
+      return publicUrlData.publicUrl;
+    } catch (error) {
+      console.error(`${type} upload error:`, error);
+      throw error;
+    }
+  }, [user]);
+
+  const handleComplete = useCallback(async () => {
+    if (!user?.id) {
+      toast.error('사용자 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    if (!isFormValid) {
+      toast.error('닉네임을 2자 이상 입력해주세요.');
+      return;
+    }
+
+    const loadingToast = toast.loading('프로필을 저장하고 있습니다...');
+    setIsSaving(true);
+
+    try {
+      let finalAvatar = avatarUrl;
       let finalBg = backgroundUrl;
 
+      // 이미지 업로드
+      const uploadPromises: Promise<string | null>[] = [];
+      
       if (avatarBlob) {
-        const { data } = await supabase.storage.from('profiles').upload(`${user.id}/avatar_${Date.now()}.jpg`, avatarBlob);
-        if (data) finalAv = supabase.storage.from('profiles').getPublicUrl(data.path).data.publicUrl;
+        uploadPromises.push(uploadImage(avatarBlob, 'avatar'));
+      } else {
+        uploadPromises.push(Promise.resolve(null));
       }
+
       if (bgBlob) {
-        const { data } = await supabase.storage.from('profiles').upload(`${user.id}/bg_${Date.now()}.jpg`, bgBlob);
-        if (data) finalBg = supabase.storage.from('profiles').getPublicUrl(data.path).data.publicUrl;
+        uploadPromises.push(uploadImage(bgBlob, 'background'));
+      } else {
+        uploadPromises.push(Promise.resolve(null));
       }
 
-      await supabase.from('users').upsert({
-        id: user.id,
-        name: nickname,
-        status_message: statusMessage,
-        avatar: finalAv,
-        bg_image: finalBg,
-        email: user.email
-      });
+      const [uploadedAvatar, uploadedBg] = await Promise.all(uploadPromises);
 
-      toast.success('그레인 가입을 환영합니다!', { id: loadToast });
-      if (onComplete) onComplete(); else navigate('/main/friends');
-    } catch {
-      toast.error('저장에 실패했습니다.', { id: loadToast });
+      if (uploadedAvatar) finalAvatar = uploadedAvatar;
+      if (uploadedBg) finalBg = uploadedBg;
+
+      // 프로필 저장
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          name: nickname.trim(),
+          status_message: statusMessage.trim() || '그레인을 시작했어요!',
+          avatar: finalAvatar,
+          bg_image: finalBg,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      toast.success('그레인 가입을 환영합니다! 🎉', { id: loadingToast });
+
+      // 메인 페이지로 이동
+      setTimeout(() => {
+        navigate('/main/friends', { replace: true });
+      }, 500);
+    } catch (error) {
+      console.error('Profile save error:', error);
+      toast.error('프로필 저장에 실패했습니다.', { id: loadingToast });
+    } finally {
+      setIsSaving(false);
     }
-  };
+  }, [user, nickname, statusMessage, avatarUrl, backgroundUrl, avatarBlob, bgBlob, isFormValid, uploadImage, navigate]);
+
+  // 컴포넌트 언마운트 시 URL 정리
+  const cleanup = useCallback(() => {
+    if (avatarUrl) URL.revokeObjectURL(avatarUrl);
+    if (backgroundUrl) URL.revokeObjectURL(backgroundUrl);
+  }, [avatarUrl, backgroundUrl]);
 
   return (
     <div className="h-[100dvh] flex flex-col bg-dark-bg text-white overflow-hidden font-sans">
-      {/* Scrollable Area */}
+      {/* 스크롤 가능 영역 */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {/* 상단 이미지 영역 */}
+        {/* 배경 이미지 영역 */}
         <div className="relative w-full shrink-0">
           <div 
             onClick={() => backgroundInputRef.current?.click()} 
             className="h-56 bg-[#1C1C1E] cursor-pointer overflow-hidden group border-b border-[#2C2C2E]"
           >
             {backgroundUrl ? (
-              <img src={backgroundUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity" alt="Bg" />
+              <img 
+                src={backgroundUrl} 
+                className="w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity" 
+                alt="Background" 
+              />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[#48484A] gap-2">
                 <ImageIcon className="w-8 h-8 opacity-20" />
@@ -136,11 +265,19 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
             </div>
           </div>
 
+          {/* 프로필 사진 */}
           <div className="absolute -bottom-14 left-1/2 -translate-x-1/2">
-            <div onClick={() => avatarInputRef.current?.click()} className="relative cursor-pointer group">
+            <div 
+              onClick={() => avatarInputRef.current?.click()} 
+              className="relative cursor-pointer group"
+            >
               <div className="w-32 h-32 rounded-[40px] border-[6px] border-dark-bg bg-[#2C2C2E] overflow-hidden flex items-center justify-center shadow-2xl relative">
                 {avatarUrl ? (
-                  <img src={avatarUrl} className="w-full h-full object-cover group-hover:opacity-60 transition-opacity" alt="Av" />
+                  <img 
+                    src={avatarUrl} 
+                    className="w-full h-full object-cover group-hover:opacity-60 transition-opacity" 
+                    alt="Avatar" 
+                  />
                 ) : (
                   <UserIcon className="w-12 h-12 opacity-20 text-[#8E8E93]" />
                 )}
@@ -155,39 +292,56 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
           </div>
         </div>
 
-        {/* 입력 폼 영역 */}
+        {/* 입력 폼 */}
         <div className="px-6 pt-20 pb-36">
           <div className="text-center mb-10">
             <h2 className="text-2xl font-black mb-2 tracking-tight">프로필 설정</h2>
-            <p className="text-[#8E8E93] text-sm leading-relaxed">회원님을 표현할 수 있는<br/>프로필을 완성해 주세요.</p>
+            <p className="text-[#8E8E93] text-sm leading-relaxed">
+              회원님을 표현할 수 있는<br/>프로필을 완성해 주세요.
+            </p>
           </div>
 
           <div className="space-y-6">
+            {/* 닉네임 */}
             <div className="space-y-2">
-              <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">Nickname</label>
+              <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">
+                Nickname
+              </label>
               <input 
                 type="text" 
                 value={nickname} 
                 onChange={e => setNickname(e.target.value)} 
                 placeholder="닉네임을 입력해 주세요" 
+                maxLength={20}
                 className="w-full bg-[#1C1C1E] border border-[#2C2C2E] rounded-2xl py-4 px-5 text-[15px] text-white focus:ring-2 focus:ring-brand-DEFAULT focus:border-transparent outline-none transition-all placeholder-[#48484A]" 
               />
+              <p className="text-xs text-[#636366] ml-1">
+                {nickname.length}/20자
+              </p>
             </div>
 
+            {/* 상태 메시지 */}
             <div className="space-y-2">
-              <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">상태 메시지</label>
+              <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">
+                상태 메시지
+              </label>
               <input 
                 type="text" 
                 value={statusMessage} 
                 onChange={e => setStatusMessage(e.target.value)} 
                 placeholder="상태 메시지를 입력해 주세요" 
+                maxLength={50}
                 className="w-full bg-[#1C1C1E] border border-[#2C2C2E] rounded-2xl py-4 px-5 text-[15px] text-white focus:ring-2 focus:ring-brand-DEFAULT focus:border-transparent outline-none transition-all placeholder-[#48484A]" 
               />
+              <p className="text-xs text-[#636366] ml-1">
+                {statusMessage.length}/50자
+              </p>
             </div>
 
+            {/* 미리보기 버튼 */}
             <button 
               onClick={() => setIsPreviewOpen(true)} 
-              className="w-full py-4 rounded-2xl bg-[#2C2C2E] border border-[#3A3A3C] text-[#E5E5EA] font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+              className="w-full py-4 rounded-2xl bg-[#2C2C2E] border border-[#3A3A3C] text-[#E5E5EA] font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:bg-[#3A3A3C]"
             >
               <Eye className="w-4 h-4" /> 프로필 미리보기
             </button>
@@ -195,25 +349,47 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
         </div>
       </div>
 
-      {/* 하단 고정 버튼 영역 */}
+      {/* 완료 버튼 */}
       <div className="shrink-0 p-6 bg-gradient-to-t from-dark-bg via-dark-bg to-transparent pb-safe">
         <button 
           onClick={handleComplete} 
-          disabled={!nickname} 
+          disabled={!isFormValid || isSaving} 
           className={`w-full h-14 rounded-2xl font-black text-lg flex items-center justify-center gap-2 shadow-2xl transition-all active:scale-[0.98] ${
-            nickname 
+            isFormValid && !isSaving
               ? 'bg-brand-DEFAULT text-white shadow-brand-DEFAULT/30' 
               : 'bg-[#2C2C2E] text-[#48484A] cursor-not-allowed'
           }`}
         >
-          그레인 시작하기 {nickname && <Check className="w-5 h-5 ml-1" />}
+          {isSaving ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              저장 중...
+            </>
+          ) : (
+            <>
+              그레인 시작하기 {isFormValid && <Check className="w-5 h-5 ml-1" />}
+            </>
+          )}
         </button>
       </div>
 
-      <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={e => onFileChange(e, 'avatar')} />
-      <input type="file" ref={backgroundInputRef} className="hidden" accept="image/*" onChange={e => onFileChange(e, 'background')} />
+      {/* 파일 입력 */}
+      <input 
+        type="file" 
+        ref={avatarInputRef} 
+        className="hidden" 
+        accept="image/*" 
+        onChange={e => onFileChange(e, 'avatar')} 
+      />
+      <input 
+        type="file" 
+        ref={backgroundInputRef} 
+        className="hidden" 
+        accept="image/*" 
+        onChange={e => onFileChange(e, 'background')} 
+      />
 
-      {/* 모달: 미리보기 */}
+      {/* 미리보기 모달 */}
       <AnimatePresence>
         {isPreviewOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
@@ -232,21 +408,31 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
             >
               <button 
                 onClick={() => setIsPreviewOpen(false)} 
-                className="absolute top-5 right-5 z-20 p-2 bg-black/40 rounded-full text-white backdrop-blur-md"
+                className="absolute top-5 right-5 z-20 p-2 bg-black/40 rounded-full text-white backdrop-blur-md hover:bg-black/60 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
               <div className="h-60 bg-[#2C2C2E] relative overflow-hidden">
-                {backgroundUrl && <img src={backgroundUrl} className="w-full h-full object-cover" alt="Pre" />}
+                {backgroundUrl && (
+                  <img src={backgroundUrl} className="w-full h-full object-cover" alt="Preview" />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60" />
               </div>
               <div className="px-6 pb-10 -mt-14 relative z-10 flex flex-col items-center text-center">
                 <div className="w-28 h-28 rounded-[38px] border-4 border-[#1C1C1E] bg-[#2C2C2E] overflow-hidden mb-5 shadow-2xl">
-                  {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover" alt="Pre" /> : <div className="w-full h-full bg-[#3A3A3C] flex items-center justify-center"><UserIcon className="w-10 h-10 opacity-20" /></div>}
+                  {avatarUrl ? (
+                    <img src={avatarUrl} className="w-full h-full object-cover" alt="Preview" />
+                  ) : (
+                    <div className="w-full h-full bg-[#3A3A3C] flex items-center justify-center">
+                      <UserIcon className="w-10 h-10 opacity-20" />
+                    </div>
+                  )}
                 </div>
-                <h3 className="text-2xl font-black text-white mb-2">{nickname || '그레인 친구'}</h3>
+                <h3 className="text-2xl font-black text-white mb-2">
+                  {nickname || '그레인 친구'}
+                </h3>
                 <p className="text-[#8E8E93] text-[14px] leading-relaxed max-w-[80%] break-keep">
-                  {statusMessage || '설정된 상태 메시지가 없습니다.'}
+                  {statusMessage || '그레인을 시작했어요!'}
                 </p>
               </div>
             </motion.div>
@@ -254,7 +440,7 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
         )}
       </AnimatePresence>
 
-      {/* 모달: 이미지 편집 (Cropper) */}
+      {/* 이미지 편집 모달 */}
       <AnimatePresence>
         {isCropOpen && tempImageSrc && (
           <motion.div 
@@ -263,12 +449,20 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
             exit={{ opacity: 0 }} 
             className="fixed inset-0 z-[100] bg-black flex flex-col"
           >
-            <div className="h-16 flex items-center justify-between px-5 bg-black/90 backdrop-blur-md z-10">
-              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2 text-white"><X className="w-7 h-7" /></button>
+            <div className="h-16 flex items-center justify-between px-5 bg-black/90 backdrop-blur-md z-10 shrink-0">
+              <button 
+                onClick={() => {
+                  setIsCropOpen(false);
+                  setTempImageSrc(null);
+                }} 
+                className="p-2 -ml-2 text-white"
+              >
+                <X className="w-7 h-7" />
+              </button>
               <span className="font-bold text-lg text-white">이미지 편집</span>
               <button 
                 onClick={handleCropSave} 
-                className="px-5 py-2 bg-brand-DEFAULT rounded-full font-black text-sm text-white shadow-lg"
+                className="px-5 py-2 bg-brand-DEFAULT rounded-full font-black text-sm text-white shadow-lg hover:bg-brand-hover transition-colors"
               >
                 완료
               </button>
@@ -286,7 +480,8 @@ export default function ProfileSetupPage({ onComplete }: ProfileSetupPageProps) 
                 showGrid={false}
               />
             </div>
-            <div className="h-24 bg-black/90 backdrop-blur-md flex items-center justify-center px-10 gap-4">
+            <div className="h-24 bg-black/90 backdrop-blur-md flex items-center justify-center px-10 gap-4 shrink-0">
+              <span className="text-white text-sm font-medium">확대</span>
               <input 
                 type="range" 
                 min={1} 

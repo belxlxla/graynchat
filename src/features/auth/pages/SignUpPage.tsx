@@ -121,8 +121,8 @@ export default function SignUpPage() {
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!accountData.name) return toast.error('이름을 입력해주세요.');
-    if (!accountData.email) return toast.error('이메일을 입력해주세요.');
+    if (!accountData.name.trim()) return toast.error('이름을 입력해주세요.');
+    if (!accountData.email.trim()) return toast.error('이메일을 입력해주세요.');
     if (passwordError) return toast.error('비밀번호 요구사항을 충족해주세요.');
     if (!isPasswordValid) return toast.error('유효한 비밀번호를 입력해주세요.');
     if (!isConfirmPasswordValid) return toast.error('비밀번호가 일치하지 않습니다.');
@@ -133,7 +133,10 @@ export default function SignUpPage() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: accountData.email,
         password: accountData.password,
-        options: { data: { full_name: accountData.name } }
+        options: { 
+          data: { full_name: accountData.name },
+          emailRedirectTo: `${window.location.origin}/auth/callback`
+        }
       });
 
       if (signUpError) throw signUpError;
@@ -143,16 +146,19 @@ export default function SignUpPage() {
           id: data.user.id,
           email: accountData.email,
           name: accountData.name,
-          status_message: '반가워요!',
+          status_message: '',
           is_terms_agreed: true,
           is_marketing_agreed: agreedTerms.marketing,
+          phone: null,
+          avatar: null,
+          bg_image: null,
           updated_at: new Date().toISOString()
         }, { onConflict: 'id' });
 
         if (dbError) throw dbError;
 
-        toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
-        navigate('/auth/phone'); 
+        toast.success('계정이 생성되었습니다.');
+        navigate('/auth/phone');
       }
     } catch (error: any) {
       console.error('Signup Error:', error);
