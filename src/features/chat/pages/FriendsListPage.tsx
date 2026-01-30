@@ -37,7 +37,7 @@ type StepType = 'permission' | 'complete' | 'list';
 // === [Main Component] ===
 export default function FriendsListPage() {
   const navigate = useNavigate();
-  const { user } = useAuth(); // 메인 컴포넌트에서도 user가 필요할 수 있음 (현재는 하위 모달 등에서 사용)
+  // [수정] 사용하지 않는 user 변수 제거 (TS6133 해결)
 
   const [step, setStep] = useState<StepType>(() => {
     const savedPermission = localStorage.getItem('grayn_contact_permission');
@@ -619,7 +619,6 @@ export default function FriendsListPage() {
         </ModalBackdrop>
       )}
 
-      {/* Modals */}
       <EditProfileModal 
         isOpen={showEditProfileModal} 
         onClose={() => setShowEditProfileModal(false)} 
@@ -1075,17 +1074,16 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   onCreated?: (id: string) => void; 
 }) {
   const { user } = useAuth();
-  const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
-  const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
-  const [selectedIds, setSelectedIds] = useState<number[]>([]); 
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  useEffect(() => {
+  // [수정] chatType 상태를 모달 내부에서 관리하여 UI와 동기화
+  const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
+
+  useEffect(() => { 
     if (isOpen) {
-      setStep('select-type');
-      setChatType('individual');
       setSelectedIds([]);
       setSearchTerm('');
+      setChatType('individual'); // 모달 열릴 때 초기화
     }
   }, [isOpen]);
 
@@ -1106,12 +1104,15 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   };
 
   const handleCreate = async () => { 
-    if (selectedIds.length === 0 || !user?.id) {
-      toast.error('상대를 선택해주세요.');
+    if (selectedIds.length === 0) {
+      toast.error('대화 상대를 선택해주세요.');
       return;
     }
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
+
       const isGroup = chatType === 'group' || selectedIds.length > 1;
       let roomId = "";
 
@@ -1119,7 +1120,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
         const friendId = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
         if (!friendId) throw new Error("Friend ID not found");
 
-        roomId = [user.id, friendId].sort().join("_");
+        roomId = [session.user.id, friendId].sort().join("_");
 
         const { data: existingRoom } = await supabase
           .from('chat_rooms')
@@ -1132,6 +1133,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
           return;
         }
       } else {
+        // [중요] 그룹 채팅 ID 생성 로직 유지
         roomId = `group_${crypto.randomUUID()}`;
       }
       
@@ -1148,7 +1150,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
         .from('chat_rooms')
         .upsert([{ 
           id: roomId, 
-          created_by: user.id,
+          created_by: session.user.id,
           title: title, 
           type: isGroup ? 'group' : 'individual', 
           last_message: '대화를 시작해보세요!', 
@@ -1160,11 +1162,11 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       if (roomError) throw roomError;
 
       const membersToAdd = [
-        { room_id: roomId, user_id: user.id },
+        { room_id: roomId, user_id: session.user.id },
         ...selectedIds.map(id => {
             const friend = friends.find(f => f.id === id);
             return { room_id: roomId, user_id: friend?.friend_user_id };
-        }).filter(m => m.user_id)
+        }).filter(m => m.user_id) // 유효한 ID만 필터링
       ];
 
       const { error: membersError } = await supabase
@@ -1177,21 +1179,21 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       onClose(); 
       if (onCreated) onCreated(roomId);
 
-    } catch (e: any) {
-      console.error('Create Chat Error:', e);
+    } catch (error: any) {
+      console.error('Create Chat Error:', error);
       toast.error('채팅방 생성에 실패했습니다.');
     }
   };
 
   if (!isOpen) return null;
-  
+
   return (
     <ModalBackdrop onClick={onClose}>
       <motion.div 
         initial={{ y: 50, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
-        onClick={(e) => e.stopPropagation()} 
-        className="w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl border border-[#2C2C2E] shadow-2xl h-[540px] flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()} 
+        className="w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl border border-[#2C2C2E] shadow-2xl h-[520px] flex flex-col overflow-hidden"
       >
         <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4 shrink-0">
           {step === 'select-friends' ? (
@@ -1304,7 +1306,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
                 </div>
               )}
             </div>
-            <div className="p-4 border-t border-[#2C2C2E] shrink-0">
+            <div className="p-4 border-t border-[#2C2C2E] bg-[#1C1C1E] shrink-0">
               <button 
                 onClick={handleCreate} 
                 disabled={selectedIds.length === 0} 
