@@ -28,7 +28,7 @@ interface MemberProfile {
 }
 
 export default function ChatRoomPage() {
-  const { chatId } = useParams(); 
+  const { chatId } = useParams<{ chatId: string }>(); 
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -49,118 +49,172 @@ export default function ChatRoomPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messageRefs = useRef<{[key: number]: HTMLDivElement | null}>({});
 
-  const fetchInitialData = useCallback(async () => {
-    if (!chatId || !user) return;
-    try {
-      const ids = chatId.split('_');
-      const friendUUID = ids.find(id => id !== user.id && id.length > 20);
-      
-      if (!friendUUID) {
-        setIsLoading(false);
-        return;
-      }
+  const isGroupChat = chatId?.startsWith('group_') ?? false;
 
-      const { data: profiles } = await supabase
+  // 메시지 읽음 처리 함수 (Supabase RLS 오류 방지를 위해 분리)
+  const markAsRead = useCallback(async () => {
+    if (!chatId || !user?.id) return;
+    try {
+      const { error } = await supabase
+        .from('room_members')
+        .update({ unread_count: 0 })
+        .eq('room_id', chatId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        // RLS 에러는 콘솔에만 남기고 사용자 경험을 방해하지 않음
+        console.warn('[ChatRoom] 읽음 처리 실패 (권한 확인 필요):', error.message);
+      }
+    } catch (err) {
+      console.error('읽음 처리 중 예외 발생:', err);
+    }
+  }, [chatId, user?.id]);
+
+  const fetchInitialData = useCallback(async () => {
+    if (!chatId || !user?.id) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      // 1. 채팅방 정보 가져오기
+      const { data: room, error: roomError } = await supabase
+        .from('chat_rooms')
+        .select('id, type, title, created_by, members_count')
+        .eq('id', chatId)
+        .single();
+
+      if (roomError || !room) throw new Error('채팅방 정보를 불러올 수 없습니다.');
+
+      // 2. 참여 멤버 목록 가져오기
+      const { data: members, error: membersError } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', chatId);
+
+      if (membersError) throw membersError;
+
+      const memberIds = members?.map(m => m.user_id) || [];
+
+      // 3. 멤버 프로필 정보 가져오기
+      const { data: profiles, error: profilesError } = await supabase
         .from('users')
         .select('id, name, avatar')
-        .in('id', [user.id, friendUUID]);
+        .in('id', memberIds);
+
+      if (profilesError) throw profilesError;
 
       const profileMap: Record<string, MemberProfile> = {};
-      if (profiles) {
-        profiles.forEach(p => { profileMap[p.id] = p; });
-        setMemberProfiles(profileMap);
-      }
+      profiles?.forEach(p => {
+        profileMap[p.id] = { id: p.id, name: p.name, avatar: p.avatar };
+      });
+      setMemberProfiles(profileMap);
 
-      const { data: friendRecord } = await supabase
-        .from('friends')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('friend_user_id', friendUUID)
-        .maybeSingle();
-
-      if (friendRecord) {
-        const realName = profiles?.find(p => p.id === friendUUID)?.name;
-        setRoomTitle(realName || friendRecord.name);
-        setIsFriend(true);
-        setIsBlocked(!!friendRecord.is_blocked);
+      // 4. 방 제목 설정
+      if (isGroupChat) {
+        setRoomTitle(room.title || `그룹 채팅 (${room.members_count || memberIds.length}명)`);
       } else {
-        setIsFriend(false);
-        const foundFriend = profiles?.find(p => p.id === friendUUID);
-        setRoomTitle(foundFriend?.name || '알 수 없는 사용자');
+        const friendId = chatId.split('_').find(id => id !== user.id);
+        if (!friendId) throw new Error('상대방 정보를 찾을 수 없습니다.');
+
+        const friendProfile = profileMap[friendId];
+        const { data: friendRecord } = await supabase
+          .from('friends')
+          .select('name, is_blocked')
+          .eq('user_id', user.id)
+          .eq('friend_user_id', friendId)
+          .maybeSingle();
+
+        if (friendRecord) {
+          setRoomTitle(friendRecord.name || friendProfile?.name || '알 수 없는 사용자');
+          setIsFriend(true);
+          setIsBlocked(!!friendRecord.is_blocked);
+        } else {
+          setRoomTitle(friendProfile?.name || '알 수 없는 사용자');
+          setIsFriend(false);
+        }
       }
 
-      const { data: msgData } = await supabase
+      // 5. 메시지 불러오기
+      const { data: msgData, error: msgError } = await supabase
         .from('messages')
         .select('*')
         .eq('room_id', chatId)
-        .order('created_at', { ascending: true }); 
-      
+        .order('created_at', { ascending: true });
+
+      if (msgError) throw msgError;
+
       setMessages(msgData || []);
+      console.log(`[ChatRoom] 초기 메시지 로드: ${msgData?.length || 0}개`);
+      
+      // 데이터 로드 후 읽음 처리 시도
+      markAsRead();
+
     } catch (e) {
-      console.error("Data Load Error:", e);
+      console.error("초기 데이터 로드 오류:", e);
+      toast.error("채팅방을 불러오는 중 오류가 발생했습니다.");
     } finally {
       setIsLoading(false);
     }
-  }, [chatId, user]);
+  }, [chatId, user?.id, isGroupChat, markAsRead]);
 
   useEffect(() => {
     fetchInitialData();
+
     if (!chatId || !user?.id) return;
 
-    // 채팅방 입장 시 읽음 처리
-    const markAsRead = async () => {
-      try {
-        await supabase
-          .from('chat_rooms')
-          .update({ unread_count: 0 })
-          .match({ id: chatId, user_id: user.id });
-      } catch (error) {
-        console.error('Mark as read error:', error);
-      }
-    };
-    
-    // 초기 읽음 처리
-    markAsRead();
-
-    // 페이지 포커스/visibility 변경 시 읽음 처리 (모바일 브라우저 대응)
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        markAsRead();
-      }
-    };
-
-    const handleFocus = () => {
-      markAsRead();
+      if (!document.hidden) markAsRead();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
+    window.addEventListener('focus', markAsRead);
 
-    const channel = supabase.channel(`room_${chatId}`)
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'messages', 
-        filter: `room_id=eq.${chatId}` 
-      }, (payload) => {
-        console.log('📨 New Message:', payload);
-        const newMsg = payload.new as Message;
-        setMessages(prev => {
-          if (prev.some(m => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
-        });
-        
-        // 실시간으로 메시지 받을 때도 읽음 처리
-        setTimeout(() => markAsRead(), 100);
-      })
-      .subscribe();
+    // 실시간 메시지 수신 채널
+    const channel = supabase.channel(`room_messages_${chatId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `room_id=eq.${chatId}`
+        },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          console.log('[실시간] 새 메시지 수신:', newMsg.id, newMsg.content.substring(0, 20) + '...');
 
-    return () => { 
+          setMessages(prev => {
+            // 중복 방지
+            if (prev.some(m => m.id === newMsg.id)) {
+              return prev;
+            }
+            const updated = [...prev, newMsg];
+
+            // 마지막 메시지로 스크롤
+            setTimeout(() => {
+              scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+
+            return updated;
+          });
+
+          // 내가 보낸 게 아니면 읽음 처리
+          if (newMsg.sender_id !== user.id) {
+            setTimeout(markAsRead, 300);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[Realtime] 채널 상태:', status);
+      });
+
+    return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-      supabase.removeChannel(channel); 
+      window.removeEventListener('focus', markAsRead);
+      supabase.removeChannel(channel);
     };
-  }, [chatId, fetchInitialData, user]);
+  }, [chatId, user?.id, fetchInitialData, markAsRead]);
 
   useEffect(() => {
     if (scrollRef.current && !isSearching) {
@@ -170,123 +224,265 @@ export default function ChatRoomPage() {
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || !chatId || !user || isBlocked) return;
-    const textToSend = inputText;
+
+    const textToSend = inputText.trim();
     setInputText('');
-    
+
     try {
-      const { data: newMsg, error } = await supabase.from('messages').insert({ 
-        room_id: chatId, 
-        sender_id: user.id, 
-        content: textToSend, 
-        is_read: false 
-      }).select().single();
-      
+      const { data: inserted, error } = await supabase
+        .from('messages')
+        .insert({
+          room_id: chatId,
+          sender_id: user.id,
+          content: textToSend,
+          is_read: false
+        })
+        .select()
+        .single();
+
       if (error) throw error;
-      
-      if (newMsg && !messages.some(m => m.id === newMsg.id)) {
-        setMessages(prev => [...prev, newMsg]);
+
+      // optimistic update
+      if (inserted) {
+        setMessages(prev => [...prev, inserted]);
       }
-      
-      // 내가 메시지를 보낼 때도 unread_count 0으로 유지
+
+      // 마지막 메시지 업데이트 (chat_rooms 테이블)
       await supabase
         .from('chat_rooms')
-        .update({ unread_count: 0 })
-        .match({ id: chatId, user_id: user.id });
-        
-    } catch (e) {
-      console.error('Send Error:', e);
-      toast.error('전송 실패');
-      setInputText(textToSend);
+        .update({
+          last_message: textToSend.length > 50 ? textToSend.substring(0, 47) + '...' : textToSend,
+          last_message_at: new Date().toISOString()
+        })
+        .eq('id', chatId);
+
+      // 스크롤 맨 아래로
+      setTimeout(() => {
+        scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+
+    } catch (err) {
+      console.error('메시지 전송 실패:', err);
+      toast.error('메시지 전송에 실패했습니다.');
+      setInputText(textToSend); // 실패 시 입력값 복구
     }
   };
 
   const handleAddFriend = async () => {
-    const friendUUID = chatId?.split('_').find(id => id !== user?.id);
-    if (!friendUUID || !user) return;
+    if (!chatId || !user) return;
+
+    const friendId = chatId.split('_').find(id => id !== user.id);
+    if (!friendId) return;
+
     try {
-      await supabase.from('friends').upsert({ user_id: user.id, friend_user_id: friendUUID, name: roomTitle, friendly_score: 50 });
+      await supabase
+        .from('friends')
+        .upsert({
+          user_id: user.id,
+          friend_user_id: friendId,
+          name: roomTitle,
+          friendly_score: 50,
+          is_blocked: false
+        });
+
       setIsFriend(true);
       toast.success('친구로 추가되었습니다.');
       fetchInitialData();
-    } catch { toast.error('추가 실패'); }
+    } catch (err) {
+      console.error('친구 추가 실패:', err);
+      toast.error('친구 추가에 실패했습니다.');
+    }
   };
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    return messages.filter(m => m.content.toLowerCase().includes(searchQuery.toLowerCase())).map(m => m.id);
+    const lowerQuery = searchQuery.toLowerCase();
+    return messages
+      .filter(m => m.content.toLowerCase().includes(lowerQuery))
+      .map(m => m.id);
   }, [searchQuery, messages]);
 
   const handleSearchMove = (direction: 'up' | 'down') => {
     if (searchResults.length === 0) return;
-    let nextIndex = direction === 'up' ? currentSearchIndex - 1 : currentSearchIndex + 1;
+
+    let nextIndex = currentSearchIndex + (direction === 'up' ? -1 : 1);
+
     if (nextIndex < 0) nextIndex = searchResults.length - 1;
     if (nextIndex >= searchResults.length) nextIndex = 0;
+
     setCurrentSearchIndex(nextIndex);
+
     const targetId = searchResults[nextIndex];
-    messageRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    messageRefs.current[targetId]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    });
   };
 
   return (
     <div className="flex flex-col h-[100dvh] bg-[#1C1C1E] text-white overflow-hidden relative">
       <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-30">
         <div className="flex items-center">
-          <button onClick={() => navigate('/main/chats')} className="p-2"><ChevronLeft className="w-7 h-7" /></button>
+          <button onClick={() => navigate('/main/chats')} className="p-2">
+            <ChevronLeft className="w-7 h-7" />
+          </button>
           <h1 className="text-base font-bold ml-1">{roomTitle}</h1>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setIsSearching(!isSearching)} className="p-2 text-white"><Search className="w-6 h-6" /></button>
-          <button onClick={() => navigate(`/chat/room/${chatId}/settings`)} className="p-2 text-white"><MoreHorizontal className="w-6 h-6" /></button>
+          <button onClick={() => setIsSearching(!isSearching)} className="p-2 text-white">
+            <Search className="w-6 h-6" />
+          </button>
+          <button onClick={() => navigate(`/chat/room/${chatId}/settings`)} className="p-2 text-white">
+            <MoreHorizontal className="w-6 h-6" />
+          </button>
         </div>
       </header>
 
       <AnimatePresence>
         {isSearching && (
-          <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="bg-[#2C2C2E] px-4 py-2 border-b border-[#3A3A3C] flex items-center gap-2 overflow-hidden">
-            <input autoFocus value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentSearchIndex(-1); }} placeholder="대화 내용 검색" className="flex-1 bg-transparent text-sm focus:outline-none" />
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: 'auto' }}
+            exit={{ height: 0 }}
+            className="bg-[#2C2C2E] px-4 py-2 border-b border-[#3A3A3C] flex items-center gap-2 overflow-hidden"
+          >
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setCurrentSearchIndex(-1);
+              }}
+              placeholder="대화 내용 검색"
+              className="flex-1 bg-transparent text-sm focus:outline-none"
+            />
             <div className="flex items-center gap-1">
-              <button onClick={() => handleSearchMove('up')} className="p-1"><ChevronUp className="w-4 h-4" /></button>
-              <button onClick={() => handleSearchMove('down')} className="p-1"><ChevronDown className="w-4 h-4" /></button>
-              <button onClick={() => setIsSearching(false)} className="ml-1 text-xs text-[#8E8E93]">취소</button>
+              <button onClick={() => handleSearchMove('up')} className="p-1">
+                <ChevronUp className="w-4 h-4" />
+              </button>
+              <button onClick={() => handleSearchMove('down')} className="p-1">
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              <button onClick={() => setIsSearching(false)} className="ml-1 text-xs text-[#8E8E93]">
+                취소
+              </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {!isLoading && (!isFriend || isBlocked) && (
+      {!isLoading && !isGroupChat && (!isFriend || isBlocked) && (
         <div className="bg-[#2C2C2E] p-4 flex items-center justify-between border-b border-[#3A3A3C] z-20">
           <ShieldAlert className="w-6 h-6 text-brand-DEFAULT" />
-          <div className="flex-1 ml-3"><p className="text-sm font-bold">미등록 사용자</p></div>
-          <button onClick={handleAddFriend} className="bg-brand-DEFAULT px-4 py-2 rounded-xl text-xs font-bold">친구 추가</button>
+          <div className="flex-1 ml-3">
+            <p className="text-sm font-bold">미등록 사용자</p>
+          </div>
+          <button onClick={handleAddFriend} className="bg-brand-DEFAULT px-4 py-2 rounded-xl text-xs font-bold">
+            친구 추가
+          </button>
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-        {isLoading ? <div className="text-center mt-10 text-[#8E8E93]">로딩 중...</div> : 
-         messages.map((msg) => {
-           const isMe = msg.sender_id === user?.id;
-           const sender = memberProfiles[msg.sender_id];
-           return (
-             <div key={msg.id} ref={(el) => { messageRefs.current[msg.id] = el; }} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-               {!isMe && <div className="w-9 h-9 rounded-[14px] bg-[#3A3A3C] mr-2 overflow-hidden border border-white/5">
-                 {sender?.avatar ? <img src={sender.avatar} className="w-full h-full object-cover" alt="" /> : <UserIcon className="w-5 h-5 m-auto mt-2 text-[#8E8E93] opacity-30" />}
-               </div>}
-               <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                 <div className={`p-3 rounded-2xl text-[15px] ${isMe ? 'bg-brand-DEFAULT rounded-tr-none' : 'bg-[#2C2C2E] rounded-tl-none border border-white/5'}`}>{msg.content}</div>
-                 <span className="text-[10px] text-[#636366] mt-1">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-               </div>
-             </div>
-           );
-         })}
+        {isLoading ? (
+          <div className="text-center mt-10 text-[#8E8E93]">로딩 중...</div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-[#8E8E93]">
+            <p>아직 메시지가 없습니다</p>
+            <p className="text-sm mt-2">대화를 시작해보세요!</p>
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isMe = msg.sender_id === user?.id;
+            const sender = memberProfiles[msg.sender_id];
+
+            return (
+              <div
+                key={msg.id}
+                ref={el => { messageRefs.current[msg.id] = el; }}
+                className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+              >
+                {!isMe && (
+                  <div className="w-9 h-9 rounded-[14px] bg-[#3A3A3C] mr-2 overflow-hidden border border-white/5 flex-shrink-0">
+                    {sender?.avatar ? (
+                      <img src={sender.avatar} className="w-full h-full object-cover" alt="" />
+                    ) : (
+                      <UserIcon className="w-5 h-5 m-auto mt-2 text-[#8E8E93] opacity-30" />
+                    )}
+                  </div>
+                )}
+
+                <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                  {/* 그룹 채팅일 때만 발신자 이름 표시 */}
+                  {!isMe && isGroupChat && (
+                    <span className="text-xs text-[#8E8E93] mb-1 ml-1">
+                      {sender?.name || '알수없음'}
+                    </span>
+                  )}
+
+                  <div
+                    className={`p-3 rounded-2xl text-[15px] leading-relaxed ${
+                      isMe
+                        ? 'bg-brand-DEFAULT rounded-tr-none'
+                        : 'bg-[#2C2C2E] rounded-tl-none border border-white/5'
+                    }`}
+                  >
+                    {msg.content}
+                  </div>
+
+                  <span className="text-[10px] text-[#636366] mt-1">
+                    {new Date(msg.created_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
         <div ref={scrollRef} />
       </div>
 
       <div className="p-3 bg-[#1C1C1E] border-t border-[#2C2C2E] flex items-center gap-3">
-        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 bg-[#2C2C2E] rounded-full transition-transform active:scale-90"><Plus className={isMenuOpen ? 'rotate-45' : ''} /></button>
-        <textarea ref={inputRef} value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }}} placeholder="메시지 입력" className="flex-1 bg-[#2C2C2E] rounded-2xl p-2 px-4 text-[15px] focus:outline-none resize-none" rows={1} />
-        <button onClick={handleSendMessage} disabled={!inputText.trim()} className={`p-3 rounded-full transition-all ${inputText.trim() ? 'bg-brand-DEFAULT' : 'bg-[#2C2C2E] text-[#636366]'}`}><Send className="w-5 h-5" /></button>
+        <button
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+          className="p-2 bg-[#2C2C2E] rounded-full transition-transform active:scale-90"
+        >
+          <Plus className={isMenuOpen ? 'rotate-45' : ''} />
+        </button>
+
+        <textarea
+          ref={inputRef}
+          value={inputText}
+          onChange={e => setInputText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSendMessage();
+            }
+          }}
+          placeholder="메시지 입력..."
+          className="flex-1 bg-[#2C2C2E] rounded-2xl p-3 px-4 text-[15px] focus:outline-none resize-none max-h-32"
+          rows={1}
+        />
+
+        <button
+          onClick={handleSendMessage}
+          disabled={!inputText.trim()}
+          className={`p-3 rounded-full transition-all ${
+            inputText.trim() ? 'bg-brand-DEFAULT' : 'bg-[#2C2C2E] text-[#636366]'
+          }`}
+        >
+          <Send className="w-5 h-5" />
+        </button>
       </div>
 
-      <div className="hidden"><AtSign /><X /><Ban /><Unlock /><ExternalLink /><FileText /><ImageIcon /><Camera /><Download /><UserPlus /><Smile /></div>
+      {/* 사용하지 않는 아이콘 숨김 처리 */}
+      <div className="hidden">
+        <AtSign /><X /><Ban /><Unlock /><ExternalLink /><FileText />
+        <ImageIcon /><Camera /><Download /><UserPlus /><Smile />
+      </div>
     </div>
   );
 }

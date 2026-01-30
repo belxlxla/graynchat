@@ -53,13 +53,16 @@ const getFileName = (url: string) => {
 };
 
 const classifyContent = (url: string) => {
-  const ext = url.split('.').pop()?.toLowerCase();
-  const isStorage = url.includes('chat-uploads');
+  if (!url) return null;
+  
+  const lowerUrl = url.toLowerCase();
+  const ext = lowerUrl.split('.').pop() || '';
+  const isStorage = lowerUrl.includes('supabase.co/storage') || lowerUrl.includes('chat-uploads');
 
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
-  if (['mp4', 'mov', 'webm', 'avi', 'm4v'].includes(ext || '')) return 'video';
-  if (isStorage) return 'file'; 
-  if (url.startsWith('http') && !isStorage) return 'link';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].some(e => ext.includes(e))) return 'image';
+  if (['mp4', 'mov', 'webm', 'avi', 'm4v'].some(e => ext.includes(e))) return 'video';
+  if (isStorage) return 'file';
+  if (lowerUrl.startsWith('http')) return 'link';
 
   return null;
 };
@@ -93,8 +96,35 @@ export default function ChatRoomSettingsPage() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const myId = session?.user.id;
+        if (!myId) return;
 
-        if (chatId.includes('_') && !chatId.includes('group_')) {
+        // 1. 채팅방 기본 정보
+        const { data: room } = await supabase
+          .from('chat_rooms')
+          .select('id, type, title, avatar, members_count')
+          .eq('id', chatId)
+          .maybeSingle();
+
+        let title = '알 수 없는 대화방';
+        let avatar: string | null = null;
+        let memberCount = 0;
+
+        if (room) {
+          title = room.title || title;
+          avatar = room.avatar;
+          memberCount = room.members_count || 0;
+        }
+
+        // 2. 실제 참여자 수 (더 정확함)
+        const { count: realCount } = await supabase
+          .from('room_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('room_id', chatId);
+
+        memberCount = realCount || memberCount;
+
+        // 3. 1:1인 경우 상대방 정보 우선
+        if (chatId.includes('_') && !chatId.startsWith('group_')) {
           const friendId = chatId.split('_').find(id => id !== myId);
           if (friendId) {
             const { data: userProfile } = await supabase
@@ -104,40 +134,33 @@ export default function ChatRoomSettingsPage() {
               .maybeSingle();
 
             if (userProfile) {
-              setRoomInfo({
-                title: userProfile.name,
-                count: 2,
-                avatar: userProfile.avatar,
-                status: userProfile.status_message || '상태메시지 없음'
-              });
+              title = userProfile.name;
+              avatar = userProfile.avatar;
             } else {
-              const { data: friendProfile } = await supabase
+              const { data: friend } = await supabase
                 .from('friends')
                 .select('name, avatar')
                 .eq('user_id', myId)
                 .eq('friend_user_id', friendId)
                 .maybeSingle();
-              
-              if (friendProfile) {
-                setRoomInfo({
-                  title: friendProfile.name,
-                  count: 2,
-                  avatar: friendProfile.avatar,
-                  status: '상태메시지 없음'
-                });
+
+              if (friend) {
+                title = friend.name;
+                avatar = friend.avatar;
               }
             }
           }
-        } else {
-          const { data: room } = await supabase.from('chat_rooms').select('title').eq('id', chatId).maybeSingle();
-          setRoomInfo({ title: room?.title || '알 수 없는 대화방', count: 0, avatar: null, status: null });
         }
 
+        setRoomInfo({ title, count: memberCount, avatar, status: null });
+
+        // 4. 메시지에서 미디어/파일/링크 추출
         const { data: messages } = await supabase
           .from('messages')
           .select('id, content, created_at')
           .eq('room_id', chatId)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(300);  // 너무 많으면 부하 → 적당히 제한
 
         if (messages) {
           const medias: MediaItem[] = [];
@@ -147,7 +170,12 @@ export default function ChatRoomSettingsPage() {
           messages.forEach(msg => {
             const type = classifyContent(msg.content);
             if (type === 'image' || type === 'video') {
-              medias.push({ id: msg.id, url: msg.content, type: type as 'image' | 'video', created_at: msg.created_at });
+              medias.push({ 
+                id: msg.id, 
+                url: msg.content, 
+                type, 
+                created_at: msg.created_at 
+              });
             } else if (type === 'file') {
               files.push({ 
                 id: msg.id, 
@@ -157,7 +185,11 @@ export default function ChatRoomSettingsPage() {
                 created_at: msg.created_at 
               });
             } else if (type === 'link') {
-              links.push({ id: msg.id, url: msg.content, created_at: msg.created_at });
+              links.push({ 
+                id: msg.id, 
+                url: msg.content, 
+                created_at: msg.created_at 
+              });
             }
           });
 
@@ -166,11 +198,17 @@ export default function ChatRoomSettingsPage() {
           setLinkList(links);
         }
 
-        const { data: friends } = await supabase.from('friends').select('*').eq('user_id', myId);
+        // 5. 친구 목록 (초대용)
+        const { data: friends } = await supabase
+          .from('friends')
+          .select('*')
+          .eq('user_id', myId);
+
         if (friends) setFriendsList(friends);
 
       } catch (error) {
         console.error('Settings Load Error:', error);
+        toast.error('채팅방 정보를 불러오지 못했습니다.');
       }
     };
 
@@ -180,31 +218,71 @@ export default function ChatRoomSettingsPage() {
   const handleToggleNotifications = () => {
     const newState = !isNotificationsOn;
     setIsNotificationsOn(newState);
-    if (newState) {
-      toast.success('알림이 켜졌습니다.');
-    } else {
-      toast.success('알림이 꺼졌습니다.', { icon: '🔕' });
-    }
+    toast.success(newState ? '알림이 켜졌습니다.' : '알림이 꺼졌습니다.', {
+      icon: newState ? '🔔' : '🔕'
+    });
   };
 
   const handleConfirmLeave = async () => {
     try {
       if (!chatId) return;
+
       const { data: { session } } = await supabase.auth.getSession();
-      
+      const myId = session?.user.id;
+      if (!myId) return;
+
+      // 방 자체 삭제 X → 나의 참여 레코드만 삭제
       const { error } = await supabase
-        .from('chat_rooms')
+        .from('room_members')
         .delete()
-        .match({ id: chatId, user_id: session?.user.id });
+        .eq('room_id', chatId)
+        .eq('user_id', myId);
 
       if (error) throw error;
 
-      setIsLeaveModalOpen(false);
       toast.success('채팅방을 나갔습니다.');
+      setIsLeaveModalOpen(false);
       navigate('/main/chats');
+
     } catch (error) {
-      console.error(error);
-      toast.error('나가기 실패');
+      console.error('나가기 실패:', error);
+      toast.error('나가기에 실패했습니다.');
+    }
+  };
+
+  const handleInvite = async (selectedFriendIds: number[]) => {
+    if (!chatId || selectedFriendIds.length === 0) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const myId = session?.user.id;
+      if (!myId) return;
+
+      const inserts = selectedFriendIds.map(friendId => {
+        const friend = friendsList.find(f => f.id === friendId);
+        return {
+          room_id: chatId,
+          user_id: friend?.friend_user_id
+        };
+      }).filter(Boolean);
+
+      if (inserts.length === 0) return;
+
+      const { error } = await supabase
+        .from('room_members')
+        .insert(inserts);
+
+      if (error) throw error;
+
+      toast.success(`${inserts.length}명을 초대했습니다.`);
+      setIsInviteModalOpen(false);
+
+      // 참여자 수 갱신을 위해 데이터 다시 불러오기
+      window.location.reload(); // 간단히 새로고침 (실시간 반영 원하면 subscription 추가 가능)
+
+    } catch (err) {
+      console.error('초대 실패:', err);
+      toast.error('초대에 실패했습니다.');
     }
   };
 
@@ -212,6 +290,8 @@ export default function ChatRoomSettingsPage() {
     const loadingToast = toast.loading('다운로드 중...');
     try {
       const response = await fetch(url);
+      if (!response.ok) throw new Error('다운로드 실패');
+      
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -221,6 +301,7 @@ export default function ChatRoomSettingsPage() {
       a.click();
       window.URL.revokeObjectURL(blobUrl);
       document.body.removeChild(a);
+      
       toast.success('저장 완료', { id: loadingToast });
     } catch {
       toast.error('다운로드 실패', { id: loadingToast });
@@ -231,6 +312,10 @@ export default function ChatRoomSettingsPage() {
     setInitialImageIndex(index);
     setViewerOpen(true);
   };
+
+  // ────────────────────────────────────────────────
+  // 나머지 UI 렌더링 부분은 그대로 유지
+  // ────────────────────────────────────────────────
 
   if (currentView === 'media') {
     return (
@@ -343,27 +428,51 @@ export default function ChatRoomSettingsPage() {
     );
   }
 
+  // 메인 뷰
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
-        <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors"><ChevronLeft className="w-7 h-7" /></button>
+        <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
+          <ChevronLeft className="w-7 h-7" />
+        </button>
         <h1 className="text-lg font-bold ml-1">채팅방 설정</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-10">
         <div className="p-6 flex flex-col items-center border-b border-[#2C2C2E]">
           <div className="w-24 h-24 bg-[#3A3A3C] rounded-[30px] mb-4 flex items-center justify-center overflow-hidden border border-[#2C2C2E]">
-             {roomInfo.avatar ? <img src={roomInfo.avatar} className="w-full h-full object-cover" alt="" /> : <Users className="w-10 h-10 text-[#8E8E93] opacity-50" />}
+            {roomInfo.avatar ? (
+              <img src={roomInfo.avatar} className="w-full h-full object-cover" alt="" />
+            ) : (
+              <Users className="w-10 h-10 text-[#8E8E93] opacity-50" />
+            )}
           </div>
           <h2 className="text-xl font-bold mb-1">{roomInfo.title}</h2>
-          <p className="text-[#8E8E93] text-sm mt-1">{roomInfo.status || `멤버 ${roomInfo.count}명`}</p>
+          <p className="text-[#8E8E93] text-sm mt-1">
+            {roomInfo.status || `멤버 ${roomInfo.count}명`}
+          </p>
         </div>
 
         <div className="px-5 mt-6 space-y-6">
           <Section title="모아보기">
-            <NavMenuItem icon={<Image className="w-5 h-5" />} label="사진/동영상" count={mediaList.length} onClick={() => setCurrentView('media')} />
-            <NavMenuItem icon={<FileText className="w-5 h-5" />} label="파일" count={fileList.length} onClick={() => setCurrentView('files')} />
-            <NavMenuItem icon={<LinkIcon className="w-5 h-5" />} label="링크" count={linkList.length} onClick={() => setCurrentView('links')} />
+            <NavMenuItem 
+              icon={<Image className="w-5 h-5" />} 
+              label="사진/동영상" 
+              count={mediaList.length} 
+              onClick={() => setCurrentView('media')} 
+            />
+            <NavMenuItem 
+              icon={<FileText className="w-5 h-5" />} 
+              label="파일" 
+              count={fileList.length} 
+              onClick={() => setCurrentView('files')} 
+            />
+            <NavMenuItem 
+              icon={<LinkIcon className="w-5 h-5" />} 
+              label="링크" 
+              count={linkList.length} 
+              onClick={() => setCurrentView('links')} 
+            />
           </Section>
 
           <Section title="관리">
@@ -383,28 +492,56 @@ export default function ChatRoomSettingsPage() {
                 />
               </button>
             </div>
-            <NavMenuItem icon={<Users className="w-5 h-5" />} label="대화상대 초대" onClick={() => setIsInviteModalOpen(true)} />
+            <NavMenuItem 
+              icon={<Users className="w-5 h-5" />} 
+              label="대화상대 초대" 
+              onClick={() => setIsInviteModalOpen(true)} 
+            />
           </Section>
 
           <div className="space-y-3 pt-4">
-            <button onClick={() => setIsLeaveModalOpen(true)} className="w-full py-4 bg-[#2C2C2E] text-[#EC5022] font-medium rounded-2xl flex items-center justify-center gap-2 hover:bg-[#3A3A3C] transition-colors border border-[#3A3A3C]">
+            <button 
+              onClick={() => setIsLeaveModalOpen(true)} 
+              className="w-full py-4 bg-[#2C2C2E] text-[#EC5022] font-medium rounded-2xl flex items-center justify-center gap-2 hover:bg-[#3A3A3C] transition-colors border border-[#3A3A3C]"
+            >
               <LogOut className="w-5 h-5" />채팅방 나가기
             </button>
           </div>
         </div>
       </div>
 
-      <LeaveChatModal isOpen={isLeaveModalOpen} onClose={() => setIsLeaveModalOpen(false)} onConfirm={handleConfirmLeave} />
-      <InviteMemberModal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} friends={friendsList} />
+      <LeaveChatModal 
+        isOpen={isLeaveModalOpen} 
+        onClose={() => setIsLeaveModalOpen(false)} 
+        onConfirm={handleConfirmLeave} 
+      />
+      <InviteMemberModal 
+        isOpen={isInviteModalOpen} 
+        onClose={() => setIsInviteModalOpen(false)} 
+        friends={friendsList}
+        onInvite={handleInvite}
+      />
     </div>
   );
 }
 
+// ────────────────────────────────────────────────
+// 아래 컴포넌트들은 거의 변경 없음 (InviteMemberModal만 onInvite prop 추가)
+// ────────────────────────────────────────────────
+
 function SubPageView({ title, onBack, children }: { title: string, onBack: () => void, children: React.ReactNode }) {
   return (
-    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 300, damping: 30 }} className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden absolute inset-0 z-50">
+    <motion.div 
+      initial={{ x: '100%' }} 
+      animate={{ x: 0 }} 
+      exit={{ x: '100%' }} 
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }} 
+      className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden absolute inset-0 z-50"
+    >
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
-        <button onClick={onBack} className="p-2 text-white hover:text-brand-DEFAULT transition-colors"><ArrowLeft className="w-7 h-7" /></button>
+        <button onClick={onBack} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
+          <ArrowLeft className="w-7 h-7" />
+        </button>
         <h1 className="text-lg font-bold ml-1">{title}</h1>
       </header>
       <div className="flex-1 overflow-y-auto custom-scrollbar">{children}</div>
@@ -421,9 +558,17 @@ function Section({ title, children }: { title: string, children: React.ReactNode
   );
 }
 
-function NavMenuItem({ icon, label, count, onClick }: { icon: React.ReactNode, label: string, count?: number, onClick: () => void }) {
+function NavMenuItem({ icon, label, count, onClick }: { 
+  icon: React.ReactNode, 
+  label: string, 
+  count?: number, 
+  onClick: () => void 
+}) {
   return (
-    <button onClick={onClick} className="w-full flex items-center justify-between px-5 py-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:bg-[#3A3A3C] transition-colors group">
+    <button 
+      onClick={onClick} 
+      className="w-full flex items-center justify-between px-5 py-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] hover:bg-[#3A3A3C] transition-colors group"
+    >
       <div className="flex items-center gap-3">
         <div className="text-[#8E8E93] group-hover:text-white transition-colors">{icon}</div>
         <span className="text-[15px] text-white">{label}</span>
@@ -439,68 +584,189 @@ function NavMenuItem({ icon, label, count, onClick }: { icon: React.ReactNode, l
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-[50vh] text-[#8E8E93] opacity-60">
-      <AlertTriangle className="w-10 h-10 mb-2" /><p className="text-sm">{message}</p>
+      <AlertTriangle className="w-10 h-10 mb-2" />
+      <p className="text-sm">{message}</p>
     </div>
   );
 }
 
-function LeaveChatModal({ isOpen, onClose, onConfirm }: { isOpen: boolean, onClose: () => void, onConfirm: () => void }) {
+function LeaveChatModal({ isOpen, onClose, onConfirm }: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onConfirm: () => void 
+}) {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center"
+      >
         <div className="p-6">
-          <div className="w-12 h-12 bg-[#EC5022]/20 rounded-full flex items-center justify-center mx-auto mb-4"><AlertTriangle className="w-6 h-6 text-[#EC5022]" /></div>
+          <div className="w-12 h-12 bg-[#EC5022]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6 text-[#EC5022]" />
+          </div>
           <h3 className="text-white font-bold text-lg mb-2">채팅방 나가기</h3>
-          <p className="text-[#8E8E93] text-sm leading-relaxed">대화 내용이 삭제되며<br/>목록에서 사라집니다.</p>
+          <p className="text-[#8E8E93] text-sm leading-relaxed">
+            대화 내용이 삭제되며<br/>목록에서 사라집니다.
+          </p>
         </div>
         <div className="flex border-t border-[#3A3A3C] h-12">
-          <button onClick={onClose} className="flex-1 text-[#8E8E93] font-medium text-[16px] hover:bg-[#2C2C2E] border-r border-[#3A3A3C]">취소</button>
-          <button onClick={onConfirm} className="flex-1 text-[#EC5022] font-bold text-[16px] hover:bg-[#2C2C2E]">나가기</button>
+          <button 
+            onClick={onClose} 
+            className="flex-1 text-[#8E8E93] font-medium text-[16px] hover:bg-[#2C2C2E] border-r border-[#3A3A3C]"
+          >
+            취소
+          </button>
+          <button 
+            onClick={onConfirm} 
+            className="flex-1 text-[#EC5022] font-bold text-[16px] hover:bg-[#2C2C2E]"
+          >
+            나가기
+          </button>
         </div>
       </motion.div>
     </div>
   );
 }
 
-function InviteMemberModal({ isOpen, onClose, friends }: { isOpen: boolean, onClose: () => void, friends: Friend[] }) {
+function InviteMemberModal({ 
+  isOpen, 
+  onClose, 
+  friends,
+  onInvite 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  friends: Friend[],
+  onInvite: (selectedIds: number[]) => void
+}) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [search, setSearch] = useState('');
-  const toggleSelect = (id: number) => setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  const handleInvite = () => { toast.success(`${selectedIds.length}명을 초대했습니다.`); onClose(); setSelectedIds([]); };
-  const filtered = friends.filter(f => f.name.includes(search));
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleInviteClick = () => {
+    if (selectedIds.length === 0) return;
+    onInvite(selectedIds);
+    setSelectedIds([]);
+  };
+
+  const filtered = friends.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
 
   if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl overflow-hidden border border-[#2C2C2E] shadow-2xl h-[500px] flex flex-col">
-        <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4 shrink-0"><span className="w-6" /><h3 className="text-white font-bold text-base">대화상대 초대</h3><button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button></div>
-        <div className="px-4 pb-2 bg-[#2C2C2E]"><div className="bg-[#3A3A3C] rounded-xl flex items-center px-3 py-2"><Search className="w-4 h-4 text-[#8E8E93] mr-2" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="이름 검색" className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#8E8E93]" /></div></div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-          {filtered.length === 0 ? <p className="text-center text-[#8E8E93] mt-10 text-sm">친구가 없습니다.</p> : filtered.map(friend => {
-            const isSelected = selectedIds.includes(friend.id);
-            return (
-              <div key={friend.id} onClick={() => toggleSelect(friend.id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'}`}>
-                <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">{friend.avatar ? <img src={friend.avatar} className="w-full h-full object-cover" alt="" /> : <Users className="w-5 h-5 m-auto mt-2.5 opacity-50"/>}</div>
-                <div className="flex-1"><p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>{friend.name}</p></div>
-                {isSelected ? <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
-              </div>
-            );
-          })}
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose} 
+      />
+      <motion.div 
+        initial={{ y: 50, opacity: 0 }} 
+        animate={{ y: 0, opacity: 1 }} 
+        className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] rounded-2xl overflow-hidden border border-[#2C2C2E] shadow-2xl h-[500px] flex flex-col"
+      >
+        <div className="h-14 bg-[#2C2C2E] flex items-center justify-between px-4 shrink-0">
+          <span className="w-6" />
+          <h3 className="text-white font-bold text-base">대화상대 초대</h3>
+          <button onClick={onClose}>
+            <X className="w-6 h-6 text-[#8E8E93]" />
+          </button>
         </div>
-        <div className="p-4 border-t border-[#2C2C2E]"><button onClick={handleInvite} disabled={selectedIds.length === 0} className={`w-full h-12 rounded-xl font-bold text-white transition-all ${selectedIds.length > 0 ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'}`}>초대하기 ({selectedIds.length})</button></div>
+
+        <div className="px-4 pb-2 bg-[#2C2C2E]">
+          <div className="bg-[#3A3A3C] rounded-xl flex items-center px-3 py-2">
+            <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
+            <input 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+              placeholder="이름 검색" 
+              className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#8E8E93]" 
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+          {filtered.length === 0 ? (
+            <p className="text-center text-[#8E8E93] mt-10 text-sm">초대할 수 있는 친구가 없습니다.</p>
+          ) : (
+            filtered.map(friend => {
+              const isSelected = selectedIds.includes(friend.id);
+              return (
+                <div 
+                  key={friend.id} 
+                  onClick={() => toggleSelect(friend.id)} 
+                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
+                    isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
+                    {friend.avatar ? (
+                      <img src={friend.avatar} className="w-full h-full object-cover" alt="" />
+                    ) : (
+                      <Users className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
+                      {friend.name}
+                    </p>
+                  </div>
+                  {isSelected ? (
+                    <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" />
+                  ) : (
+                    <Circle className="w-5 h-5 text-[#3A3A3C]" />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="p-4 border-t border-[#2C2C2E]">
+          <button 
+            onClick={handleInviteClick}
+            disabled={selectedIds.length === 0}
+            className={`w-full h-12 rounded-xl font-bold text-white transition-all ${
+              selectedIds.length > 0 
+                ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' 
+                : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'
+            }`}
+          >
+            초대하기 ({selectedIds.length})
+          </button>
+        </div>
       </motion.div>
     </div>
   );
 }
 
-function ImageViewerModal({ isOpen, initialIndex, items, onClose }: { isOpen: boolean, initialIndex: number, items: MediaItem[], onClose: () => void }) {
+function ImageViewerModal({ 
+  isOpen, 
+  initialIndex, 
+  items, 
+  onClose 
+}: { 
+  isOpen: boolean, 
+  initialIndex: number, 
+  items: MediaItem[], 
+  onClose: () => void 
+}) {
   const [index, setIndex] = useState(initialIndex);
   const [direction, setDirection] = useState(0);
 
-  useEffect(() => { if (isOpen) setIndex(initialIndex); }, [isOpen, initialIndex]);
+  useEffect(() => { 
+    if (isOpen) setIndex(initialIndex); 
+  }, [isOpen, initialIndex]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -533,6 +799,8 @@ function ImageViewerModal({ isOpen, initialIndex, items, onClose }: { isOpen: bo
     const loadingToast = toast.loading('다운로드 중...');
     try {
       const response = await fetch(currentItem.url);
+      if (!response.ok) throw new Error();
+      
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -542,6 +810,7 @@ function ImageViewerModal({ isOpen, initialIndex, items, onClose }: { isOpen: bo
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      
       toast.success('저장되었습니다.', { id: loadingToast });
     } catch {
       toast.error('다운로드 실패', { id: loadingToast });
@@ -557,11 +826,35 @@ function ImageViewerModal({ isOpen, initialIndex, items, onClose }: { isOpen: bo
   return (
     <div className="fixed inset-0 z-[100] flex flex-col justify-center overflow-hidden bg-black/95 backdrop-blur-md">
       <div className="absolute top-0 left-0 w-full p-4 flex justify-between z-20">
-        <span className="text-white font-bold drop-shadow-md bg-black/20 px-3 py-1 rounded-full text-sm">{index + 1} / {items.length}</span>
-        <button onClick={onClose} className="p-2 bg-white/10 rounded-full text-white backdrop-blur-md hover:bg-white/20 transition-colors"><X className="w-6 h-6" /></button>
+        <span className="text-white font-bold drop-shadow-md bg-black/20 px-3 py-1 rounded-full text-sm">
+          {index + 1} / {items.length}
+        </span>
+        <button 
+          onClick={onClose} 
+          className="p-2 bg-white/10 rounded-full text-white backdrop-blur-md hover:bg-white/20 transition-colors"
+        >
+          <X className="w-6 h-6" />
+        </button>
       </div>
-      {index > 0 && <button onClick={() => paginate(-1)} className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full z-20 hidden md:block"><ChevronLeft className="w-8 h-8" /></button>}
-      {index < items.length - 1 && <button onClick={() => paginate(1)} className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full z-20 hidden md:block"><ChevronRight className="w-8 h-8" /></button>}
+
+      {index > 0 && (
+        <button 
+          onClick={() => paginate(-1)} 
+          className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full z-20 hidden md:block"
+        >
+          <ChevronLeft className="w-8 h-8" />
+        </button>
+      )}
+      
+      {index < items.length - 1 && (
+        <button 
+          onClick={() => paginate(1)} 
+          className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full z-20 hidden md:block"
+        >
+          <ChevronRight className="w-8 h-8" />
+        </button>
+      )}
+
       <div className="flex-1 flex items-center justify-center relative w-full h-full">
         <AnimatePresence initial={false} custom={direction} mode="popLayout">
           <motion.div
@@ -579,15 +872,31 @@ function ImageViewerModal({ isOpen, initialIndex, items, onClose }: { isOpen: bo
             className="absolute w-full h-full flex items-center justify-center"
           >
             {items[index].type === 'video' ? (
-              <video src={items[index].url} controls className="max-w-full max-h-full" />
+              <video 
+                src={items[index].url} 
+                controls 
+                autoPlay 
+                className="max-w-full max-h-full" 
+              />
             ) : (
-              <img src={items[index].url} className="max-w-full max-h-full object-contain" alt="" />
+              <img 
+                src={items[index].url} 
+                className="max-w-full max-h-full object-contain" 
+                alt="" 
+              />
             )}
           </motion.div>
         </AnimatePresence>
       </div>
+
       <div className="absolute bottom-safe left-0 w-full flex justify-center pb-8 z-20">
-        <button onClick={handleDownload} className="flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-lg border border-white/20 rounded-full text-white shadow-xl hover:bg-white/20 active:scale-95 transition-all group"><Download className="w-5 h-5 group-hover:scale-110 transition-transform" /><span className="font-semibold text-sm">저장하기</span></button>
+        <button 
+          onClick={handleDownload} 
+          className="flex items-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-lg border border-white/20 rounded-full text-white shadow-xl hover:bg-white/20 active:scale-95 transition-all group"
+        >
+          <Download className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          <span className="font-semibold text-sm">저장하기</span>
+        </button>
       </div>
     </div>
   );

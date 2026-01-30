@@ -32,14 +32,14 @@ export default function BottomNavigation() {
 
     const checkUnreadChats = async () => {
       try {
-        const { data, error } = await supabase
-          .from('chat_rooms')
-          .select('unread_count')
+        const { count, error } = await supabase
+          .from('room_members')
+          .select('*', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .gt('unread_count', 0);
 
         if (error) throw error;
-        setHasUnreadChats(data && data.length > 0);
+        setHasUnreadChats(count && count > 0);
       } catch (error) {
         console.error('Check unread error:', error);
       }
@@ -53,7 +53,7 @@ export default function BottomNavigation() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'chat_rooms',
+        table: 'room_members',
         filter: `user_id=eq.${user.id}`
       }, () => {
         checkUnreadChats();

@@ -58,18 +58,29 @@ export default function ChatListPage() {
     if (!user?.id) return;
     
     try {
-      const { data: rooms, error } = await supabase
-        .from('chat_rooms')
-        .select('*')
+      const { data: roomsData, error } = await supabase
+        .from('room_members')
+        .select(`
+          *,
+          room:chat_rooms (
+            id,
+            type,
+            title,
+            avatar,
+            last_message,
+            last_message_at,
+            members_count
+          )
+        `)
         .eq('user_id', user.id)
-        .order('updated_at', { ascending: false });
+        .order('room(last_message_at)', { ascending: false, nullsLast: true });
 
       if (error) throw error;
-      if (!rooms) return;
+      if (!roomsData) return;
 
-      const friendUUIDs = rooms
-        .filter(r => (r.type === 'individual' || !r.type) && r.id?.includes('_'))
-        .map(r => r.id.split('_').find((id: string) => id !== user.id))
+      const friendUUIDs = roomsData
+        .filter(r => r.room.type === 'individual' && r.room.id?.includes('_'))
+        .map(r => r.room.id.split('_').find((id: string) => id !== user.id))
         .filter((id): id is string => !!id && id.length > 20);
 
       let usersData: UserProfile[] = [];
@@ -92,7 +103,8 @@ export default function ChatListPage() {
         if (friendsResult.data) friendsData = friendsResult.data;
       }
 
-      const formattedData: ChatRoom[] = rooms.map((room: any) => {
+      const formattedData: ChatRoom[] = roomsData.map((member: any) => {
+        const room = member.room;
         const isGroup = room.type === 'group';
         const friendIdFromRoom = !isGroup ? room.id.split('_').find((id: string) => id !== user.id) : null;
         
@@ -110,13 +122,14 @@ export default function ChatListPage() {
             : (!isGroup && friendProfile ? friendProfile.avatar : (room.avatar || null)),
           membersCount: room.members_count || (isGroup ? 3 : 1),
           lastMessage: room.last_message || '대화를 시작해보세요!',
-          timestamp: new Date(room.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          unreadCount: room.unread_count || 0,
+          timestamp: room.last_message_at ? new Date(room.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          unreadCount: member.unread_count || 0,
           isMuted: false
         };
       });
       
       setChats(formattedData);
+      console.log('[ChatList] 채팅방 목록 로드 완료:', formattedData.length, '개');
     } catch (error) {
       console.error('Fetch Chats Error:', error);
       toast.error('채팅 목록을 불러오는데 실패했습니다.');
@@ -137,20 +150,22 @@ export default function ChatListPage() {
         { 
           event: '*', 
           schema: 'public', 
-          table: 'chat_rooms', 
+          table: 'room_members', 
           filter: `user_id=eq.${user.id}` 
         }, 
         (payload) => {
-          console.log('💬 Chat Rooms Realtime Event:', payload.eventType);
+          console.log('💬 room_members 실시간 이벤트:', payload.eventType, payload.new?.room_id || payload.old?.room_id);
           
           if (payload.eventType === 'DELETE') {
-            setChats(prev => prev.filter(c => c.id !== payload.old?.id));
+            setChats(prev => prev.filter(c => c.id !== payload.old?.room_id));
           } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             fetchChats();
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Realtime subscription 상태:', status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -190,15 +205,31 @@ export default function ChatListPage() {
     
     try {
       const { error } = await supabase
-        .from('chat_rooms')
+        .from('room_members')
         .delete()
-        .match({ id: leaveChatTarget.id, user_id: user.id });
+        .match({ room_id: leaveChatTarget.id, user_id: user.id });
 
       if (error) throw error;
+
+      const { count: remainingCount } = await supabase
+        .from('room_members')
+        .select('count(*)', { count: 'exact', head: true })
+        .eq('room_id', leaveChatTarget.id);
+
+      if (remainingCount === 0) {
+        // 아무도 남지 않았다면 방 자체 삭제 (선택사항)
+        await supabase.from('chat_rooms').delete().eq('id', leaveChatTarget.id);
+      } else {
+        await supabase
+          .from('chat_rooms')
+          .update({ members_count: remainingCount })
+          .eq('id', leaveChatTarget.id);
+      }
+
       toast.success('채팅방을 나갔습니다.');
     } catch (error) {
       console.error('Leave Chat Error:', error);
-      toast.error('오류가 발생했습니다.');
+      toast.error('나가기에 실패했습니다.');
       fetchChats();
     }
   };
@@ -212,9 +243,9 @@ export default function ChatListPage() {
     
     try {
       await supabase
-        .from('chat_rooms')
+        .from('room_members')
         .update({ unread_count: 0 })
-        .match({ id, user_id: user.id });
+        .match({ room_id: id, user_id: user.id });
     } catch (error) {
       console.error('Mark as Read Error:', error);
     }
@@ -232,8 +263,8 @@ export default function ChatListPage() {
       await supabase
         .from('chat_rooms')
         .update({ title: newTitle })
-        .match({ id: editingChat.id, user_id: user.id });
-      
+        .eq('id', editingChat.id);
+
       toast.success('이름이 변경되었습니다.');
     } catch (error) {
       console.error('Save Title Error:', error);
@@ -536,6 +567,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   onCreated?: (id: string) => void; 
 }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -561,37 +593,73 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
     try {
       const isGroup = selectedIds.length > 1;
       let roomId = "";
-      
+
       if (!isGroup) {
         const friendId = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
         if (!friendId) throw new Error("Friend ID not found");
+
         roomId = [user.id, friendId].sort().join("_");
+
+        // 이미 존재하는지 확인 → 있으면 바로 이동
+        const { data: existingRoom } = await supabase
+          .from('chat_rooms')
+          .select('id')
+          .eq('id', roomId)
+          .maybeSingle();
+
+        if (existingRoom) {
+          console.log('[CreateChat] 기존 1:1 채팅방 존재 → 바로 이동:', roomId);
+          if (onCreated) onCreated(roomId);
+          return;
+        }
       } else {
-        roomId = `group_${Date.now()}`;
+        roomId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       }
       
       const title = isGroup 
         ? `나 외 ${selectedIds.length}명` 
         : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
       
-      const { error } = await supabase
+      const { error: roomError } = await supabase
         .from('chat_rooms')
-        .upsert([{ 
+        .insert([{  // upsert → insert로 변경 (기존 방은 위에서 이미 처리)
           id: roomId, 
-          user_id: user.id,
           title, 
           type: isGroup ? 'group' : 'individual', 
+          created_by: user.id,
           last_message: '대화를 시작해보세요!', 
-          unread_count: 0, 
-          updated_at: new Date().toISOString(),
           members_count: selectedIds.length + 1 
-        }], { onConflict: 'id,user_id' });
+        }]);
       
-      if (error) throw error;
+      if (roomError) throw roomError;
+
+      const memberInserts = [
+        { room_id: roomId, user_id: user.id }
+      ];
+
+      selectedIds.forEach(selected => {
+        const friendId = friends.find(f => f.id === selected)?.friend_user_id;
+        if (friendId) {
+          memberInserts.push({ room_id: roomId, user_id: friendId });
+        }
+      });
+
+      const { error: membersError } = await supabase
+        .from('room_members')
+        .insert(memberInserts);
+      
+      if (membersError) throw membersError;
+
+      console.log('[CreateChat] 새 채팅방 생성 성공:', roomId, isGroup ? '(그룹)' : '(1:1)');
+      toast.success('채팅방이 생성되었습니다.');
+      
       if (onCreated) onCreated(roomId);
-    } catch (error) { 
+
+    } catch (error: any) {
       console.error('Create Chat Error:', error);
-      toast.error('채팅방 생성 실패'); 
+      toast.error(error.message?.includes('duplicate key') 
+        ? '이미 존재하는 채팅방입니다.' 
+        : '채팅방 생성에 실패했습니다.');
     }
   };
 
