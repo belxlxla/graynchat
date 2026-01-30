@@ -16,8 +16,8 @@ export default function BottomNavigation() {
   // 콘텐츠 준비중 팝업 상태 관리
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
   
-  // 채팅 알림 상태 관리
-  const [hasUnreadChats, setHasUnreadChats] = useState(false);
+  // 채팅 알림 상태 관리 (초기값 false)
+  const [hasUnreadChats, setHasUnreadChats] = useState<boolean>(false);
 
   const navItems = [
     { id: 'friends', path: '/main/friends', icon: 'custom', label: '홈' },
@@ -39,7 +39,11 @@ export default function BottomNavigation() {
           .gt('unread_count', 0);
 
         if (error) throw error;
-        setHasUnreadChats(count && count > 0);
+        
+        // [수정] count가 0일 때 숫자 0이 렌더링되지 않도록 명확한 boolean으로 변환
+        // (count ?? 0) > 0 구문을 사용하여 0, null, undefined 모두 false 처리
+        setHasUnreadChats((count ?? 0) > 0);
+
       } catch (error) {
         console.error('Check unread error:', error);
       }
@@ -100,8 +104,8 @@ export default function BottomNavigation() {
                 )}
               </div>
               
-              {/* 채팅 알림 뱃지 */}
-              {item.id === 'chats' && hasUnreadChats && (
+              {/* 채팅 알림 뱃지: hasUnreadChats가 true일 때만 렌더링 (숫자 노출 방지) */}
+              {item.id === 'chats' && hasUnreadChats === true && (
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -158,7 +162,7 @@ export default function BottomNavigation() {
                   <Rocket className="w-10 h-10 text-brand-DEFAULT fill-brand-DEFAULT/20 -ml-1 -mt-1" />
                 </div>
                 
-                {/* ✨ 수정된 별 애니메이션 (Floating Effect) */}
+                {/* ✨ 별 애니메이션 */}
                 <motion.div 
                   className="absolute -top-3 -right-2 z-20"
                   animate={{ 
@@ -171,10 +175,9 @@ export default function BottomNavigation() {
                     duration: 3.5, 
                     ease: "easeInOut", 
                     repeat: Infinity,
-                    repeatType: "mirror" // 자연스러운 반복
+                    repeatType: "mirror"
                   }}
                 >
-                  {/* drop-shadow로 발광 효과 추가 */}
                   <Sparkles className="w-7 h-7 text-yellow-400 fill-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
                 </motion.div>
               </div>

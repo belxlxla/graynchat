@@ -76,9 +76,17 @@ export default function ChatListPage() {
         .order('room(last_message_at)', { ascending: false, nullsLast: true });
 
       if (error) throw error;
-      if (!roomsData) return;
+      
+      // [수정] 데이터가 없거나 room 정보가 null인 경우 안전하게 필터링 (Crash 방지)
+      if (!roomsData) {
+        setChats([]);
+        return;
+      }
 
-      const friendUUIDs = roomsData
+      // room 객체가 존재하는 유효한 데이터만 필터링
+      const validData = roomsData.filter(r => r && r.room);
+
+      const friendUUIDs = validData
         .filter(r => r.room.type === 'individual' && r.room.id?.includes('_'))
         .map(r => r.room.id.split('_').find((id: string) => id !== user.id))
         .filter((id): id is string => !!id && id.length > 20);
@@ -103,8 +111,11 @@ export default function ChatListPage() {
         if (friendsResult.data) friendsData = friendsResult.data;
       }
 
-      const formattedData: ChatRoom[] = roomsData.map((member: any) => {
+      const formattedData: ChatRoom[] = validData.map((member: any) => {
         const room = member.room;
+        // room이 null이면 건너뛰도록 처리 (map에서 null 반환 후 아래에서 필터링)
+        if (!room) return null;
+
         const isGroup = room.type === 'group';
         const friendIdFromRoom = !isGroup ? room.id.split('_').find((id: string) => id !== user.id) : null;
         
@@ -122,17 +133,19 @@ export default function ChatListPage() {
             : (!isGroup && friendProfile ? friendProfile.avatar : (room.avatar || null)),
           membersCount: room.members_count || (isGroup ? 3 : 1),
           lastMessage: room.last_message || '대화를 시작해보세요!',
-          timestamp: room.last_message_at ? new Date(room.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: room.last_message_at 
+            ? new Date(room.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           unreadCount: member.unread_count || 0,
           isMuted: false
         };
-      });
+      }).filter((chat): chat is ChatRoom => chat !== null); // null 값 제거
       
       setChats(formattedData);
       console.log('[ChatList] 채팅방 목록 로드 완료:', formattedData.length, '개');
     } catch (error) {
       console.error('Fetch Chats Error:', error);
-      toast.error('채팅 목록을 불러오는데 실패했습니다.');
+      // 에러가 나도 기존 채팅 목록은 유지하거나 빈 배열로 설정하지 않음 (깜빡임 방지)
     } finally {
       setIsLoading(false);
     }
@@ -154,11 +167,12 @@ export default function ChatListPage() {
           filter: `user_id=eq.${user.id}` 
         }, 
         (payload) => {
-          console.log('💬 room_members 실시간 이벤트:', payload.eventType, payload.new?.room_id || payload.old?.room_id);
+          console.log('💬 room_members 실시간 이벤트:', payload.eventType);
           
           if (payload.eventType === 'DELETE') {
             setChats(prev => prev.filter(c => c.id !== payload.old?.room_id));
-          } else if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          } else {
+            // INSERT, UPDATE 시 목록 새로고침
             fetchChats();
           }
         }
@@ -217,7 +231,7 @@ export default function ChatListPage() {
         .eq('room_id', leaveChatTarget.id);
 
       if (remainingCount === 0) {
-        // 아무도 남지 않았다면 방 자체 삭제 (선택사항)
+        // 아무도 남지 않았다면 방 자체 삭제
         await supabase.from('chat_rooms').delete().eq('id', leaveChatTarget.id);
       } else {
         await supabase
@@ -600,7 +614,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
 
         roomId = [user.id, friendId].sort().join("_");
 
-        // 이미 존재하는지 확인 → 있으면 바로 이동
         const { data: existingRoom } = await supabase
           .from('chat_rooms')
           .select('id')
@@ -622,7 +635,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       
       const { error: roomError } = await supabase
         .from('chat_rooms')
-        .insert([{  // upsert → insert로 변경 (기존 방은 위에서 이미 처리)
+        .insert([{ 
           id: roomId, 
           title, 
           type: isGroup ? 'group' : 'individual', 
