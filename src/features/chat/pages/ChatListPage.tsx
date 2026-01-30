@@ -74,7 +74,6 @@ export default function ChatListPage() {
           )
         `)
         .eq('user_id', user.id)
-        // [수정] 정렬 옵션 문법 준수
         .order('last_message_at', { foreignTable: 'room', ascending: false });
 
       if (error) throw error;
@@ -111,7 +110,6 @@ export default function ChatListPage() {
         if (friendsResult.data) friendsData = friendsResult.data;
       }
 
-      // [수정] 타입 명시로 빌드 에러 해결
       const formattedData = validData.map((member: any): ChatRoom | null => {
         const room = member.room;
         if (!room) return null;
@@ -149,7 +147,7 @@ export default function ChatListPage() {
     }
   }, [user]);
 
-  // [중요 수정] 실시간 업데이트 로직 강화 (메시지 수신 시 즉시 반영)
+  // 실시간 업데이트 로직
   useEffect(() => {
     if (!user?.id) return;
     
@@ -157,7 +155,7 @@ export default function ChatListPage() {
 
     const channel = supabase
       .channel(`chat_list_realtime_${user.id}`)
-      // 1. 새 메시지가 오면 (messages 테이블 INSERT 감지)
+      // 1. 새 메시지 수신 시 목록 즉시 갱신 (빨간 숫자 증가)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
@@ -167,25 +165,24 @@ export default function ChatListPage() {
           setChats(prevChats => {
             const chatIndex = prevChats.findIndex(c => c.id === newMsg.room_id);
             
-            // 목록에 없는 방이면(새로운 방) 전체 다시 로드
+            // 목록에 없는 새 방이면 전체 새로고침
             if (chatIndex === -1) {
               fetchChats();
               return prevChats;
             }
 
-            // 기존 방 업데이트: 마지막 메시지 갱신, 시간 갱신, 순서 맨 위로, 안 읽음 카운트 증가
             const updatedChats = [...prevChats];
             const chatToUpdate = { ...updatedChats[chatIndex] };
             
             chatToUpdate.lastMessage = newMsg.content;
             chatToUpdate.timestamp = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             
-            // 내가 보낸 게 아니면 안 읽음 카운트 1 증가 (UI 즉시 반영)
+            // [핵심] 내가 보낸 메시지가 아니면 카운트 증가
             if (newMsg.sender_id !== user.id) {
               chatToUpdate.unreadCount = (chatToUpdate.unreadCount || 0) + 1;
             }
 
-            // 배열에서 제거하고 맨 앞에 추가
+            // 최상단으로 이동
             updatedChats.splice(chatIndex, 1);
             updatedChats.unshift(chatToUpdate);
             
@@ -193,7 +190,7 @@ export default function ChatListPage() {
           });
         }
       )
-      // 2. 방 정보 변경 (예: unread_count 초기화 등 room_members 변경 감지)
+      // 2. 방 정보 변경 (payload 미사용 에러 해결)
       .on(
         'postgres_changes', 
         { 
@@ -202,8 +199,7 @@ export default function ChatListPage() {
           table: 'room_members', 
           filter: `user_id=eq.${user.id}` 
         }, 
-        (payload) => {
-          // 읽음 처리 등으로 내 상태가 변하면 목록 새로고침
+        () => { 
           fetchChats();
         }
       )
@@ -540,9 +536,12 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
           </div>
           <div className="flex justify-between items-center">
             <p className="text-[13px] text-[#8E8E93] truncate max-w-[220px]">{data.lastMessage}</p>
+            {/* [수정] +999 카운팅 표기 적용 */}
             {data.unreadCount > 0 && (
-              <div className="bg-[#EC5022] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold">
-                {data.unreadCount}
+              <div className="bg-[#EC5022] min-w-[18px] h-[18px] px-1.5 rounded-full flex items-center justify-center">
+                <span className="text-[10px] font-bold text-white leading-none">
+                  {data.unreadCount > 999 ? '+999' : data.unreadCount}
+                </span>
               </div>
             )}
           </div>
@@ -552,6 +551,7 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
   );
 }
 
+// ... (나머지 LeaveChatModal, CreateChatModal, EditTitleModal 컴포넌트는 기존과 동일)
 function LeaveChatModal({ chat, onClose, onConfirm }: { 
   chat: ChatRoom | null; 
   onClose: () => void; 
@@ -759,7 +759,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
                   {f.name}
                 </p>
                 {isSelected ? (
-                  <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/10" />
+                  <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/20" />
                 ) : (
                   <Circle className="w-5 h-5 text-[#3A3A3C]" />
                 )}

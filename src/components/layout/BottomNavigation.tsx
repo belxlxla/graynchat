@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, MoreHorizontal, Layers, Rocket, Sparkles, X } from 'lucide-react';
 import { supabase } from '../../shared/lib/supabaseClient';
 import { useAuth } from '../../features/auth/contexts/AuthContext';
-// 로고 경로 확인 필수!
 import GraynLogo from '../../assets/grayn_logo.svg';
 
 export default function BottomNavigation() {
@@ -12,8 +11,11 @@ export default function BottomNavigation() {
   const location = useLocation();
   const { user } = useAuth();
   
+  // 콘텐츠 준비중 팝업 상태 관리
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
-  const [hasUnreadChats, setHasUnreadChats] = useState<boolean>(false);
+  
+  // 채팅 알림 상태 관리 (true면 빨간 점 표시)
+  const [hasUnreadChats, setHasUnreadChats] = useState(false);
 
   const navItems = [
     { id: 'friends', path: '/main/friends', icon: 'custom', label: '홈' },
@@ -22,34 +24,38 @@ export default function BottomNavigation() {
     { id: 'settings', path: '/main/settings', icon: <MoreHorizontal className="w-7 h-7" />, label: '설정' },
   ];
 
+  // 채팅 알림 확인
   useEffect(() => {
     if (!user?.id) return;
 
     const checkUnreadChats = async () => {
       try {
-        // [수정] 500 에러 방지를 위해 head: true 대신 일반 select count 사용
-        const { count, error } = await supabase
+        // [수정] 400/500 에러 방지를 위해 가장 가벼운 쿼리 사용
+        // unread_count가 0보다 큰 내 멤버십 정보가 하나라도 있는지 확인
+        const { data, error } = await supabase
           .from('room_members')
-          .select('id', { count: 'exact', head: true })
+          .select('id')
           .eq('user_id', user.id)
-          .gt('unread_count', 0);
+          .gt('unread_count', 0)
+          .limit(1); // 하나만 찾으면 됨
 
         if (error) {
-            // 에러가 나더라도 앱이 멈추지 않게 로그만 남김
-            console.error('Unread check failed (ignoring):', error.message);
-            return;
+          // 에러 로그는 개발 모드에서만 확인하고 사용자에게는 무시
+          console.warn('Nav check failed:', error.message);
+          return;
         }
         
-        setHasUnreadChats((count ?? 0) > 0);
+        // 데이터가 존재하면 안 읽은 채팅이 있는 것
+        setHasUnreadChats(data && data.length > 0);
 
       } catch (error) {
-        console.error('Check unread error:', error);
+        console.error('Check unread exception:', error);
       }
     };
 
     checkUnreadChats();
 
-    // 실시간 구독 (내 멤버십 정보가 바뀌면 뱃지 갱신)
+    // 실시간 구독 (내 방 멤버십 정보가 변하면 뱃지 갱신)
     const channel = supabase
       .channel(`bottom_nav_${user.id}`)
       .on('postgres_changes', {
@@ -67,11 +73,12 @@ export default function BottomNavigation() {
     };
   }, [user]);
 
+  // 탭 클릭 핸들러
   const handleNavClick = (id: string, path: string) => {
     if (id === 'contents') {
-      setIsContentModalOpen(true);
+      setIsContentModalOpen(true); // 콘텐츠 탭은 팝업 오픈
     } else {
-      navigate(path);
+      navigate(path); // 나머지는 페이지 이동
     }
   };
 
@@ -101,6 +108,7 @@ export default function BottomNavigation() {
                 )}
               </div>
               
+              {/* 채팅 알림 뱃지 (심플한 빨간 점) */}
               {item.id === 'chats' && hasUnreadChats && (
                 <motion.div
                   initial={{ scale: 0 }}
@@ -120,6 +128,7 @@ export default function BottomNavigation() {
         })}
       </nav>
 
+      {/* 콘텐츠 준비중 모달 (디자인 유지) */}
       <AnimatePresence>
         {isContentModalOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
