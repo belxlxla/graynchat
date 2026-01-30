@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'; // ✨ useCallback 제거
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Bell, Users, Image, FileText, Link as LinkIcon, 
   LogOut, ChevronRight, Download, ExternalLink,
   X, AlertTriangle, Search, CheckCircle2, Circle, ArrowLeft,
-  Play // ✨ File 제거
+  Play
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -34,7 +34,7 @@ interface LinkItem {
 
 interface Friend {
   id: number;
-  friend_user_id: string; // ✨ friend_user_id 추가
+  friend_user_id: string;
   name: string;
   avatar: string | null;
   status: string | null;
@@ -96,23 +96,41 @@ export default function ChatRoomSettingsPage() {
         const { data: { session } } = await supabase.auth.getSession();
         const myId = session?.user.id;
 
-        // 1. 방 정보 가져오기 및 상대방 실제 프로필 매칭 (목업 방지)
-        if (chatId.includes('_')) {
+        // 1. ✨ 상대방 실제 프로필 조회 (users 테이블 우선)
+        if (chatId.includes('_') && !chatId.includes('group_')) {
           const friendId = chatId.split('_').find(id => id !== myId);
           if (friendId) {
-            const { data: friendProfile } = await supabase
+            // ✨ users 테이블에서 실제 닉네임 조회
+            const { data: userProfile } = await supabase
               .from('users')
               .select('name, avatar, status_message')
               .eq('id', friendId)
               .maybeSingle();
 
-            if (friendProfile) {
+            if (userProfile) {
               setRoomInfo({
-                title: friendProfile.name,
+                title: userProfile.name,
                 count: 2,
-                avatar: friendProfile.avatar,
-                status: friendProfile.status_message || '상태메시지 없음'
+                avatar: userProfile.avatar,
+                status: userProfile.status_message || '상태메시지 없음'
               });
+            } else {
+              // users에 없으면 friends에서 찾기
+              const { data: friendProfile } = await supabase
+                .from('friends')
+                .select('name, avatar')
+                .eq('user_id', myId)
+                .eq('friend_user_id', friendId)
+                .maybeSingle();
+              
+              if (friendProfile) {
+                setRoomInfo({
+                  title: friendProfile.name,
+                  count: 2,
+                  avatar: friendProfile.avatar,
+                  status: '상태메시지 없음'
+                });
+              }
             }
           }
         } else {
@@ -181,7 +199,7 @@ export default function ChatRoomSettingsPage() {
       if (!chatId) return;
       const { data: { session } } = await supabase.auth.getSession();
       
-      // ✨ [409 Conflict 해결]: match를 사용하여 정확한 문자열 ID와 사용자 ID로 삭제
+      // ✨ match를 사용하여 정확한 문자열 ID와 사용자 ID로 삭제
       const { error } = await supabase
         .from('chat_rooms')
         .delete()
