@@ -27,26 +27,6 @@ interface MemberProfile {
   avatar: string | null; 
 }
 
-// --- [Utils] ---
-const getFileType = (content: string) => {
-  if (!content) return 'text';
-  const isStorageFile = content.includes('chat-uploads');
-  if (isStorageFile) {
-    const ext = content.split('.').pop()?.toLowerCase();
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
-    return 'file';
-  }
-  return 'text';
-};
-
-const getFileName = (url: string) => {
-  try {
-    const decodedUrl = decodeURIComponent(url);
-    const rawName = decodedUrl.split('/').pop() || 'file';
-    return rawName.includes('___') ? rawName.split('___')[1] : rawName.replace(/^\d+_/, '');
-  } catch { return '첨부파일'; }
-};
-
 export default function ChatRoomPage() {
   const { chatId } = useParams(); 
   const navigate = useNavigate();
@@ -123,7 +103,6 @@ export default function ChatRoomPage() {
     }
   }, [chatId, user]);
 
-  // ✅ 실시간 메시지 구독 강화
   useEffect(() => {
     fetchInitialData();
     if (!chatId) return;
@@ -138,7 +117,6 @@ export default function ChatRoomPage() {
         console.log('📨 New Message:', payload);
         const newMsg = payload.new as Message;
         setMessages(prev => {
-          // 중복 방지
           if (prev.some(m => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
@@ -160,7 +138,6 @@ export default function ChatRoomPage() {
     setInputText('');
     
     try {
-      // ✅ 트리거가 자동으로 처리하므로 별도 chat_rooms 업데이트 불필요
       const { data: newMsg, error } = await supabase.from('messages').insert({ 
         room_id: chatId, 
         sender_id: user.id, 
@@ -170,7 +147,6 @@ export default function ChatRoomPage() {
       
       if (error) throw error;
       
-      // ✅ 로컬 상태에도 즉시 반영 (실시간 구독 전까지 딜레이 방지)
       if (newMsg && !messages.some(m => m.id === newMsg.id)) {
         setMessages(prev => [...prev, newMsg]);
       }
