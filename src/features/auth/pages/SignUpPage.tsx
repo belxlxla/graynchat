@@ -135,7 +135,7 @@ export default function SignUpPage() {
       if (signUpError) throw signUpError;
       if (!authData.user) throw new Error('회원가입에 실패했습니다.');
 
-      // 2. public.users 테이블에 기본 데이터 생성 (ID 연결)
+      // 2. public.users 테이블에 데이터 저장 (스키마 에러 방지를 위해 필요한 필드만 upsert)
       const { error: upsertError } = await supabase
         .from('users')
         .upsert({
@@ -156,7 +156,7 @@ export default function SignUpPage() {
 
       toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
       
-      // 4. 휴대폰 인증 페이지로 이동 (세션을 유지하여 PrivateRoute 통과)
+      // 4. 휴대폰 인증 페이지로 이동
       navigate('/auth/phone', { replace: true });
 
     } catch (error: any) {
@@ -197,158 +197,53 @@ export default function SignUpPage() {
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
                 <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                   <User className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="name" 
-                    type="text" 
-                    value={accountData.name} 
-                    onChange={handleAccountChange} 
-                    placeholder="실명으로 입력해 주세요" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
+                  <input name="name" type="text" value={accountData.name} onChange={handleAccountChange} placeholder="실명으로 입력해 주세요" className="bg-transparent text-white text-sm w-full focus:outline-none" />
                 </div>
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
                 <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                   <Mail className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="email" 
-                    type="email" 
-                    value={accountData.email} 
-                    onChange={handleAccountChange} 
-                    placeholder="example@grayn.com" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
+                  <input name="email" type="email" value={accountData.email} onChange={handleAccountChange} placeholder="example@grayn.com" className="bg-transparent text-white text-sm w-full focus:outline-none" />
                 </div>
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
-                <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${
-                  passwordError && accountData.password ? 'border-red-500' : 
-                  isPasswordValid ? 'border-green-500' : 
-                  'border-[#3A3A3C] focus-within:border-brand-DEFAULT'
-                }`}>
+                <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${passwordError && accountData.password ? 'border-red-500' : isPasswordValid ? 'border-green-500' : 'border-[#3A3A3C] focus-within:border-brand-DEFAULT'}`}>
                   <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="password" 
-                    type={showPassword ? 'text' : 'password'} 
-                    value={accountData.password} 
-                    onChange={handleAccountChange} 
-                    placeholder="8자리 이상, 대소문자/숫자/특수문자 포함" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
-                  <div className="flex items-center gap-2 ml-2">
-                    {accountData.password && (
-                      <button
-                        type="button"
-                        onClick={() => setAccountData({ ...accountData, password: '', confirmPassword: '' })}
-                        className="text-[#636366] hover:text-white transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="text-[#636366] hover:text-white transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
+                  <input name="password" type={showPassword ? 'text' : 'password'} value={accountData.password} onChange={handleAccountChange} placeholder="8자리 이상, 대소문자/숫자/특수문자 포함" className="bg-transparent text-white text-sm w-full focus:outline-none" />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-[#636366] hover:text-white transition-colors">{showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button>
                 </div>
               </div>
-
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호 확인</label>
-                <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${
-                  confirmPasswordError && accountData.confirmPassword ? 'border-red-500' : 
-                  isConfirmPasswordValid ? 'border-green-500' : 
-                  'border-[#3A3A3C] focus-within:border-brand-DEFAULT'
-                }`}>
+                <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${confirmPasswordError && accountData.confirmPassword ? 'border-red-500' : isConfirmPasswordValid ? 'border-green-500' : 'border-[#3A3A3C] focus-within:border-brand-DEFAULT'}`}>
                   <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="confirmPassword" 
-                    type={showConfirmPassword ? 'text' : 'password'} 
-                    value={accountData.confirmPassword} 
-                    onChange={handleAccountChange} 
-                    placeholder="비밀번호 재입력" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
-                  <div className="flex items-center gap-2 ml-2">
-                    {accountData.confirmPassword && (
-                      <button
-                        type="button"
-                        onClick={() => setAccountData({ ...accountData, confirmPassword: '' })}
-                        className="text-[#636366] hover:text-white transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="text-[#636366] hover:text-white transition-colors"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
+                  <input name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} value={accountData.confirmPassword} onChange={handleAccountChange} placeholder="비밀번호 재입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
+                  <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="text-[#636366] hover:text-white transition-colors">{showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button>
                 </div>
               </div>
             </div>
-
             <div className="pt-4 space-y-4">
-              <div 
-                className="flex items-center justify-between p-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] cursor-pointer" 
-                onClick={handleAllAgree}
-              >
+              <div className="flex items-center justify-between p-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] cursor-pointer" onClick={handleAllAgree}>
                 <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-                    Object.values(agreedTerms).every(v => v) ? 'bg-brand-DEFAULT' : 'bg-[#3A3A3C]'
-                  }`}>
-                    <Check className={`w-4 h-4 ${
-                      Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'
-                    }`} />
-                  </div>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${Object.values(agreedTerms).every(v => v) ? 'bg-brand-DEFAULT' : 'bg-[#3A3A3C]'}`}><Check className={`w-4 h-4 ${Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'}`} /></div>
                   <span className="font-bold text-sm text-white">약관 전체동의</span>
                 </div>
               </div>
               <div className="space-y-3 px-1">
                 {termList.map((term) => (
                   <div key={term.key} className="flex items-center justify-between group">
-                    <div 
-                      className="flex items-center gap-3 cursor-pointer" 
-                      onClick={() => handleTermToggle(term.key as keyof typeof agreedTerms)}
-                    >
-                      <Check className={`w-5 h-5 transition-colors ${
-                        agreedTerms[term.key as keyof typeof agreedTerms] ? 'text-brand-DEFAULT' : 'text-[#3A3A3C]'
-                      }`} />
-                      <span className="text-sm text-[#8E8E93] group-hover:text-white transition-colors">
-                        {term.label} <span className={term.required ? 'text-brand-DEFAULT' : 'text-[#636366]'}>
-                          ({term.required ? '필수' : '선택'})
-                        </span>
-                      </span>
+                    <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTermToggle(term.key as keyof typeof agreedTerms)}>
+                      <Check className={`w-5 h-5 transition-colors ${agreedTerms[term.key as keyof typeof agreedTerms] ? 'text-brand-DEFAULT' : 'text-[#3A3A3C]'}`} />
+                      <span className="text-sm text-[#8E8E93] group-hover:text-white transition-colors">{term.label} <span className={term.required ? 'text-brand-DEFAULT' : 'text-[#636366]'}>({term.required ? '필수' : '선택'})</span></span>
                     </div>
-                    <button type="button" onClick={() => handleOpenPolicy(term.key)} className="p-1 text-[#636366] hover:text-white transition-colors">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                    <button type="button" onClick={() => handleOpenPolicy(term.key)} className="p-1 text-[#636366] hover:text-white transition-colors"><ChevronRight className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>
             </div>
-
-            <button 
-              type="submit" 
-              disabled={isLoading || !isRequiredAgreed || !isPasswordValid || !isConfirmPasswordValid} 
-              className={`w-full py-4 font-bold rounded-2xl mt-4 transition-all shadow-lg flex items-center justify-center gap-2 ${
-                isRequiredAgreed && isPasswordValid && isConfirmPasswordValid
-                  ? 'bg-brand-DEFAULT text-white hover:bg-brand-hover' 
-                  : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed border border-[#3A3A3C]'
-              }`}
-            >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : '다음 (본인인증)'}
-            </button>
+            <button type="submit" disabled={isLoading || !isRequiredAgreed || !isPasswordValid || !isConfirmPasswordValid} className={`w-full py-4 font-bold rounded-2xl mt-4 transition-all shadow-lg flex items-center justify-center gap-2 ${isRequiredAgreed && isPasswordValid && isConfirmPasswordValid ? 'bg-brand-DEFAULT text-white hover:bg-brand-hover' : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed border border-[#3A3A3C]'}`}>{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : '다음 (본인인증)'}</button>
           </form>
         </motion.div>
       </div>

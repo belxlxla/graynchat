@@ -25,11 +25,10 @@ export default function PhoneAuthPage() {
   const [showQuitAlert, setShowQuitAlert] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  // 1. 회원가입 정보 확인 및 강제 세션 체크
   useEffect(() => {
     const signupUserId = sessionStorage.getItem('signup_user_id');
     if (!signupUserId) {
-      toast.error('회원가입 정보를 찾을 수 없습니다. 다시 시도해 주세요.');
+      toast.error('회원가입 정보를 찾을 수 없습니다.');
       navigate('/auth/signup', { replace: true });
     }
   }, [navigate]);
@@ -75,7 +74,6 @@ export default function PhoneAuthPage() {
     const raw = phoneNumber.replace(/-/g, '');
     if (!carrier) return toast.error('통신사를 선택해주세요.');
     if (raw.length < 10) return toast.error('휴대폰 번호를 확인해주세요.');
-    
     setStep('verify');
     setTimer(VERIFY_TIME);
     toast.success('인증번호가 발송되었습니다.');
@@ -95,8 +93,6 @@ export default function PhoneAuthPage() {
     setIsVerifying(true);
     try {
       const cleanPhone = phoneNumber.replace(/-/g, '');
-      
-      // 2. 휴대폰 번호 업데이트
       const { error: updateError } = await supabase
         .from('users')
         .update({ phone: cleanPhone, updated_at: new Date().toISOString() })
@@ -104,7 +100,6 @@ export default function PhoneAuthPage() {
 
       if (updateError) throw updateError;
 
-      // 3. 실제 로그인 처리 (인증 완료 시점에 세션 생성)
       if (signupEmail && signupPassword) {
         const { error: loginError } = await supabase.auth.signInWithPassword({
           email: signupEmail,
@@ -114,8 +109,8 @@ export default function PhoneAuthPage() {
       }
 
       toast.success('인증되었습니다.');
-      // 4. 프로필 설정 페이지로 이동
-      navigate('/auth/profile', { replace: true });
+      // ✨ [수정 핵심] App.tsx에 정의된 경로인 /auth/profile-setup으로 이동
+      navigate('/auth/profile-setup', { replace: true });
       
     } catch (error) {
       console.error(error);
@@ -137,13 +132,11 @@ export default function PhoneAuthPage() {
       <div className="h-14 flex items-center -ml-2 mb-6 mt-4">
         <button onClick={handleBack} className="p-2"><ChevronLeft className="w-7 h-7" /></button>
       </div>
-
       <motion.div className="mb-10 space-y-2" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
         <h1 className="text-2xl font-bold text-brand-DEFAULT leading-tight">
           {step === 'input' ? '휴대폰 번호를\n입력해 주세요' : '인증번호를\n입력해 주세요'}
         </h1>
       </motion.div>
-
       <div className="flex-1 flex flex-col gap-6">
         <div className={`space-y-6 ${step === 'verify' ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="grid grid-cols-4 gap-2">
@@ -158,7 +151,6 @@ export default function PhoneAuthPage() {
             <button onClick={handleSendCode} disabled={!carrier || phoneNumber.length < 12} className="w-full h-14 bg-brand-DEFAULT rounded-xl font-bold text-lg disabled:opacity-50 transition-all">인증번호 받기</button>
           )}
         </div>
-
         <AnimatePresence>
           {step === 'verify' && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -173,14 +165,13 @@ export default function PhoneAuthPage() {
           )}
         </AnimatePresence>
       </div>
-
       {showQuitAlert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6 bg-black/70">
           <div className="bg-[#1C1C1E] w-full max-w-[320px] rounded-2xl p-6 text-center border border-[#2C2C2E]">
             <h3 className="text-white text-lg font-bold mb-2">가입을 중단하시겠습니까?</h3>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowQuitAlert(false)} className="flex-1 h-12 rounded-xl bg-[#2C2C2E]">계속하기</button>
-              <button onClick={handleQuit} className="flex-1 h-12 rounded-xl bg-[#EC5022] font-bold">중단</button>
+              <button onClick={() => setShowQuitAlert(false)} className="flex-1 h-12 rounded-xl bg-[#2C2C2E] text-white">계속하기</button>
+              <button onClick={handleQuit} className="flex-1 h-12 rounded-xl bg-[#EC5022] font-bold text-white">중단</button>
             </div>
           </div>
         </div>
