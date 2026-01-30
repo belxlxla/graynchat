@@ -37,7 +37,6 @@ type StepType = 'permission' | 'complete' | 'list';
 // === [Main Component] ===
 export default function FriendsListPage() {
   const navigate = useNavigate();
-  // user 변수는 메인 컴포넌트 로직에서 직접 쓰이지 않으므로 제거 (하위 모달이나 fetch 함수 내부 session 사용)
 
   const [step, setStep] = useState<StepType>(() => {
     const savedPermission = localStorage.getItem('grayn_contact_permission');
@@ -635,7 +634,7 @@ export default function FriendsListPage() {
         onClose={() => setShowCreateChatModal(false)} 
         friends={friends} 
         onCreated={(id) => {
-          fetchFriends(); // 채팅 생성 후 친구 목록(또는 상태) 갱신이 필요하다면 호출
+          fetchFriends(); 
           navigate(`/chat/room/${id}`);
         }}
       />
@@ -1071,27 +1070,23 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
   );
 }
 
-// [중요 수정] CreateChatModal - 그룹 채팅 생성 로직 (step, setStep 복구)
 function CreateChatModal({ isOpen, onClose, friends, onCreated }: { 
   isOpen: boolean; 
   onClose: () => void; 
   friends: Friend[]; 
   onCreated?: (id: string) => void; 
 }) {
-  const { user } = useAuth(); // 여기서는 user를 사용하여 채팅 생성
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // [수정] 누락되었던 step, setStep 상태 정의 복구
-  const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
   const [chatType, setChatType] = useState<'individual' | 'group'>('individual');
+  const [step, setStep] = useState<'select-type' | 'select-friends'>('select-type');
 
   useEffect(() => { 
     if (isOpen) {
       setSelectedIds([]);
       setSearchTerm('');
-      setStep('select-type'); // 초기화 시 step도 초기화
       setChatType('individual');
+      setStep('select-type');
     }
   }, [isOpen]);
 
@@ -1112,8 +1107,8 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   };
 
   const handleCreate = async () => { 
-    if (selectedIds.length === 0 || !user?.id) {
-      toast.error('상대를 선택해주세요.');
+    if (selectedIds.length === 0) {
+      toast.error('대화 상대를 선택해주세요.');
       return;
     }
     
@@ -1153,7 +1148,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
         ? (memberNames || '새로운 그룹 채팅')
         : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
 
-      // 1. 채팅방 생성
       const { error: roomError } = await supabase
         .from('chat_rooms')
         .upsert([{ 
@@ -1169,7 +1163,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       
       if (roomError) throw roomError;
 
-      // 2. 멤버 추가
       const membersToAdd = [
         { room_id: roomId, user_id: session.user.id },
         ...selectedIds.map(id => {
@@ -1188,8 +1181,8 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       onClose(); 
       if (onCreated) onCreated(roomId);
 
-    } catch (error: any) {
-      console.error('Create Chat Error:', error);
+    } catch (e: any) {
+      console.error('Create Chat Error:', e);
       toast.error('채팅방 생성에 실패했습니다.');
     }
   };
@@ -1266,7 +1259,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
                   type="text" 
                   placeholder="이름 검색" 
                   value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => setSearchTerm(e.target.value)} 
                   className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none" 
                 />
                 {searchTerm && (
