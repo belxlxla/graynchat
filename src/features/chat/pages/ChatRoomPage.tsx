@@ -105,7 +105,21 @@ export default function ChatRoomPage() {
 
   useEffect(() => {
     fetchInitialData();
-    if (!chatId) return;
+    if (!chatId || !user?.id) return;
+
+    // 채팅방 입장 시 읽음 처리
+    const markAsRead = async () => {
+      try {
+        await supabase
+          .from('chat_rooms')
+          .update({ unread_count: 0 })
+          .match({ id: chatId, user_id: user.id });
+      } catch (error) {
+        console.error('Mark as read error:', error);
+      }
+    };
+    
+    markAsRead();
 
     const channel = supabase.channel(`room_${chatId}`)
       .on('postgres_changes', { 
@@ -120,11 +134,16 @@ export default function ChatRoomPage() {
           if (prev.some(m => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
+        
+        // 실시간으로 메시지 받을 때도 읽음 처리
+        if (newMsg.sender_id !== user.id) {
+          markAsRead();
+        }
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [chatId, fetchInitialData]);
+  }, [chatId, fetchInitialData, user]);
 
   useEffect(() => {
     if (scrollRef.current && !isSearching) {
@@ -150,6 +169,13 @@ export default function ChatRoomPage() {
       if (newMsg && !messages.some(m => m.id === newMsg.id)) {
         setMessages(prev => [...prev, newMsg]);
       }
+      
+      // 내가 메시지를 보낼 때도 unread_count 0으로 유지
+      await supabase
+        .from('chat_rooms')
+        .update({ unread_count: 0 })
+        .match({ id: chatId, user_id: user.id });
+        
     } catch (e) {
       console.error('Send Error:', e);
       toast.error('전송 실패');
