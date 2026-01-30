@@ -232,12 +232,6 @@ export default function ProfileSetupPage() {
     }
   }, [user, nickname, statusMessage, avatarUrl, backgroundUrl, avatarBlob, bgBlob, isFormValid, uploadImage, navigate]);
 
-  // 컴포넌트 언마운트 시 URL 정리
-  const cleanup = useCallback(() => {
-    if (avatarUrl) URL.revokeObjectURL(avatarUrl);
-    if (backgroundUrl) URL.revokeObjectURL(backgroundUrl);
-  }, [avatarUrl, backgroundUrl]);
-
   return (
     <div className="h-[100dvh] flex flex-col bg-dark-bg text-white overflow-hidden font-sans">
       {/* 스크롤 가능 영역 */}

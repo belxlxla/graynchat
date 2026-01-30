@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
 // ✨ Auth Context
@@ -61,7 +61,6 @@ function PublicRoute() {
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const { loading } = useAuth();
-  const navigate = useNavigate();
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('grayn_theme') || 'dark';
@@ -85,14 +84,8 @@ function AppContent() {
       </Route>
 
       <Route element={<PrivateRoute />}>
-        <Route 
-          path="/auth/phone" 
-          element={<PhoneAuthPage onBackToLogin={() => navigate('/auth/login')} onNewUser={() => navigate('/auth/profile')} />} 
-        />
-        <Route 
-          path="/auth/profile" 
-          element={<ProfileSetupPage onComplete={() => navigate('/main/friends')} />} 
-        />
+        <Route path="/auth/phone" element={<PhoneAuthPage />} />
+        <Route path="/auth/profile" element={<ProfileSetupPage />} />
 
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />
@@ -113,7 +106,6 @@ function AppContent() {
         <Route path="/settings/security/password" element={<PasswordChangePage />} />
         <Route path="/settings/security/manage" element={<DeviceManagementPage />} />
         <Route path="/settings/security/lock" element={<ScreenLockPage />} />
-        {/* ✨ 친구 관리 라우트 */}
         <Route path="/settings/friends" element={<FriendsSettingsPage />} />
         <Route path="/settings/friends/blocked" element={<BlockedFriendsPage />} />
         <Route path="/settings/notification" element={<NotificationSettingsPage />} />
