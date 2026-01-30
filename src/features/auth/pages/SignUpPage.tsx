@@ -61,13 +61,10 @@ export default function SignUpPage() {
     if (name === 'password') {
       const error = validatePassword(value);
       setPasswordError(error);
-      
-      if (accountData.confirmPassword) {
-        if (value !== accountData.confirmPassword) {
-          setConfirmPasswordError('비밀번호가 일치하지 않습니다.');
-        } else {
-          setConfirmPasswordError('');
-        }
+      if (accountData.confirmPassword && value !== accountData.confirmPassword) {
+        setConfirmPasswordError('비밀번호가 일치하지 않습니다.');
+      } else {
+        setConfirmPasswordError('');
       }
     }
 
@@ -121,9 +118,6 @@ export default function SignUpPage() {
     
     if (!accountData.name.trim()) return toast.error('이름을 입력해주세요.');
     if (!accountData.email.trim()) return toast.error('이메일을 입력해주세요.');
-    if (passwordError) return toast.error('비밀번호 요구사항을 충족해주세요.');
-    if (!isPasswordValid) return toast.error('유효한 비밀번호를 입력해주세요.');
-    if (!isConfirmPasswordValid) return toast.error('비밀번호가 일치하지 않습니다.');
     if (!isRequiredAgreed) return toast.error('필수 약관에 동의해 주세요.');
 
     setIsLoading(true);
@@ -141,7 +135,7 @@ export default function SignUpPage() {
       if (signUpError) throw signUpError;
       if (!authData.user) throw new Error('회원가입에 실패했습니다.');
 
-      // 2. public.users 테이블에 데이터 저장 (스키마 에러 방지를 위해 필요한 필드만 upsert)
+      // 2. public.users 테이블에 기본 데이터 생성 (ID 연결)
       const { error: upsertError } = await supabase
         .from('users')
         .upsert({
@@ -162,16 +156,12 @@ export default function SignUpPage() {
 
       toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
       
-      // 4. 휴대폰 인증 페이지로 이동
+      // 4. 휴대폰 인증 페이지로 이동 (세션을 유지하여 PrivateRoute 통과)
       navigate('/auth/phone', { replace: true });
 
     } catch (error: any) {
       console.error('Signup Error:', error);
-      if (error.message?.includes('already registered')) {
-        toast.error('이미 가입된 이메일입니다.');
-      } else {
-        toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
-      }
+      toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -268,16 +258,6 @@ export default function SignUpPage() {
                     </button>
                   </div>
                 </div>
-                {passwordError && accountData.password && (
-                  <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-red-500 ml-1 mt-1">
-                    {passwordError}
-                  </motion.p>
-                )}
-                {isPasswordValid && (
-                  <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-green-500 ml-1 mt-1">
-                    ✓ 안전한 비밀번호입니다.
-                  </motion.p>
-                )}
               </div>
 
               <div className="space-y-1.5">
@@ -315,11 +295,6 @@ export default function SignUpPage() {
                     </button>
                   </div>
                 </div>
-                {confirmPasswordError && accountData.confirmPassword && (
-                  <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-red-500 ml-1 mt-1">
-                    {confirmPasswordError}
-                  </motion.p>
-                )}
               </div>
             </div>
 
@@ -332,7 +307,9 @@ export default function SignUpPage() {
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
                     Object.values(agreedTerms).every(v => v) ? 'bg-brand-DEFAULT' : 'bg-[#3A3A3C]'
                   }`}>
-                    <Check className={`w-4 h-4 ${Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'}`} />
+                    <Check className={`w-4 h-4 ${
+                      Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'
+                    }`} />
                   </div>
                   <span className="font-bold text-sm text-white">약관 전체동의</span>
                 </div>

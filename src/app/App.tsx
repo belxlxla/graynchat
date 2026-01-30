@@ -1,26 +1,18 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-
-// ✨ Auth Context
 import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
-
-// Auth Components & Pages
 import Splash from '../features/auth/components/Splash';
 import LoginPage from '../features/auth/pages/LoginPage';
 import SignUpPage from '../features/auth/pages/SignUpPage'; 
 import PhoneAuthPage from '../features/auth/pages/PhoneAuthPage';
 import ProfileSetupPage from '../features/auth/pages/ProfileSetupPage';
 import RecoveryPage from '../features/auth/pages/RecoveryPage';
-
-// Main Pages
 import FriendsListPage from '../features/chat/pages/FriendsListPage';
 import ChatListPage from '../features/chat/pages/ChatListPage';
 import ChatRoomPage from '../features/chat/pages/ChatRoomPage';
 import SettingsPage from '../features/settings/pages/SettingsPage';
 import AccountInfoPage from '../features/settings/pages/AccountInfoPage';
-
-// Security Pages
 import SecurityPage from '../features/settings/pages/SecurityPage';
 import PrivacyManagementPage from '../features/settings/pages/PrivacyManagementPage';
 import AccountSecurityPage from '../features/settings/pages/AccountSecurityPage';
@@ -29,10 +21,7 @@ import ScreenLockPage from '../features/settings/pages/ScreenLockPage';
 import TwoFactorAuthPage from '../features/settings/pages/TwoFactorAuthPage';
 import PasswordChangePage from '../features/settings/pages/PasswordChangePage';
 import WithdrawPage from '../features/settings/pages/WithdrawPage';
-
-// ✨ New Component
 import AppLockOverlay from '../features/auth/components/AppLockOverlay';
-
 import FriendsSettingsPage from '../features/settings/pages/FriendsSettingsPage';
 import BlockedFriendsPage from '../features/settings/pages/BlockedFriendsPage';
 import ChatRoomSettingsPage from '../features/chat/pages/ChatRoomSettingsPage';
@@ -43,7 +32,6 @@ import WallpaperSettingsPage from '../features/settings/pages/WallpaperSettingsP
 import CustomerServicePage from '../features/settings/pages/CustomerServicePage';
 import ReportCenterPage from '../features/settings/pages/ReportCenterPage';
 import IllegalContentReportPage from '../features/settings/pages/IllegalContentReportPage'; 
-
 import MainLayout from '../components/layout/MainLayout';
 
 function PrivateRoute() {
@@ -85,6 +73,7 @@ function AppContent() {
 
       <Route element={<PrivateRoute />}>
         <Route path="/auth/phone" element={<PhoneAuthPage />} />
+        {/* ✨ 경로를 profile-setup으로 일치시킴 */}
         <Route path="/auth/profile-setup" element={<ProfileSetupPage />} />
 
         <Route path="/main" element={<MainLayout />}>
