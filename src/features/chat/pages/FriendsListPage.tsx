@@ -37,7 +37,8 @@ type StepType = 'permission' | 'complete' | 'list';
 // === [Main Component] ===
 export default function FriendsListPage() {
   const navigate = useNavigate();
-  // user 변수는 메인 컴포넌트 로직에서 직접 쓰이지 않으므로 제거 (하위 모달이나 fetch 함수 내부 session 사용)
+  // [수정] useAuth를 복구하고 실제 로직에서 활용합니다.
+  const { user } = useAuth();
 
   const [step, setStep] = useState<StepType>(() => {
     const savedPermission = localStorage.getItem('grayn_contact_permission');
@@ -77,14 +78,14 @@ export default function FriendsListPage() {
   };
 
   const fetchMyProfile = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+    // [수정] user 객체가 있으면 그것을 사용
+    if (!user?.id) return;
 
+    try {
       const { data, error } = await supabase
         .from('users')
         .select('name, avatar, bg_image, status_message')
-        .eq('id', session.user.id)
+        .eq('id', user.id)
         .maybeSingle();
 
       if (error) throw error;
@@ -100,18 +101,17 @@ export default function FriendsListPage() {
     } catch (e) { 
       console.error("MyProfile Load Error", e); 
     }
-  }, []);
+  }, [user]);
 
   const fetchFriends = useCallback(async () => {
+    if (!user?.id) return;
+    
     setIsLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
-
       const { data, error } = await supabase
         .from('friends')
         .select('*')
-        .eq('user_id', session.user.id) 
+        .eq('user_id', user.id) 
         .or('is_blocked.eq.false,is_blocked.is.null') 
         .order('name', { ascending: true });
 
@@ -137,20 +137,19 @@ export default function FriendsListPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    fetchMyProfile();
-    if (step === 'list') {
+    if (user && step === 'list') {
+      fetchMyProfile();
       fetchFriends();
     }
-  }, [step, fetchFriends, fetchMyProfile]);
+  }, [step, user, fetchFriends, fetchMyProfile]);
   
   const handleSaveMyProfile = async (newProfile: MyProfile) => { 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+    if (!user?.id) return;
 
+    try {
       const { error } = await supabase
         .from('users')
         .update({
@@ -159,7 +158,7 @@ export default function FriendsListPage() {
           avatar: newProfile.avatar,
           bg_image: newProfile.bg
         })
-        .eq('id', session.user.id);
+        .eq('id', user.id);
 
       if (error) throw error;
 
@@ -205,14 +204,13 @@ export default function FriendsListPage() {
   const handleEnterChat = async (friend: Friend) => {
     const loadingToast = toast.loading("채팅방 연결 중...");
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id || !friend.friend_user_id) {
+      if (!user?.id || !friend.friend_user_id) {
         toast.dismiss(loadingToast);
         toast.error("채팅방 정보를 불러올 수 없습니다.");
         return;
       }
 
-      const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
+      const sharedRoomId = [user.id, friend.friend_user_id].sort().join("_");
 
       const { data: existingRoom, error: searchError } = await supabase
         .from('chat_rooms')
@@ -227,7 +225,7 @@ export default function FriendsListPage() {
           .from('chat_rooms')
           .upsert([{ 
             id: sharedRoomId,
-            created_by: session.user.id,
+            created_by: user.id,
             title: friend.name,
             type: 'individual',
             last_message: '새로운 대화를 시작해보세요!',
@@ -245,7 +243,7 @@ export default function FriendsListPage() {
         const { error: membersError } = await supabase
           .from('room_members')
           .upsert([
-            { room_id: sharedRoomId, user_id: session.user.id },
+            { room_id: sharedRoomId, user_id: user.id },
             { room_id: sharedRoomId, user_id: friend.friend_user_id }
           ], { onConflict: 'room_id,user_id' });
 
@@ -274,16 +272,13 @@ export default function FriendsListPage() {
   };
 
   const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !user?.id) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
-
       const { error } = await supabase
         .from('friends')
         .delete()
-        .match({ id: deleteTarget.id, user_id: session.user.id });
+        .match({ id: deleteTarget.id, user_id: user.id });
 
       if (error) throw error;
 
@@ -710,7 +705,6 @@ function FriendItem({ friend, onClick, onBlock, onDelete }: {
         style={{ touchAction: 'pan-y' }}
       >
         <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4 border border-white/5 shadow-sm">
-          {/* [수정] 중복 alt 속성 제거 (TS17001 해결) */}
           {friend.avatar ? (
             <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" />
           ) : (
@@ -1068,6 +1062,7 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
   );
 }
 
+// [수정] CreateChatModal에서 불필요한 useAuth 선언 제거 (TS6133)
 function CreateChatModal({ isOpen, onClose, friends, onCreated }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -1146,7 +1141,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
         ? (memberNames || '새로운 그룹 채팅')
         : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
 
-      // 1. 채팅방 생성
       const { error: roomError } = await supabase
         .from('chat_rooms')
         .upsert([{ 
@@ -1162,7 +1156,6 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       
       if (roomError) throw roomError;
 
-      // 2. 멤버 추가
       const membersToAdd = [
         { room_id: roomId, user_id: session.user.id },
         ...selectedIds.map(id => {
