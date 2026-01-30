@@ -4,7 +4,7 @@ import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import { 
   User as UserIcon, Users, 
   Trash2, Check, Search, Plus, Pencil, X,
-  CheckCircle2, Circle, Settings, RefreshCw
+  CheckCircle2, Circle, Settings, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -51,6 +51,8 @@ export default function ChatListPage() {
   const [editingChat, setEditingChat] = useState<ChatRoom | null>(null);
   const [isCreateChatOpen, setIsCreateChatOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  const [leaveChatTarget, setLeaveChatTarget] = useState<ChatRoom | null>(null);
 
   const fetchChats = useCallback(async () => {
     if (!user?.id) return;
@@ -176,17 +178,21 @@ export default function ChatListPage() {
     fetchFriends();
   }, [fetchFriends]);
 
-  const handleLeaveChat = async (id: string) => {
-    if (!user?.id) return;
-    if (!confirm('채팅방을 나가시겠습니까?')) return;
+  const handleLeaveChatClick = (chat: ChatRoom) => {
+    setLeaveChatTarget(chat);
+  };
+
+  const handleLeaveChatConfirm = async () => {
+    if (!user?.id || !leaveChatTarget) return;
     
-    setChats(prev => prev.filter(chat => chat.id !== id));
+    setChats(prev => prev.filter(chat => chat.id !== leaveChatTarget.id));
+    setLeaveChatTarget(null);
     
     try {
       const { error } = await supabase
         .from('chat_rooms')
         .delete()
-        .match({ id, user_id: user.id });
+        .match({ id: leaveChatTarget.id, user_id: user.id });
 
       if (error) throw error;
       toast.success('채팅방을 나갔습니다.');
@@ -356,7 +362,7 @@ export default function ChatListPage() {
               <ChatListItem 
                 key={chat.id} 
                 data={chat} 
-                onLeave={() => handleLeaveChat(chat.id)} 
+                onLeave={() => handleLeaveChatClick(chat)} 
                 onRead={() => handleMarkAsRead(chat.id)} 
                 onEditTitle={() => { setEditingChat(chat); setIsEditModalOpen(true); }} 
               />
@@ -376,6 +382,11 @@ export default function ChatListPage() {
         onClose={() => setIsCreateChatOpen(false)} 
         friends={friendsList} 
         onCreated={handleChatCreated} 
+      />
+      <LeaveChatModal
+        chat={leaveChatTarget}
+        onClose={() => setLeaveChatTarget(null)}
+        onConfirm={handleLeaveChatConfirm}
       />
     </div>
   );
@@ -463,6 +474,55 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
               </div>
             )}
           </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function LeaveChatModal({ chat, onClose, onConfirm }: { 
+  chat: ChatRoom | null; 
+  onClose: () => void; 
+  onConfirm: () => void; 
+}) {
+  if (!chat) return null;
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClose}>
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        exit={{ opacity: 0 }} 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        onClick={(e) => e.stopPropagation()} 
+        className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]"
+      >
+        <div className="p-6 text-center">
+          <div className="w-12 h-12 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6 text-[#EC5022]" />
+          </div>
+          <h3 className="text-white font-bold text-lg mb-2">채팅방을 나가시겠습니까?</h3>
+          <p className="text-xs text-[#8E8E93] leading-relaxed">
+            대화 내용이 삭제되며<br/>목록에서 사라집니다.
+          </p>
+        </div>
+        <div className="flex border-t border-[#3A3A3C] h-12">
+          <button 
+            onClick={onClose} 
+            className="flex-1 text-[#8E8E93] font-medium text-[15px] hover:bg-[#2C2C2E] transition-colors border-r border-[#3A3A3C]"
+          >
+            취소
+          </button>
+          <button 
+            onClick={onConfirm} 
+            className="flex-1 text-[#EC5022] font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors"
+          >
+            나가기
+          </button>
         </div>
       </motion.div>
     </div>
