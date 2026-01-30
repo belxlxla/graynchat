@@ -195,6 +195,17 @@ export default function ChatListPage() {
           fetchChats();
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'chat_rooms'
+        },
+        (payload) => {
+          fetchChats();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -640,43 +651,64 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
           if (onCreated) onCreated(roomId);
           return;
         }
+
+        const { error: roomError } = await supabase
+          .from('chat_rooms')
+          .insert([{ 
+            id: roomId,
+            title: friends.find(f => f.id === selectedIds[0])?.name || '새 대화',
+            type: 'individual',
+            created_by: user.id,
+            last_message: '대화를 시작해보세요!',
+            members_count: 2
+          }]);
+
+        if (roomError) throw roomError;
+
+        const { error: membersError } = await supabase
+          .from('room_members')
+          .insert([
+            { room_id: roomId, user_id: user.id, unread_count: 0 },
+            { room_id: roomId, user_id: friendId, unread_count: 0 }
+          ]);
+
+        if (membersError) throw membersError;
+
       } else {
         roomId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        
+        const title = `나 외 ${selectedIds.length}명`;
+
+        const { error: roomError } = await supabase
+          .from('chat_rooms')
+          .insert([{ 
+            id: roomId,
+            title: title,
+            type: 'group',
+            created_by: user.id,
+            last_message: '대화를 시작해보세요!',
+            members_count: selectedIds.length + 1
+          }]);
+
+        if (roomError) throw roomError;
+
+        const memberInserts = [
+          { room_id: roomId, user_id: user.id, unread_count: 0 }
+        ];
+
+        selectedIds.forEach(selected => {
+          const friendId = friends.find(f => f.id === selected)?.friend_user_id;
+          if (friendId) {
+            memberInserts.push({ room_id: roomId, user_id: friendId, unread_count: 0 });
+          }
+        });
+
+        const { error: membersError } = await supabase
+          .from('room_members')
+          .insert(memberInserts);
+
+        if (membersError) throw membersError;
       }
-      
-      const title = isGroup 
-        ? `나 외 ${selectedIds.length}명` 
-        : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
-      
-      const { error: roomError } = await supabase
-        .from('chat_rooms')
-        .insert([{ 
-          id: roomId, 
-          title, 
-          type: isGroup ? 'group' : 'individual', 
-          created_by: user.id,
-          last_message: '대화를 시작해보세요!', 
-          members_count: selectedIds.length + 1 
-        }]);
-      
-      if (roomError) throw roomError;
-
-      const memberInserts = [
-        { room_id: roomId, user_id: user.id }
-      ];
-
-      selectedIds.forEach(selected => {
-        const friendId = friends.find(f => f.id === selected)?.friend_user_id;
-        if (friendId) {
-          memberInserts.push({ room_id: roomId, user_id: friendId });
-        }
-      });
-
-      const { error: membersError } = await supabase
-        .from('room_members')
-        .insert(memberInserts);
-      
-      if (membersError) throw membersError;
 
       toast.success('채팅방이 생성되었습니다.');
       
