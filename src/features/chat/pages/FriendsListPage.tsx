@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
+import { useAuth } from '../../auth/contexts/AuthContext';
 
 // === [Types] ===
 interface Friend {
@@ -36,7 +37,7 @@ type StepType = 'permission' | 'complete' | 'list';
 // === [Main Component] ===
 export default function FriendsListPage() {
   const navigate = useNavigate();
-  // useAuth 제거 (session 직접 조회로 대체하여 TS6133 해결)
+  // user 변수는 메인 컴포넌트 로직에서 직접 쓰이지 않으므로 제거 (하위 모달이나 fetch 함수 내부 session 사용)
 
   const [step, setStep] = useState<StepType>(() => {
     const savedPermission = localStorage.getItem('grayn_contact_permission');
@@ -633,10 +634,6 @@ export default function FriendsListPage() {
         isOpen={showCreateChatModal} 
         onClose={() => setShowCreateChatModal(false)} 
         friends={friends} 
-        onCreated={(id) => {
-          fetchFriends(); 
-          navigate(`/chat/room/${id}`);
-        }}
       />
       <BlockFriendModal 
         friend={blockTarget} 
@@ -713,8 +710,9 @@ function FriendItem({ friend, onClick, onBlock, onDelete }: {
         style={{ touchAction: 'pan-y' }}
       >
         <div className="w-[48px] h-[48px] rounded-[18px] bg-[#3A3A3C] overflow-hidden flex-shrink-0 relative mr-4 border border-white/5 shadow-sm">
+          {/* [수정] 중복 alt 속성 제거 (TS17001 해결) */}
           {friend.avatar ? (
-            <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" alt="Avatar" />
+            <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-[#8E8E93]">
               <UserIcon className="w-6 h-6 opacity-50" />
@@ -1148,6 +1146,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
         ? (memberNames || '새로운 그룹 채팅')
         : (friends.find(f => f.id === selectedIds[0])?.name || '새 대화');
 
+      // 1. 채팅방 생성
       const { error: roomError } = await supabase
         .from('chat_rooms')
         .upsert([{ 
@@ -1163,6 +1162,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
       
       if (roomError) throw roomError;
 
+      // 2. 멤버 추가
       const membersToAdd = [
         { room_id: roomId, user_id: session.user.id },
         ...selectedIds.map(id => {
@@ -1273,26 +1273,26 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
               {filteredFriends.length > 0 ? (
-                filteredFriends.map(friend => { 
-                  const isSelected = selectedIds.includes(friend.id); 
+                filteredFriends.map(f => { 
+                  const isSelected = selectedIds.includes(f.id); 
                   return (
                     <div 
-                      key={friend.id} 
-                      onClick={() => toggleSelection(friend.id)} 
+                      key={f.id} 
+                      onClick={() => toggleSelection(f.id)} 
                       className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
                         isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
                       }`}
                     >
                       <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
-                        {friend.avatar ? (
-                          <img src={friend.avatar} className="w-full h-full object-cover" alt="" />
+                        {f.avatar ? (
+                          <img src={f.avatar} className="w-full h-full object-cover" alt="" />
                         ) : (
                           <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50" />
                         )}
                       </div>
                       <div className="flex-1">
                         <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
-                          {friend.name}
+                          {f.name}
                         </p>
                       </div>
                       {isSelected ? (
