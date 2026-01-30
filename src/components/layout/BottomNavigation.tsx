@@ -11,10 +11,7 @@ export default function BottomNavigation() {
   const location = useLocation();
   const { user } = useAuth();
   
-  // 콘텐츠 준비중 팝업 상태 관리
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
-  
-  // 채팅 알림 상태 관리 (true면 빨간 점 표시)
   const [hasUnreadChats, setHasUnreadChats] = useState(false);
 
   const navItems = [
@@ -24,29 +21,25 @@ export default function BottomNavigation() {
     { id: 'settings', path: '/main/settings', icon: <MoreHorizontal className="w-7 h-7" />, label: '설정' },
   ];
 
-  // 채팅 알림 확인
   useEffect(() => {
     if (!user?.id) return;
 
     const checkUnreadChats = async () => {
       try {
-        // [수정] 400/500 에러 방지를 위해 가장 가벼운 쿼리 사용
-        // unread_count가 0보다 큰 내 멤버십 정보가 하나라도 있는지 확인
         const { data, error } = await supabase
           .from('room_members')
-          .select('id')
+          .select('unread_count')
           .eq('user_id', user.id)
           .gt('unread_count', 0)
-          .limit(1); // 하나만 찾으면 됨
+          .limit(1)
+          .maybeSingle();
 
         if (error) {
-          // 에러 로그는 개발 모드에서만 확인하고 사용자에게는 무시
           console.warn('Nav check failed:', error.message);
           return;
         }
         
-        // 데이터가 존재하면 안 읽은 채팅이 있는 것
-        setHasUnreadChats(data && data.length > 0);
+        setHasUnreadChats(!!data);
 
       } catch (error) {
         console.error('Check unread exception:', error);
@@ -55,11 +48,10 @@ export default function BottomNavigation() {
 
     checkUnreadChats();
 
-    // 실시간 구독 (내 방 멤버십 정보가 변하면 뱃지 갱신)
     const channel = supabase
       .channel(`bottom_nav_${user.id}`)
       .on('postgres_changes', {
-        event: 'UPDATE',
+        event: '*',
         schema: 'public',
         table: 'room_members',
         filter: `user_id=eq.${user.id}`
@@ -73,12 +65,11 @@ export default function BottomNavigation() {
     };
   }, [user]);
 
-  // 탭 클릭 핸들러
   const handleNavClick = (id: string, path: string) => {
     if (id === 'contents') {
-      setIsContentModalOpen(true); // 콘텐츠 탭은 팝업 오픈
+      setIsContentModalOpen(true);
     } else {
-      navigate(path); // 나머지는 페이지 이동
+      navigate(path);
     }
   };
 
@@ -108,14 +99,43 @@ export default function BottomNavigation() {
                 )}
               </div>
               
-              {/* 채팅 알림 뱃지 (심플한 빨간 점) */}
-              {item.id === 'chats' && hasUnreadChats && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute top-3 right-3 w-2 h-2 bg-[#EC5022] rounded-full border border-[#1C1C1E]"
-                />
-              )}
+              {/* 채팅 알림 뱃지 - 인터랙티브 애니메이션 */}
+              <AnimatePresence>
+                {item.id === 'chats' && hasUnreadChats && (
+                  <motion.div
+                    key="chat-badge"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ 
+                      scale: [0, 1.2, 1],
+                      opacity: 1
+                    }}
+                    exit={{ 
+                      scale: [1, 1.3, 0],
+                      opacity: [1, 0.8, 0]
+                    }}
+                    transition={{ 
+                      duration: 0.4,
+                      ease: "easeOut",
+                      times: [0, 0.6, 1]
+                    }}
+                    className="absolute top-3 right-3 w-2 h-2 bg-[#EC5022] rounded-full border border-[#1C1C1E] shadow-lg"
+                  >
+                    {/* 펄스 애니메이션 - 새 메시지 강조 */}
+                    <motion.div
+                      className="absolute inset-0 bg-[#EC5022] rounded-full"
+                      animate={{
+                        scale: [1, 1.8, 1],
+                        opacity: [0.6, 0, 0.6]
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
               {isActive && (
                 <motion.div
@@ -128,7 +148,7 @@ export default function BottomNavigation() {
         })}
       </nav>
 
-      {/* 콘텐츠 준비중 모달 (디자인 유지) */}
+      {/* 콘텐츠 준비중 모달 */}
       <AnimatePresence>
         {isContentModalOpen && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
