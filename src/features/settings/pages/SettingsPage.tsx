@@ -125,7 +125,7 @@ export default function SettingsPage() {
     } else if (id === 'backup') {
       toast('백업 기능은 준비 중입니다.');
     } else if (id === 'notice') {
-      window.open('https://www.notion.so', '_blank'); 
+      window.open('https://www.notion.so/GRAYN-2fbf8581f9c88074ad66eb5c5351db50?source=copy_link', '_blank'); 
     } else if (id === 'help') {
       navigate('/settings/help');
     } else if (id === 'version') {

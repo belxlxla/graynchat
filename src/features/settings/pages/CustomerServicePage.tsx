@@ -70,7 +70,7 @@ export default function CustomerServicePage() {
 
     if (externalPolicies.includes(title)) {
       // 실제 노션 페이지 URL로 연결
-      window.open('https://www.notion.so', '_blank');
+      window.open('https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link', '_blank');
     } else if (title === '그레인 신고센터') {
       navigate('/settings/help/report'); // ✨ 신고센터 페이지로 이동
     } else {
