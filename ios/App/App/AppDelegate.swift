@@ -13,6 +13,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
+    // 푸시 토큰 연결 (필수)
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
         NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
@@ -22,25 +23,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
     }
 
+    // 아래는 기본 코드
     func applicationWillResignActive(_ application: UIApplication) {
     }
-
     func applicationDidEnterBackground(_ application: UIApplication) {
     }
-
     func applicationWillEnterForeground(_ application: UIApplication) {
     }
-
     func applicationDidBecomeActive(_ application: UIApplication) {
     }
-
     func applicationWillTerminate(_ application: UIApplication) {
     }
-
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
-
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
