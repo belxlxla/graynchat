@@ -399,21 +399,46 @@ export default function ChatRoomPage() {
     }
   };
 
+  // 검색 결과 (텍스트 메시지만 검색)
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const lowerQuery = searchQuery.toLowerCase();
+    
     return messages
-      .filter(m => m.content.toLowerCase().includes(lowerQuery))
+      .filter(m => {
+        // 텍스트 메시지만 검색 (파일 제외)
+        if (getFileType(m.content) !== 'text') return false;
+        return m.content.toLowerCase().includes(lowerQuery);
+      })
       .map(m => m.id);
   }, [searchQuery, messages]);
+
+  // 검색 시작 시 첫 번째 결과로 이동
+  useEffect(() => {
+    if (searchResults.length > 0 && currentSearchIndex === -1) {
+      setCurrentSearchIndex(0);
+      const firstId = searchResults[0];
+      setTimeout(() => {
+        messageRefs.current[firstId]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }, 100);
+    }
+  }, [searchResults, currentSearchIndex]);
 
   const handleSearchMove = (direction: 'up' | 'down') => {
     if (searchResults.length === 0) return;
 
-    let nextIndex = currentSearchIndex + (direction === 'up' ? -1 : 1);
-
-    if (nextIndex < 0) nextIndex = searchResults.length - 1;
-    if (nextIndex >= searchResults.length) nextIndex = 0;
+    let nextIndex = currentSearchIndex;
+    
+    if (direction === 'up') {
+      nextIndex = currentSearchIndex - 1;
+      if (nextIndex < 0) nextIndex = searchResults.length - 1;
+    } else {
+      nextIndex = currentSearchIndex + 1;
+      if (nextIndex >= searchResults.length) nextIndex = 0;
+    }
 
     setCurrentSearchIndex(nextIndex);
 
@@ -424,13 +449,26 @@ export default function ChatRoomPage() {
     });
   };
 
+  // 검색 모드 종료 시 초기화
+  const handleCloseSearch = () => {
+    setIsSearching(false);
+    setSearchQuery('');
+    setCurrentSearchIndex(-1);
+  };
+
   // 메시지 렌더링
   const renderMessageContent = (msg: Message, isMe: boolean) => {
     const type = getFileType(msg.content);
 
+    // 검색 하이라이트 처리
+    const isHighlighted = searchResults.includes(msg.id);
+    const isCurrentSearch = searchResults[currentSearchIndex] === msg.id;
+
     if (type === 'image') {
       return (
-        <div className="rounded-2xl overflow-hidden shadow-sm border border-[#3A3A3C] max-w-[240px] cursor-pointer">
+        <div className={`rounded-2xl overflow-hidden shadow-sm border max-w-[240px] cursor-pointer ${
+          isHighlighted ? 'border-yellow-400 ring-2 ring-yellow-400/50' : 'border-[#3A3A3C]'
+        }`}>
           <img 
             src={msg.content} 
             alt="" 
@@ -446,7 +484,9 @@ export default function ChatRoomPage() {
 
     if (type === 'video') {
       return (
-        <div className="rounded-2xl overflow-hidden shadow-sm border border-[#3A3A3C] max-w-[280px] bg-black">
+        <div className={`rounded-2xl overflow-hidden shadow-sm border max-w-[280px] bg-black ${
+          isHighlighted ? 'border-yellow-400 ring-2 ring-yellow-400/50' : 'border-[#3A3A3C]'
+        }`}>
           <video src={msg.content} controls playsInline className="w-full h-auto max-h-[300px]" />
         </div>
       );
@@ -454,7 +494,9 @@ export default function ChatRoomPage() {
 
     if (['pdf', 'file', 'office', 'text-file'].includes(type)) {
       return (
-        <div className="flex items-center gap-0 p-1.5 rounded-2xl max-w-[280px] bg-[#2C2C2E] border border-[#3A3A3C]">
+        <div className={`flex items-center gap-0 p-1.5 rounded-2xl max-w-[280px] bg-[#2C2C2E] border ${
+          isHighlighted ? 'border-yellow-400 ring-2 ring-yellow-400/50' : 'border-[#3A3A3C]'
+        }`}>
           <div 
             onClick={() => window.open(msg.content, '_blank')} 
             className="flex-1 flex items-center gap-3 p-2 cursor-pointer hover:bg-white/5 rounded-xl transition-colors"
@@ -483,13 +525,33 @@ export default function ChatRoomPage() {
       );
     }
 
+    // 텍스트 메시지 하이라이트
+    const renderHighlightedText = (text: string) => {
+      if (!searchQuery.trim() || !isHighlighted) return text;
+
+      const parts = text.split(new RegExp(`(${searchQuery})`, 'gi'));
+      return parts.map((part, index) => {
+        if (part.toLowerCase() === searchQuery.toLowerCase()) {
+          return (
+            <mark 
+              key={index} 
+              className={`${isCurrentSearch ? 'bg-yellow-300 text-black' : 'bg-yellow-200/50 text-white'} rounded px-0.5`}
+            >
+              {part}
+            </mark>
+          );
+        }
+        return part;
+      });
+    };
+
     return (
-      <div className={`px-4 py-2.5 text-[15px] leading-relaxed break-words shadow-sm ${
+      <div className={`px-4 py-2.5 text-[15px] leading-relaxed break-words shadow-sm transition-all ${
         isMe
           ? 'bg-brand-DEFAULT text-white rounded-[20px] rounded-tr-none'
           : 'bg-[#2C2C2E] text-white rounded-[20px] rounded-tl-none border border-[#3A3A3C]'
-      }`}>
-        {msg.content}
+      } ${isHighlighted ? 'ring-2 ring-yellow-400/50' : ''}`}>
+        {renderHighlightedText(msg.content)}
       </div>
     );
   };
@@ -504,7 +566,10 @@ export default function ChatRoomPage() {
           <h1 className="text-base font-bold ml-1">{roomTitle}</h1>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setIsSearching(!isSearching)} className="p-2 text-white">
+          <button 
+            onClick={() => setIsSearching(!isSearching)} 
+            className={`p-2 transition-colors ${isSearching ? 'text-brand-DEFAULT' : 'text-white'}`}
+          >
             <Search className="w-6 h-6" />
           </button>
           <button onClick={() => navigate(`/chat/room/${chatId}/settings`)} className="p-2 text-white">
@@ -519,29 +584,55 @@ export default function ChatRoomPage() {
             initial={{ height: 0 }}
             animate={{ height: 'auto' }}
             exit={{ height: 0 }}
-            className="bg-[#2C2C2E] px-4 py-2 border-b border-[#3A3A3C] flex items-center gap-2 overflow-hidden"
+            className="bg-[#2C2C2E] px-4 py-3 border-b border-[#3A3A3C] flex items-center gap-3 overflow-hidden"
           >
-            <input
-              autoFocus
-              value={searchQuery}
-              onChange={e => {
-                setSearchQuery(e.target.value);
-                setCurrentSearchIndex(-1);
-              }}
-              placeholder="대화 내용 검색"
-              className="flex-1 bg-transparent text-sm focus:outline-none"
-            />
-            <div className="flex items-center gap-1">
-              <button onClick={() => handleSearchMove('up')} className="p-1">
-                <ChevronUp className="w-4 h-4" />
-              </button>
-              <button onClick={() => handleSearchMove('down')} className="p-1">
-                <ChevronDown className="w-4 h-4" />
-              </button>
-              <button onClick={() => setIsSearching(false)} className="ml-1 text-xs text-[#8E8E93]">
-                취소
-              </button>
+            <div className="flex-1 bg-[#1C1C1E] rounded-xl flex items-center px-3 py-2 border border-[#3A3A3C]">
+              <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={e => {
+                  setSearchQuery(e.target.value);
+                  setCurrentSearchIndex(-1);
+                }}
+                placeholder="대화 내용 검색"
+                className="flex-1 bg-transparent text-sm focus:outline-none text-white placeholder-[#636366]"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="ml-2">
+                  <X className="w-4 h-4 text-[#8E8E93]" />
+                </button>
+              )}
             </div>
+            
+            {searchResults.length > 0 && (
+              <div className="flex items-center gap-2 bg-[#1C1C1E] px-3 py-2 rounded-xl border border-[#3A3A3C]">
+                <span className="text-xs text-white font-medium whitespace-nowrap">
+                  {currentSearchIndex + 1}/{searchResults.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => handleSearchMove('up')} 
+                    className="p-1 hover:bg-white/10 rounded transition-colors"
+                  >
+                    <ChevronUp className="w-4 h-4 text-white" />
+                  </button>
+                  <button 
+                    onClick={() => handleSearchMove('down')} 
+                    className="p-1 hover:bg-white/10 rounded transition-colors"
+                  >
+                    <ChevronDown className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <button 
+              onClick={handleCloseSearch} 
+              className="text-xs text-[#8E8E93] hover:text-white px-2 py-1 whitespace-nowrap"
+            >
+              닫기
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -909,6 +1000,6 @@ function ImageViewerModal({ isOpen, initialIndex, images, onClose }: {
           />
         </AnimatePresence>
       </div>
-    </div> 
+    </div>
   );
 }
