@@ -1,7 +1,10 @@
-import { useState, useEffect,} from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Lock, Fingerprint, KeyRound, Delete, X, ScanFace, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { 
+  ChevronLeft, ChevronRight, Lock, Fingerprint, KeyRound, Delete, X, 
+  ScanFace, AlertTriangle, ShieldCheck 
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
@@ -11,6 +14,7 @@ export default function ScreenLockPage() {
   // === States ===
   const [isLockEnabled, setIsLockEnabled] = useState(() => localStorage.getItem('grayn_lock_enabled') === 'true');
   const [isBiometricEnabled, setIsBiometricEnabled] = useState(() => localStorage.getItem('grayn_biometric_enabled') === 'true');
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
 
   const [showPinModal, setShowPinModal] = useState(false); 
   const [showDisableConfirm, setShowDisableConfirm] = useState(false); 
@@ -22,6 +26,30 @@ export default function ScreenLockPage() {
   const [firstPin, setFirstPin] = useState('');
   
   const [successText, setSuccessText] = useState({ title: '', content: '' });
+
+  // 생체 인증 지원 여부 확인
+  useEffect(() => {
+    const checkBiometricSupport = async () => {
+      // WebAuthn API 지원 확인
+      if (window.PublicKeyCredential) {
+        try {
+          const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+          setIsBiometricAvailable(available);
+          
+          if (!available) {
+            console.log('생체 인증을 지원하지 않는 기기입니다.');
+          }
+        } catch (error) {
+          console.error('Biometric check error:', error);
+          setIsBiometricAvailable(false);
+        }
+      } else {
+        setIsBiometricAvailable(false);
+      }
+    };
+    
+    checkBiometricSupport();
+  }, []);
 
   // DB 및 로컬 저장 로직
   const saveSettings = async (lock: boolean, bio: boolean, pin?: string) => {
@@ -38,6 +66,7 @@ export default function ScreenLockPage() {
     if (!lock) {
       localStorage.removeItem('grayn_lock_pin');
       localStorage.removeItem('grayn_fail_count');
+      localStorage.removeItem('grayn_biometric_credential');
     }
   };
 
@@ -92,6 +121,29 @@ export default function ScreenLockPage() {
     toast.success('보안 잠금이 해제되었습니다.');
   };
 
+  const handleToggleBiometric = () => {
+    if (!isLockEnabled) {
+      toast.error('화면 잠금을 먼저 설정해주세요.');
+      return;
+    }
+    
+    if (!isBiometricAvailable) {
+      toast.error('이 기기는 생체 인증을 지원하지 않습니다.');
+      return;
+    }
+
+    if (isBiometricEnabled) {
+      // 비활성화
+      setIsBiometricEnabled(false);
+      saveSettings(true, false);
+      localStorage.removeItem('grayn_biometric_credential');
+      toast.success('생체 인증이 비활성화되었습니다.');
+    } else {
+      // 활성화 - 모달 표시
+      setShowBiometricModal(true);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
@@ -139,11 +191,13 @@ export default function ScreenLockPage() {
                 </div>
                 <div>
                   <span className="text-[15px] font-bold text-white block">생체인증 사용</span>
-                  <span className="text-[12px] text-[#8E8E93]">Face ID / Touch ID</span>
+                  <span className="text-[12px] text-[#8E8E93]">
+                    {isBiometricAvailable ? 'Face ID / Touch ID' : '지원되지 않음'}
+                  </span>
                 </div>
               </div>
               <div 
-                onClick={() => isLockEnabled && setShowBiometricModal(true)}
+                onClick={handleToggleBiometric}
                 className={`w-[56px] h-[32px] flex items-center rounded-full p-1 cursor-pointer transition-colors duration-500 ${
                   isBiometricEnabled ? 'bg-brand-DEFAULT' : 'bg-[#3A3A3C]'
                 }`}
@@ -173,7 +227,7 @@ export default function ScreenLockPage() {
             </button>
           </div>
 
-          {/* ✨ 요청하신 주의 문구 유지 */}
+          {/* 주의 문구 */}
           <div className="px-2 py-4 bg-[#EC5022]/5 rounded-2xl border border-[#EC5022]/10">
             <div className="flex gap-3">
               <AlertTriangle size={18} className="text-[#EC5022] shrink-0" />
@@ -213,7 +267,7 @@ export default function ScreenLockPage() {
           setIsBiometricEnabled(true);
           await saveSettings(true, true);
           setShowBiometricModal(false);
-          toast.success('기기 생체인증이 등록되었습니다.');
+          toast.success('생체 인증이 활성화되었습니다.');
         }} 
       />
     </div>
@@ -318,37 +372,88 @@ function AlertModal({ isOpen, onClose, title, content }: any) {
 
 function BiometricAuthModal({ isOpen, onClose, onSuccess }: any) {
   const [status, setStatus] = useState<'permission' | 'scanning' | 'error'>('permission');
-  useEffect(() => { if (isOpen) setStatus('permission'); }, [isOpen]);
+  
+  useEffect(() => { 
+    if (isOpen) setStatus('permission'); 
+  }, [isOpen]);
 
   const triggerNativeAuth = async () => {
     setStatus('scanning');
+    
     if (!window.PublicKeyCredential) {
-      toast.error('이 기기는 생체인증을 지원하지 않습니다.');
+      toast.error('이 기기는 생체 인증을 지원하지 않습니다.');
       onClose();
       return;
     }
+
     try {
+      // 생체 인증 등록
       const challenge = new Uint8Array(32);
       window.crypto.getRandomValues(challenge);
-      const options: CredentialCreationOptions = {
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || 'grayn_user';
+      const userEmail = session?.user?.email || 'user@grayn.com';
+
+      const publicKeyCredentialCreationOptions: CredentialCreationOptions = {
         publicKey: {
-          challenge,
-          rp: { name: "Grayn Security" },
-          user: { id: Uint8Array.from("user_id", c => c.charCodeAt(0)), name: "user@grayn.com", displayName: "Grayn User" },
-          pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-          authenticatorSelection: { authenticatorAttachment: "platform" },
+          challenge: challenge,
+          rp: {
+            name: 'Grayn',
+            id: window.location.hostname,
+          },
+          user: {
+            id: new TextEncoder().encode(userId),
+            name: userEmail,
+            displayName: userEmail.split('@')[0],
+          },
+          pubKeyCredParams: [
+            { alg: -7, type: 'public-key' },  // ES256 (iPhone/Android)
+            { alg: -257, type: 'public-key' }, // RS256
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform', // 기기 내장 생체 인증 (Face ID, Touch ID, 지문)
+            userVerification: 'required', // 생체 인증 필수
+            requireResidentKey: false,
+          },
           timeout: 60000,
+          attestation: 'none',
         },
       };
-      const credential = await navigator.credentials.create(options);
-      if (credential) onSuccess();
+
+      const credential = await navigator.credentials.create(publicKeyCredentialCreationOptions);
+
+      if (credential) {
+        // credential 정보 저장
+        localStorage.setItem('grayn_biometric_credential', JSON.stringify({
+          id: credential.id,
+          type: credential.type,
+          createdAt: new Date().toISOString(),
+        }));
+
+        onSuccess();
+      } else {
+        throw new Error('Credential creation failed');
+      }
     } catch (err: any) {
-      toast.error('시스템 인증 실패');
+      console.error('Biometric Auth Error:', err);
+      
+      if (err.name === 'NotAllowedError') {
+        toast.error('생체 인증이 취소되었습니다.');
+      } else if (err.name === 'NotSupportedError') {
+        toast.error('이 기기는 생체 인증을 지원하지 않습니다.');
+      } else if (err.name === 'InvalidStateError') {
+        toast.error('이미 등록된 생체 인증이 있습니다.');
+      } else {
+        toast.error('생체 인증 등록에 실패했습니다.');
+      }
+      
       onClose();
     }
   };
 
   if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -356,19 +461,38 @@ function BiometricAuthModal({ isOpen, onClose, onSuccess }: any) {
         {status === 'permission' ? (
           <>
             <div className="p-8 text-center">
-              <div className="w-16 h-16 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6 text-brand-DEFAULT"><ScanFace size={36} /></div>
-              <h3 className="text-xl font-bold text-white mb-3">시스템 생체인증</h3>
-              <p className="text-[#8E8E93] text-sm leading-relaxed">보다 안전한 보호를 위해 기기의<br/>Face ID / Touch ID를 연결합니다.</p>
+              <div className="w-16 h-16 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6 text-brand-DEFAULT">
+                <ScanFace size={36} />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-3">생체 인증 등록</h3>
+              <p className="text-[#8E8E93] text-sm leading-relaxed">
+                기기의 Face ID, Touch ID 또는<br/>
+                지문 인식을 사용하여 안전하게<br/>
+                그레인을 보호합니다.
+              </p>
             </div>
             <div className="flex border-t border-[#3A3A3C] h-12">
-              <button onClick={onClose} className="flex-1 text-[#8E8E93] font-medium text-[15px] border-r border-[#3A3A3C]">나중에</button>
-              <button onClick={triggerNativeAuth} className="flex-1 text-brand-DEFAULT font-bold text-[15px]">연결하기</button>
+              <button onClick={onClose} className="flex-1 text-[#8E8E93] font-medium text-[15px] border-r border-[#3A3A3C] hover:bg-[#2C2C2E] transition-colors">
+                취소
+              </button>
+              <button onClick={triggerNativeAuth} className="flex-1 text-brand-DEFAULT font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors">
+                등록하기
+              </button>
             </div>
           </>
         ) : (
           <div className="p-12 flex flex-col items-center">
-            <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="w-20 h-20 rounded-full bg-brand-DEFAULT/10 flex items-center justify-center mb-6"><Fingerprint size={40} className="text-brand-DEFAULT" /></motion.div>
-            <p className="text-white font-bold animate-pulse">시스템 인증 대기 중...</p>
+            <motion.div 
+              animate={{ scale: [1, 1.1, 1] }} 
+              transition={{ repeat: Infinity, duration: 2 }} 
+              className="w-20 h-20 rounded-full bg-brand-DEFAULT/10 flex items-center justify-center mb-6"
+            >
+              <Fingerprint size={40} className="text-brand-DEFAULT" />
+            </motion.div>
+            <p className="text-white font-bold text-center mb-2">생체 인증 대기 중...</p>
+            <p className="text-[#8E8E93] text-xs text-center">
+              기기의 생체 인증을 완료해주세요
+            </p>
           </div>
         )}
       </motion.div>
