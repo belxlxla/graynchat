@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'; 
-// ▲ useNavigate 추가: 알림 클릭 시 페이지 이동을 위함
 import { Toaster, toast } from 'react-hot-toast'; 
-// ▲ toast 추가: 앱 켜져있을 때 알림 띄우기 위함
 import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
 
 // --- [기존 페이지 import 유지] ---
@@ -61,13 +59,31 @@ function AppContent() {
   const navigate = useNavigate(); // 페이지 이동 훅
 
   // -------------------------------------------------------------------------
-  // [푸시 알림 로직 시작]
+  // [푸시 알림 로직 시작] - 안드로이드 채널 & iOS 배지 로직 추가됨
   // -------------------------------------------------------------------------
   useEffect(() => {
     // 1. 웹 브라우저(PC/모바일웹)에서는 실행하지 않고, 앱일 때만 실행
     if (!Capacitor.isNativePlatform()) return;
 
     const initPushNotifications = async () => {
+      
+      // [A] 안드로이드 전용: 알림 채널 생성 (소리/진동 필수 설정)
+      if (Capacitor.getPlatform() === 'android') {
+        await PushNotifications.createChannel({
+          id: 'halfstep_default_channel', // AndroidManifest.xml과 일치해야 함
+          name: '일반 알림', // 사용자 설정 화면에 보일 이름
+          description: '채팅 및 매칭 알림을 받습니다.',
+          importance: 4, // 4: 높음 (소리+진동), 5: 매우높음 (헤드업 알림)
+          visibility: 1,
+          vibration: true,
+        });
+      }
+
+      // [B] iOS 전용: 앱 실행 시 아이콘 배지 숫자 초기화
+      if (Capacitor.getPlatform() === 'ios') {
+        await PushNotifications.removeAllDeliveredNotifications();
+      }
+
       // 2. 권한 확인 (granted: 허용됨, denied: 거절됨, prompt: 아직 안 물어봄)
       let permStatus = await PushNotifications.checkPermissions();
 
@@ -134,7 +150,7 @@ function AppContent() {
       notificationReceivedListener.then(listener => listener.remove());
       notificationActionListener.then(listener => listener.remove());
     };
-  }, [navigate]); // navigate가 바뀔 때마다 재실행(사실상 한번만 실행됨)
+  }, [navigate]); 
   // -------------------------------------------------------------------------
   // [푸시 알림 로직 끝]
   // -------------------------------------------------------------------------
