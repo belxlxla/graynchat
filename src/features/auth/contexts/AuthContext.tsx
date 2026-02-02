@@ -1,5 +1,4 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-// ✨ 수정됨: 'import type'을 사용하여 런타임 에러 방지
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
@@ -35,8 +34,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ✅ 안전한 로그아웃 함수
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      // Supabase 로그아웃 시도
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        // 403 에러나 session_not_found는 무시 (이미 로그아웃 상태)
+        if (!error.message?.includes('403') && !error.message?.includes('session_not_found')) {
+          console.error('Logout error:', error);
+        }
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      // 에러 여부와 관계없이 로컬 상태 정리
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // 상태 초기화
+      setUser(null);
+      setSession(null);
+    }
   };
 
   return (

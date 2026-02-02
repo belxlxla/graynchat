@@ -359,7 +359,14 @@ const fetchUserData = useCallback(async () => {
       </AnimatePresence>
 
       <CountrySelectModal isOpen={isCountryModalOpen} onClose={() => setIsCountryModalOpen(false)} blockedList={blockedCountries} onSave={handleSaveBlockedCountries} />
-      <LogoutModal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)} onConfirm={() => supabase.auth.signOut().then(() => navigate('/'))} />
+      <LogoutModal 
+  isOpen={isLogoutModalOpen} 
+  onClose={() => setIsLogoutModalOpen(false)} 
+  onConfirm={async () => {
+    await supabase.auth.signOut();
+    navigate('/');
+  }} 
+/>
     </div>
   );
 }
