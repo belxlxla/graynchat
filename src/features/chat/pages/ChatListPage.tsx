@@ -217,7 +217,7 @@ export default function ChatListPage() {
           schema: 'public',
           table: 'chat_rooms'
         },
-        (payload) => {
+        () => {
           // chat_rooms 변경시 전체 재조회
           fetchChats();
         }
@@ -868,7 +868,7 @@ function EditTitleModal({ isOpen, onClose, currentTitle, onSave }: {
             확인
           </button>
         </div>
-      </motion.div> 
+      </motion.div>
     </div>
   );
 }
