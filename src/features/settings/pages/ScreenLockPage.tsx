@@ -1,4 +1,4 @@
-import { useState, useEffect} from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -7,6 +7,11 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
+import { 
+  startRegistration,
+  browserSupportsWebAuthn,
+  platformAuthenticatorIsAvailable
+} from '@simplewebauthn/browser';
 
 export default function ScreenLockPage() {
   const navigate = useNavigate();
@@ -28,45 +33,68 @@ export default function ScreenLockPage() {
   const [successText, setSuccessText] = useState({ title: '', content: '' });
 
   // 생체 인증 지원 여부 확인
-  useEffect(() => {
-    const checkBiometricSupport = async () => {
-      // WebAuthn API 지원 확인
-      if (window.PublicKeyCredential) {
-        try {
-          const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-          setIsBiometricAvailable(available);
-          
-          if (!available) {
-            console.log('생체 인증을 지원하지 않는 기기입니다.');
-          }
-        } catch (error) {
-          console.error('Biometric check error:', error);
-          setIsBiometricAvailable(false);
-        }
-      } else {
-        setIsBiometricAvailable(false);
+  const checkBiometricSupport = useCallback(async () => {
+    try {
+      const webAuthnSupported = browserSupportsWebAuthn();
+      const platformSupported = await platformAuthenticatorIsAvailable();
+      
+      const isSupported = webAuthnSupported && platformSupported;
+      setIsBiometricAvailable(isSupported);
+      
+      if (!isSupported) {
+        console.log('생체 인증을 지원하지 않는 환경입니다.');
       }
-    };
-    
-    checkBiometricSupport();
+    } catch (error) {
+      console.error('Biometric check error:', error);
+      setIsBiometricAvailable(false);
+    }
   }, []);
 
+  useEffect(() => {
+    checkBiometricSupport();
+  }, [checkBiometricSupport]);
+
+  // 등록된 생체 인증 확인
+  const checkBiometricRegistration = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data, error } = await supabase
+        .from('biometric_credentials')
+        .select('id')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Check biometric error:', error);
+      }
+
+      const hasCredential = !!data;
+      setIsBiometricEnabled(hasCredential);
+      localStorage.setItem('grayn_biometric_enabled', String(hasCredential));
+    } catch (error) {
+      console.error('Check biometric registration error:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkBiometricRegistration();
+  }, [checkBiometricRegistration]);
+
   // DB 및 로컬 저장 로직
-  const saveSettings = async (lock: boolean, bio: boolean, pin?: string) => {
+  const saveSettings = async (lock: boolean, pin?: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
       await supabase.from('users').update({ 
-        is_lock_enabled: lock, 
-        is_biometric_enabled: bio 
+        is_lock_enabled: lock
       }).eq('id', session.user.id);
     }
     localStorage.setItem('grayn_lock_enabled', String(lock));
-    localStorage.setItem('grayn_biometric_enabled', String(bio));
     if (pin) localStorage.setItem('grayn_lock_pin', pin);
     if (!lock) {
       localStorage.removeItem('grayn_lock_pin');
       localStorage.removeItem('grayn_fail_count');
-      localStorage.removeItem('grayn_biometric_credential');
     }
   };
 
@@ -98,10 +126,10 @@ export default function ScreenLockPage() {
         setShowPinModal(false);
         if (pinMode === 'setup') {
           setIsLockEnabled(true);
-          await saveSettings(true, isBiometricEnabled, pin);
+          await saveSettings(true, pin);
           setSuccessText({ title: '설정 완료', content: '보안 잠금이 성공적으로 활성화되었습니다.' });
         } else {
-          await saveSettings(true, isBiometricEnabled, pin);
+          await saveSettings(true, pin);
           setSuccessText({ title: '변경 완료', content: '비밀번호가 안전하게 변경되었습니다.' });
         }
         setShowSuccessModal(true);
@@ -115,8 +143,25 @@ export default function ScreenLockPage() {
 
   const confirmDisable = async () => {
     setIsLockEnabled(false);
-    setIsBiometricEnabled(false);
-    await saveSettings(false, false);
+    
+    // 생체 인증도 함께 비활성화
+    if (isBiometricEnabled) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await supabase
+            .from('biometric_credentials')
+            .delete()
+            .eq('user_id', session.user.id);
+        }
+        setIsBiometricEnabled(false);
+        localStorage.setItem('grayn_biometric_enabled', 'false');
+      } catch (error) {
+        console.error('Delete biometric error:', error);
+      }
+    }
+    
+    await saveSettings(false);
     setShowDisableConfirm(false);
     toast.success('보안 잠금이 해제되었습니다.');
   };
@@ -133,13 +178,10 @@ export default function ScreenLockPage() {
     }
 
     if (isBiometricEnabled) {
-      // 비활성화
-      setIsBiometricEnabled(false);
-      saveSettings(true, false);
-      localStorage.removeItem('grayn_biometric_credential');
-      toast.success('생체 인증이 비활성화되었습니다.');
+      // 비활성화 확인
+      setShowBiometricModal(true);
     } else {
-      // 활성화 - 모달 표시
+      // 활성화
       setShowBiometricModal(true);
     }
   };
@@ -192,7 +234,7 @@ export default function ScreenLockPage() {
                 <div>
                   <span className="text-[15px] font-bold text-white block">생체인증 사용</span>
                   <span className="text-[12px] text-[#8E8E93]">
-                    {isBiometricAvailable ? 'Face ID / Touch ID' : '지원되지 않음'}
+                    {isBiometricAvailable ? 'Face ID / Touch ID / 지문' : '지원되지 않음'}
                   </span>
                 </div>
               </div>
@@ -263,12 +305,11 @@ export default function ScreenLockPage() {
       <BiometricAuthModal 
         isOpen={showBiometricModal} 
         onClose={() => setShowBiometricModal(false)} 
-        onSuccess={async () => {
-          setIsBiometricEnabled(true);
-          await saveSettings(true, true);
+        isEnabled={isBiometricEnabled}
+        onSuccess={() => {
+          checkBiometricRegistration();
           setShowBiometricModal(false);
-          toast.success('생체 인증이 활성화되었습니다.');
-        }} 
+        }}
       />
     </div>
   );
@@ -370,84 +411,135 @@ function AlertModal({ isOpen, onClose, title, content }: any) {
   );
 }
 
-function BiometricAuthModal({ isOpen, onClose, onSuccess }: any) {
-  const [status, setStatus] = useState<'permission' | 'scanning' | 'error'>('permission');
+function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
+  const [status, setStatus] = useState<'permission' | 'scanning'>('permission');
+  const [isProcessing, setIsProcessing] = useState(false);
   
   useEffect(() => { 
     if (isOpen) setStatus('permission'); 
   }, [isOpen]);
 
-  const triggerNativeAuth = async () => {
+  const getDeviceType = () => {
+    const ua = navigator.userAgent;
+    if (/iPhone|iPad/.test(ua)) return 'iOS';
+    if (/Android/.test(ua)) return 'Android';
+    return 'Unknown';
+  };
+
+  const handleRegisterBiometric = async () => {
     setStatus('scanning');
+    setIsProcessing(true);
     
-    if (!window.PublicKeyCredential) {
-      toast.error('이 기기는 생체 인증을 지원하지 않습니다.');
-      onClose();
-      return;
-    }
+    const loadingToast = toast.loading('생체 인증 등록 중...');
 
     try {
-      // 생체 인증 등록
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-
       const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id || 'grayn_user';
-      const userEmail = session?.user?.email || 'user@grayn.com';
+      if (!session?.user) {
+        toast.dismiss(loadingToast);
+        toast.error('로그인이 필요합니다.');
+        onClose();
+        return;
+      }
 
-      const publicKeyCredentialCreationOptions: CredentialCreationOptions = {
-        publicKey: {
-          challenge: challenge,
-          rp: {
-            name: 'Grayn',
-            id: window.location.hostname,
-          },
-          user: {
-            id: new TextEncoder().encode(userId),
-            name: userEmail,
-            displayName: userEmail.split('@')[0],
-          },
-          pubKeyCredParams: [
-            { alg: -7, type: 'public-key' },  // ES256 (iPhone/Android)
-            { alg: -257, type: 'public-key' }, // RS256
-          ],
-          authenticatorSelection: {
-            authenticatorAttachment: 'platform', // 기기 내장 생체 인증 (Face ID, Touch ID, 지문)
-            userVerification: 'required', // 생체 인증 필수
-            requireResidentKey: false,
-          },
-          timeout: 60000,
-          attestation: 'none',
+      // Challenge 생성
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+
+      const publicKeyCredentialCreationOptions = {
+        challenge: Array.from(challenge),
+        rp: {
+          name: "Grayn",
+          id: window.location.hostname,
         },
+        user: {
+          id: Array.from(new TextEncoder().encode(session.user.id)),
+          name: session.user.email || session.user.id,
+          displayName: session.user.email?.split('@')[0] || '사용자',
+        },
+        pubKeyCredParams: [
+          { alg: -7, type: "public-key" as const },  // ES256
+          { alg: -257, type: "public-key" as const }, // RS256
+        ],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform" as const,
+          userVerification: "required" as const,
+          requireResidentKey: false,
+        },
+        timeout: 60000,
+        attestation: "none" as const,
       };
 
-      const credential = await navigator.credentials.create(publicKeyCredentialCreationOptions);
+      const credential = await startRegistration(publicKeyCredentialCreationOptions);
 
-      if (credential) {
-        // credential 정보 저장
-        localStorage.setItem('grayn_biometric_credential', JSON.stringify({
-          id: credential.id,
-          type: credential.type,
-          createdAt: new Date().toISOString(),
-        }));
+      // DB에 저장
+      const { error: insertError } = await supabase
+        .from('biometric_credentials')
+        .insert({
+          user_id: session.user.id,
+          credential_id: credential.id,
+          public_key: credential.response.publicKey,
+          device_type: getDeviceType(),
+          counter: 0,
+        });
 
-        onSuccess();
-      } else {
-        throw new Error('Credential creation failed');
-      }
-    } catch (err: any) {
-      console.error('Biometric Auth Error:', err);
+      if (insertError) throw insertError;
+
+      localStorage.setItem('grayn_biometric_enabled', 'true');
+
+      toast.dismiss(loadingToast);
+      toast.success('생체 인증이 등록되었습니다!');
       
-      if (err.name === 'NotAllowedError') {
+      onSuccess();
+    } catch (error: any) {
+      console.error('Biometric registration error:', error);
+      toast.dismiss(loadingToast);
+      
+      if (error.name === 'NotAllowedError') {
         toast.error('생체 인증이 취소되었습니다.');
-      } else if (err.name === 'NotSupportedError') {
+      } else if (error.name === 'NotSupportedError') {
         toast.error('이 기기는 생체 인증을 지원하지 않습니다.');
-      } else if (err.name === 'InvalidStateError') {
-        toast.error('이미 등록된 생체 인증이 있습니다.');
       } else {
         toast.error('생체 인증 등록에 실패했습니다.');
       }
       
+      onClose();
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRemoveBiometric = async () => {
+    setIsProcessing(true);
+    const loadingToast = toast.loading('생체 인증 삭제 중...');
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        toast.dismiss(loadingToast);
+        toast.error('로그인이 필요합니다.');
+        onClose();
+        return;
+      }
+
+      const { error } = await supabase
+        .from('biometric_credentials')
+        .delete()
+        .eq('user_id', session.user.id);
+
+      if (error) throw error;
+
+      localStorage.setItem('grayn_biometric_enabled', 'false');
+
+      toast.dismiss(loadingToast);
+      toast.success('생체 인증이 삭제되었습니다.');
+      
+      onSuccess();
+    } catch (error) {
+      console.error('Remove biometric error:', error);
+      toast.dismiss(loadingToast);
+      toast.error('생체 인증 삭제에 실패했습니다.');
+    } finally {
+      setIsProcessing(false);
       onClose();
     }
   };
@@ -464,19 +556,33 @@ function BiometricAuthModal({ isOpen, onClose, onSuccess }: any) {
               <div className="w-16 h-16 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6 text-brand-DEFAULT">
                 <ScanFace size={36} />
               </div>
-              <h3 className="text-xl font-bold text-white mb-3">생체 인증 등록</h3>
+              <h3 className="text-xl font-bold text-white mb-3">
+                {isEnabled ? '생체 인증 삭제' : '생체 인증 등록'}
+              </h3>
               <p className="text-[#8E8E93] text-sm leading-relaxed">
-                기기의 Face ID, Touch ID 또는<br/>
-                지문 인식을 사용하여 안전하게<br/>
-                그레인을 보호합니다.
+                {isEnabled ? (
+                  <>등록된 생체 인증을 삭제하시겠습니까?<br/>삭제 후 비밀번호로만 잠금 해제가 가능합니다.</>
+                ) : (
+                  <>기기의 Face ID, Touch ID 또는<br/>지문 인식을 등록하여 안전하게<br/>그레인을 보호합니다.</>
+                )}
               </p>
             </div>
             <div className="flex border-t border-[#3A3A3C] h-12">
-              <button onClick={onClose} className="flex-1 text-[#8E8E93] font-medium text-[15px] border-r border-[#3A3A3C] hover:bg-[#2C2C2E] transition-colors">
+              <button 
+                onClick={onClose} 
+                disabled={isProcessing}
+                className="flex-1 text-[#8E8E93] font-medium text-[15px] border-r border-[#3A3A3C] hover:bg-[#2C2C2E] transition-colors disabled:opacity-50"
+              >
                 취소
               </button>
-              <button onClick={triggerNativeAuth} className="flex-1 text-brand-DEFAULT font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors">
-                등록하기
+              <button 
+                onClick={isEnabled ? handleRemoveBiometric : handleRegisterBiometric}
+                disabled={isProcessing}
+                className={`flex-1 font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors disabled:opacity-50 ${
+                  isEnabled ? 'text-[#EC5022]' : 'text-brand-DEFAULT'
+                }`}
+              >
+                {isEnabled ? '삭제' : '등록하기'}
               </button>
             </div>
           </>
@@ -491,7 +597,7 @@ function BiometricAuthModal({ isOpen, onClose, onSuccess }: any) {
             </motion.div>
             <p className="text-white font-bold text-center mb-2">생체 인증 대기 중...</p>
             <p className="text-[#8E8E93] text-xs text-center">
-              기기의 생체 인증을 완료해주세요
+              기기의 Face ID, Touch ID 또는<br/>지문 인식을 진행해주세요
             </p>
           </div>
         )}
