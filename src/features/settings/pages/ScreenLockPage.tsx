@@ -12,7 +12,6 @@ import {
   browserSupportsWebAuthn,
   platformAuthenticatorIsAvailable
 } from '@simplewebauthn/browser';
-import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/types';
 
 export default function ScreenLockPage() {
   const navigate = useNavigate();
@@ -428,11 +427,11 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
   };
 
   // Base64URL 인코딩 함수
-  const bufferToBase64url = (buffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(buffer);
+  const bufferToBase64url = (buffer: Uint8Array): string => {
     let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    const len = buffer.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(buffer[i]);
     }
     return btoa(binary)
       .replace(/\+/g, '-')
@@ -459,7 +458,7 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
-      const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptionsJSON = {
+      const publicKeyCredentialCreationOptions = {
         challenge: bufferToBase64url(challenge),
         rp: {
           name: "Grayn",
@@ -471,16 +470,16 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
           displayName: session.user.email?.split('@')[0] || '사용자',
         },
         pubKeyCredParams: [
-          { alg: -7, type: "public-key" },  // ES256
-          { alg: -257, type: "public-key" }, // RS256
+          { alg: -7, type: "public-key" as const },
+          { alg: -257, type: "public-key" as const },
         ],
         authenticatorSelection: {
-          authenticatorAttachment: "platform",
-          userVerification: "required",
+          authenticatorAttachment: "platform" as const,
+          userVerification: "required" as const,
           requireResidentKey: false,
         },
         timeout: 60000,
-        attestation: "none",
+        attestation: "none" as const,
       };
 
       const credential = await startRegistration(publicKeyCredentialCreationOptions);
