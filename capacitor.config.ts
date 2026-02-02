@@ -1,12 +1,9 @@
-import { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.mychatapp.app',
-  appName: 'MyChatApp',
-  webDir: 'dist',
-  server: {
-    androidScheme: 'https'
-  }
+  appId: 'vns.grayn.app',
+  appName: 'GRAYN',
+  webDir: 'dist'
 };
 
 export default config;
