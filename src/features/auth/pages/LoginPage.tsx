@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X } from 'lucide-react';
@@ -12,17 +12,83 @@ type Provider = 'google' | 'apple';
 export default function LoginPage() {
   const navigate = useNavigate();
   
-  // ✅ 항상 hooks를 최상단에서 호출 (조건부 X)
   const { triggerNaverLogin } = useNaverLogin();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // 2단계 인증 관련 상태
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
+
+  // ✅ Apple/Google OAuth 콜백 처리
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        const provider = session.user.app_metadata?.provider;
+        
+        // Apple 또는 Google 로그인 후 처리
+        if (provider === 'apple' || provider === 'google') {
+          const userId = session.user.id;
+          const userEmail = session.user.email;
+          const userName = session.user.user_metadata?.full_name || 
+                          session.user.user_metadata?.name || 
+                          userEmail?.split('@')[0] || 
+                          '사용자';
+
+          try {
+            // users 테이블 확인
+            const { data: existingUser } = await supabase
+              .from('users')
+              .select('id')
+              .eq('id', userId)
+              .maybeSingle();
+
+            if (!existingUser) {
+              // 신규 사용자 - users 테이블에 추가
+              await supabase.from('users').insert({
+                id: userId,
+                email: userEmail,
+                name: userName,
+                avatar: session.user.user_metadata?.avatar_url || null,
+                phone: null,
+                status_message: '그레인을 시작했어요!',
+              });
+
+              toast.success(`${userName}님 환영합니다!`);
+            } else {
+              // 기존 사용자 - 프로필 업데이트
+              await supabase.from('users').update({
+                name: userName,
+                avatar: session.user.user_metadata?.avatar_url || null,
+                updated_at: new Date().toISOString(),
+              }).eq('id', userId);
+
+              toast.success(`${userName}님 환영합니다!`);
+            }
+
+            // user_metadata 업데이트
+            await supabase.auth.updateUser({
+              data: {
+                provider: provider,
+                full_name: userName,
+              }
+            });
+
+            navigate('/main/friends');
+          } catch (error) {
+            console.error('OAuth User Sync Error:', error);
+            toast.error('프로필 동기화에 실패했습니다.');
+          }
+        }
+      }
+    };
+
+    handleOAuthCallback();
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +102,6 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      // 1. [RPC 호출] 로그인 전에 해당 이메일의 2단계 인증 설정 여부를 먼저 확인
       const { data: userSettings, error: rpcError } = await supabase.rpc(
         'get_user_2fa_info',
         { email_input: targetEmail }
@@ -44,17 +109,14 @@ export default function LoginPage() {
 
       if (rpcError) {
         console.error('RPC Error:', rpcError);
-        // 에러 발생 시 일반 로그인 시도 (Fallback)
         await performNormalLogin(targetEmail, targetPassword);
         return;
       }
 
-      // 2. 2단계 인증이 켜져 있는 경우
       if (userSettings && userSettings.is_2fa_enabled) {
         const method = userSettings.mfa_method || 'email';
         setMfaMethod(method === 'phone' ? 'phone' : 'email');
 
-        // OTP 발송 시도
         if (method === 'email') {
           const { error: otpError } = await supabase.auth.signInWithOtp({
             email: targetEmail,
@@ -62,18 +124,15 @@ export default function LoginPage() {
           if (otpError) throw otpError;
           toast.success('이메일로 인증 코드가 발송되었습니다.');
         } else {
-          // SMS 로직
           toast('SMS 인증 코드를 입력해주세요.', { icon: 'ℹ️' });
-          // 에러 무시하고 진행 (UI 테스트용)
           await supabase.auth
             .signInWithOtp({ email: targetEmail })
             .catch(() => {});
         }
 
-        setShow2FAModal(true); // 모달 열기
-        setIsLoading(false); // 로딩 해제 (입력 대기)
+        setShow2FAModal(true);
+        setIsLoading(false);
       } else {
-        // 3. 2단계 인증이 꺼져 있으면 일반 비밀번호 로그인 진행
         await performNormalLogin(targetEmail, targetPassword);
       }
     } catch (error: any) {
@@ -83,7 +142,6 @@ export default function LoginPage() {
     }
   };
 
-  // 일반 로그인 처리 함수 (비밀번호 사용)
   const performNormalLogin = async (email: string, pass: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -112,14 +170,12 @@ export default function LoginPage() {
     }
   };
 
-  // 2단계 인증 코드 검증 및 최종 로그인 함수
   const handleVerify2FA = async () => {
     if (otpCode.length < 6)
       return toast.error('인증 코드를 입력해주세요.');
 
     setIsLoading(true);
 
-    // 테스트용 강제 통과 로직 (000000 입력 시)
     if (otpCode === '000000') {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -143,7 +199,6 @@ export default function LoginPage() {
       return;
     }
 
-    // 기존 실제 검증 로직
     try {
       const { data, error } = await supabase.auth.verifyOtp({
         email,
@@ -166,33 +221,31 @@ export default function LoginPage() {
     }
   };
 
-  // 소셜 로그인 핸들러
-const handleSocialLogin = async (provider: Provider) => {
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: provider,
-      options: {
-        redirectTo: window.location.origin,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
+  const handleSocialLogin = async (provider: Provider) => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/login`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          data: {
+            provider: provider,
+          }
         },
-        data: {
-          provider: provider, // ✅ provider 명시
-        }
-      },
-    });
+      });
 
-    if (error) throw error;
-  } catch (error: any) {
-    console.error('Social Login Error:', error);
-    toast.error(`${provider} 로그인 연결에 실패했습니다.`);
-  }
-};
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Social Login Error:', error);
+      toast.error(`${provider} 로그인 연결에 실패했습니다.`);
+    }
+  };
 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center relative">
-      {/* 네이버 SDK 버튼 컨테이너 (화면 밖에 숨김) */}
       <div
         id="naverIdLogin"
         style={{
@@ -391,7 +444,6 @@ const handleSocialLogin = async (provider: Provider) => {
         </button>
       </motion.div>
 
-      {/* 2단계 인증 모달 (최상위 노출) */}
       <AnimatePresence>
         {show2FAModal && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6">
@@ -400,9 +452,7 @@ const handleSocialLogin = async (provider: Provider) => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/95 backdrop-blur-md"
-              onClick={() => {
-                // 배경 클릭 시 모달 닫기 방지
-              }}
+              onClick={() => {}}
             />
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
