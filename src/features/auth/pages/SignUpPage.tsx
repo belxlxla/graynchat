@@ -35,13 +35,13 @@ export default function SignUpPage() {
   });
 
   const policyLinks: Record<string, string> = {
-    service: 'https://www.notion.so',
-    location: 'https://www.notion.so',
-    privacy: 'https://www.notion.so',
-    sensitive: 'https://www.notion.so',
-    operation: 'https://www.notion.so',
-    youth: 'https://www.notion.so',
-    marketing: 'https://www.notion.so',
+    service: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
+    location: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
+    privacy: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
+    sensitive: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
+    operation: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
+    youth: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
+    marketing: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
   };
 
   const validatePassword = (password: string): string => {
