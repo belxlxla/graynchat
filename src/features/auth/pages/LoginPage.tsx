@@ -4,13 +4,17 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
-import GraynLogo from '../../../assets/grayn_logo.svg'; 
+import GraynLogo from '../../../assets/grayn_logo.svg';
+import { useNaverLogin } from '../hooks/useNaverLogin';
 
-type Provider = 'google' | 'apple' | 'naver';
+type Provider = 'google' | 'apple';
 
 export default function LoginPage() {
   const navigate = useNavigate();
   
+  // ✅ 항상 hooks를 최상단에서 호출 (조건부 X)
+  const { triggerNaverLogin } = useNaverLogin();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -22,7 +26,7 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const targetEmail = email.trim();
     const targetPassword = password.trim();
 
@@ -33,12 +37,14 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       // 1. [RPC 호출] 로그인 전에 해당 이메일의 2단계 인증 설정 여부를 먼저 확인
-      const { data: userSettings, error: rpcError } = await supabase
-        .rpc('get_user_2fa_info', { email_input: targetEmail });
+      const { data: userSettings, error: rpcError } = await supabase.rpc(
+        'get_user_2fa_info',
+        { email_input: targetEmail }
+      );
 
       if (rpcError) {
         console.error('RPC Error:', rpcError);
-        // 에러 발생 시 일반 로그인 시도
+        // 에러 발생 시 일반 로그인 시도 (Fallback)
         await performNormalLogin(targetEmail, targetPassword);
         return;
       }
@@ -50,27 +56,26 @@ export default function LoginPage() {
 
         // OTP 발송 시도
         if (method === 'email') {
-          const { error: otpError } = await supabase.auth.signInWithOtp({ 
-            email: targetEmail 
+          const { error: otpError } = await supabase.auth.signInWithOtp({
+            email: targetEmail,
           });
           if (otpError) throw otpError;
           toast.success('이메일로 인증 코드가 발송되었습니다.');
         } else {
-           // SMS 로직 (실제 전송은 안되더라도 UI 흐름 진행)
-           toast('SMS 인증 코드를 입력해주세요.', { icon: 'ℹ️' });
-           // SMS 발송 로직은 현재 Supabase 설정에 따라 실패할 수 있으므로,
-           // 여기서는 에러를 무시하거나 이메일로 fallback 할 수 있습니다.
-           // 테스트를 위해 에러가 나더라도 모달을 띄웁니다.
-           await supabase.auth.signInWithOtp({ email: targetEmail }).catch(() => {});
+          // SMS 로직
+          toast('SMS 인증 코드를 입력해주세요.', { icon: 'ℹ️' });
+          // 에러 무시하고 진행 (UI 테스트용)
+          await supabase.auth
+            .signInWithOtp({ email: targetEmail })
+            .catch(() => {});
         }
 
         setShow2FAModal(true); // 모달 열기
-        setIsLoading(false);   // 로딩 해제 (입력 대기)
+        setIsLoading(false); // 로딩 해제 (입력 대기)
       } else {
         // 3. 2단계 인증이 꺼져 있으면 일반 비밀번호 로그인 진행
         await performNormalLogin(targetEmail, targetPassword);
       }
-
     } catch (error: any) {
       console.error('Login Error:', error);
       toast.error(error.message || '로그인 중 오류가 발생했습니다.');
@@ -98,7 +103,10 @@ export default function LoginPage() {
     }
 
     if (data.user) {
-      const userName = data.user.user_metadata?.name || data.user.user_metadata?.full_name || '회원';
+      const userName =
+        data.user.user_metadata?.name ||
+        data.user.user_metadata?.full_name ||
+        '회원';
       toast.success(`${userName}님 환영합니다!`);
       navigate('/main/friends');
     }
@@ -106,14 +114,14 @@ export default function LoginPage() {
 
   // 2단계 인증 코드 검증 및 최종 로그인 함수
   const handleVerify2FA = async () => {
-    if (otpCode.length < 6) return toast.error('인증 코드를 입력해주세요.');
+    if (otpCode.length < 6)
+      return toast.error('인증 코드를 입력해주세요.');
 
     setIsLoading(true);
 
-    // ✨ [수정됨] 테스트용 강제 통과 로직 추가 (000000 입력 시)
+    // 테스트용 강제 통과 로직 (000000 입력 시)
     if (otpCode === '000000') {
       try {
-        // OTP 검증 대신 기존 비밀번호로 다시 로그인하여 세션 생성
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -132,7 +140,7 @@ export default function LoginPage() {
       } finally {
         setIsLoading(false);
       }
-      return; // 여기서 함수 종료
+      return;
     }
 
     // 기존 실제 검증 로직
@@ -140,7 +148,7 @@ export default function LoginPage() {
       const { data, error } = await supabase.auth.verifyOtp({
         email,
         token: otpCode,
-        type: 'email', // SMS 사용 시 'sms'로 변경 필요 (현재는 이메일 기반 토큰 검증 시도)
+        type: 'email',
       });
 
       if (error) throw error;
@@ -158,44 +166,56 @@ export default function LoginPage() {
     }
   };
 
-  const handleSocialLogin = async (provider: Provider) => {
-    if (provider === 'naver') {
-      toast('네이버 로그인은 현재 준비 중입니다.', { icon: '🚧' });
-      return;
-    }
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: provider,
-        options: {
-          redirectTo: window.location.origin, 
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
+  // 소셜 로그인 핸들러
+const handleSocialLogin = async (provider: Provider) => {
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: provider,
+      options: {
+        redirectTo: window.location.origin,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
         },
-      });
+        data: {
+          provider: provider, // ✅ provider 명시
+        }
+      },
+    });
 
-      if (error) throw error;
-    } catch (error: any) {
-      console.error('Social Login Error:', error);
-      toast.error(`${provider} 로그인 연결에 실패했습니다.`);
-    }
-  };
+    if (error) throw error;
+  } catch (error: any) {
+    console.error('Social Login Error:', error);
+    toast.error(`${provider} 로그인 연결에 실패했습니다.`);
+  }
+};
 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center relative">
-      
+      {/* 네이버 SDK 버튼 컨테이너 (화면 밖에 숨김) */}
+      <div
+        id="naverIdLogin"
+        style={{
+          position: 'absolute',
+          top: '-9999px',
+          left: '-9999px',
+        }}
+      />
+
       <div className="flex flex-col items-center mb-8">
-        <motion.div 
+        <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.5 }}
           className="w-24 h-24 mb-4"
         >
-          <img src={GraynLogo} alt="Grayn" className="w-full h-full object-contain" />
+          <img
+            src={GraynLogo}
+            alt="Grayn"
+            className="w-full h-full object-contain"
+          />
         </motion.div>
-        <motion.h1 
+        <motion.h1
           initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2 }}
@@ -203,7 +223,7 @@ export default function LoginPage() {
         >
           GRAYN에 오신 것을 환영합니다
         </motion.h1>
-        <motion.p 
+        <motion.p
           initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
@@ -213,7 +233,7 @@ export default function LoginPage() {
         </motion.p>
       </div>
 
-      <motion.form 
+      <motion.form
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.4 }}
@@ -221,11 +241,13 @@ export default function LoginPage() {
         className="space-y-4 w-full max-w-sm mx-auto"
       >
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
+          <label className="text-xs font-bold text-[#8E8E93] ml-1">
+            이메일
+          </label>
           <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
             <Mail className="w-5 h-5 text-[#636366] mr-3" />
-            <input 
-              type="email" 
+            <input
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="example@grayn.com"
@@ -235,11 +257,13 @@ export default function LoginPage() {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
+          <label className="text-xs font-bold text-[#8E8E93] ml-1">
+            비밀번호
+          </label>
           <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
             <Lock className="w-5 h-5 text-[#636366] mr-3" />
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="비밀번호 입력"
@@ -248,18 +272,22 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           disabled={isLoading}
           className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-6 hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2"
         >
-          {isLoading && !show2FAModal ? <Loader2 className="w-5 h-5 animate-spin" /> : '이메일로 로그인'}
+          {isLoading && !show2FAModal ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            '이메일로 로그인'
+          )}
         </button>
       </motion.form>
 
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
         className="flex items-center gap-3 my-8 w-full max-w-sm mx-auto"
       >
@@ -268,62 +296,94 @@ export default function LoginPage() {
         <div className="h-[1px] bg-[#3A3A3C] flex-1" />
       </motion.div>
 
-      <motion.div 
+      <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.6 }}
         className="flex gap-4 justify-center w-full max-w-sm mx-auto"
       >
-        <button 
+        <button
           onClick={() => handleSocialLogin('google')}
           className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg"
           title="Google 로그인"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              fill="#EA4335"
+            />
           </svg>
         </button>
 
-        <button 
-          onClick={() => handleSocialLogin('naver')}
+        <button
+          onClick={triggerNaverLogin}
           className="w-12 h-12 bg-[#03C75A] rounded-full flex items-center justify-center hover:bg-[#02B350] transition-colors shadow-lg"
           title="Naver 로그인"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9.13 6.8L4.25 0H0V14H4.25V6.8L9.5 14H14V0H9.13V6.8Z" fill="white"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M9.13 6.8L4.25 0H0V14H4.25V6.8L9.5 14H14V0H9.13V6.8Z"
+              fill="white"
+            />
           </svg>
         </button>
 
-        <button 
+        <button
           onClick={() => handleSocialLogin('apple')}
           className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg"
           title="Apple 로그인"
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="black" xmlns="http://www.w3.org/2000/svg">
-            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.63-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74s2.57-.99 4.31-.82c.51.03 2.26.2 3.32 1.73-3.03 1.76-2.39 5.51.64 6.77-.52 1.55-1.25 3.09-2.35 4.55zM12.03 7.25c-.25-2.19 1.62-3.99 3.63-4.25.32 2.45-2.38 4.23-3.63 4.25z"/>
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="black"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.63-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74s2.57-.99 4.31-.82c.51.03 2.26.2 3.32 1.73-3.03 1.76-2.39 5.51.64 6.77-.52 1.55-1.25 3.09-2.35 4.55zM12.03 7.25c-.25-2.19 1.62-3.99 3.63-4.25.32 2.45-2.38 4.23-3.63 4.25z" />
           </svg>
         </button>
       </motion.div>
 
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={{ delay: 0.8 }}
         className="mt-8 text-center"
       >
         <p className="text-[#8E8E93] text-sm">
           아직 계정이 없으신가요?{' '}
-          <button 
+          <button
             onClick={() => navigate('/auth/signup')}
             className="text-white font-bold hover:underline ml-1"
           >
             회원가입
           </button>
         </p>
-        <button 
+        <button
           onClick={() => navigate('/auth/recovery')}
           className="text-[#636366] text-xs mt-4 hover:text-[#8E8E93] transition-colors"
         >
@@ -335,24 +395,24 @@ export default function LoginPage() {
       <AnimatePresence>
         {show2FAModal && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6">
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
-              className="absolute inset-0 bg-black/95 backdrop-blur-md" 
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/95 backdrop-blur-md"
               onClick={() => {
                 // 배경 클릭 시 모달 닫기 방지
               }}
             />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-              animate={{ scale: 1, opacity: 1, y: 0 }} 
-              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] border border-[#2C2C2E] rounded-[32px] p-8 text-center shadow-2xl"
             >
-              <button 
-                onClick={() => { 
-                  setShow2FAModal(false); 
+              <button
+                onClick={() => {
+                  setShow2FAModal(false);
                   setIsLoading(false);
                 }}
                 className="absolute top-6 right-6 text-[#8E8E93] hover:text-white"
@@ -363,10 +423,14 @@ export default function LoginPage() {
               <div className="w-16 h-16 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6">
                 <ShieldCheck size={32} className="text-brand-DEFAULT" />
               </div>
-              
-              <h3 className="text-xl font-bold text-white mb-2">2단계 인증</h3>
+
+              <h3 className="text-xl font-bold text-white mb-2">
+                2단계 인증
+              </h3>
               <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">
-                {mfaMethod === 'email' ? '이메일' : '휴대폰'}로 발송된<br/>6자리 인증 코드를 입력해주세요.
+                {mfaMethod === 'email' ? '이메일' : '휴대폰'}로 발송된
+                <br />
+                6자리 인증 코드를 입력해주세요.
               </p>
 
               <div className="mb-6">
@@ -374,25 +438,32 @@ export default function LoginPage() {
                   type="text"
                   maxLength={6}
                   value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                  onChange={(e) =>
+                    setOtpCode(e.target.value.replace(/[^0-9]/g, ''))
+                  }
                   placeholder="000000"
                   className="w-full h-14 bg-[#2C2C2E] border border-[#3A3A3C] rounded-2xl text-center text-xl font-mono tracking-[0.5em] text-white focus:border-brand-DEFAULT focus:outline-none transition-colors"
                   autoFocus
                 />
               </div>
 
-              <button 
+              <button
                 onClick={handleVerify2FA}
                 disabled={isLoading}
                 className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2"
               >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>인증하기 <ArrowRight size={18} /></>}
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    인증하기 <ArrowRight size={18} />
+                  </>
+                )}
               </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }

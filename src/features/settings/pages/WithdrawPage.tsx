@@ -16,36 +16,27 @@ export default function WithdrawPage() {
   const isFinalValid = isAllChecked && confirmText === '탈퇴하겠습니다';
 
   const handleWithdraw = async () => {
-    if (!isFinalValid || isProcessing) return;
-    setIsProcessing(true);
+  if (!isFinalValid || isProcessing) return;
+  setIsProcessing(true);
 
-    try {
-      // 1. Supabase RPC 함수 호출 (실제 계정 삭제 실행)
-      const { error: rpcError } = await supabase.rpc('delete_user_account');
-      
-      if (rpcError) {
-        console.error('RPC Error:', rpcError);
-        // 만약 CASCADE 설정이 안되어 23503 에러가 나면 여기서 잡힘
-        if (rpcError.code === '23503') {
-          toast.error('삭제되지 않은 데이터가 있어 탈퇴가 중단되었습니다.');
-        } else {
-          toast.error('탈퇴 처리 중 오류가 발생했습니다.');
-        }
-        setIsProcessing(false);
-        return;
-      }
-
-      // 2. 계정 삭제 성공 시 세션 즉시 만료 (로그아웃 처리)
-      await supabase.auth.signOut();
-      
-      // 3. 완료 모달 띄우기
-      setShowSuccessModal(true);
-    } catch (err: any) {
-      console.error('Withdraw Logic Error:', err);
-      toast.error('연결 상태를 확인해 주세요.');
+  try {
+    const { error: rpcError } = await supabase.rpc('delete_user_account');
+    
+    if (rpcError) {
+      console.error('RPC Error:', rpcError);
+      toast.error('탈퇴 처리 중 오류가 발생했습니다.');
       setIsProcessing(false);
+      return;
     }
-  };
+
+    await supabase.auth.signOut();
+    setShowSuccessModal(true);
+  } catch (err: any) {
+    console.error('Withdraw Error:', err);
+    toast.error('연결 상태를 확인해 주세요.');
+    setIsProcessing(false);
+  }
+};
 
   const handleFinalExit = () => {
     // 4. 확인 버튼 클릭 시 모든 로컬 상태를 날리고 초기 화면으로 강제 이동

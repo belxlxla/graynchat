@@ -72,17 +72,38 @@ export default function SettingsPage() {
   }, []);
 
   // ✨ [연동 수정] 실제 로그인 세션 정보에서 제공자(Provider)를 추출합니다.
-  useEffect(() => {
-    const fetchUserProvider = async () => {
+  // ✨ [연동 수정] 실제 로그인 세션 정보에서 제공자(Provider)를 추출합니다.
+useEffect(() => {
+  const fetchUserProvider = async () => {
+    try {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
-        // Supabase Auth 메타데이터에서 제공자 정보 가져오기
-        const provider = session.user.app_metadata.provider || 'email';
+        const user = session.user;
+        let provider = 'email';
+        
+        // 1. user_metadata에서 provider 확인 (가장 우선)
+        if (user.user_metadata?.provider) {
+          provider = user.user_metadata.provider;
+        }
+        // 2. app_metadata에서 provider 확인
+        else if (user.app_metadata?.provider) {
+          provider = user.app_metadata.provider;
+        }
+        // 3. 이메일 패턴으로 판별
+        else if (user.email?.includes('@grayn.app')) {
+          provider = 'naver';
+        }
+        // 4. OAuth providers 확인
+        else if (user.app_metadata?.providers && Array.isArray(user.app_metadata.providers)) {
+          const providers = user.app_metadata.providers;
+          if (providers.includes('google')) provider = 'google';
+          else if (providers.includes('apple')) provider = 'apple';
+          else if (providers.includes('naver')) provider = 'naver';
+        }
         
         // 제공자별 한글 명칭 매핑
         const providerMap: Record<string, string> = {
-          'kakao': '카카오 로그인',
           'naver': '네이버 로그인',
           'google': '구글 로그인',
           'apple': '애플 로그인',
@@ -91,23 +112,16 @@ export default function SettingsPage() {
 
         setAccountProvider(providerMap[provider] || '이메일 로그인');
       } else {
-        // 세션이 없는 경우 localStorage 백업 확인 (기존 코드 호환)
-        const localProvider = localStorage.getItem('login_provider');
-        if (localProvider) {
-          const providerMap: Record<string, string> = {
-            'naver': '네이버 로그인',
-            'kakao': '카카오 로그인',
-            'google': '구글 로그인',
-            'apple': '애플 로그인',
-            'email': '이메일 로그인'
-          };
-          setAccountProvider(providerMap[localProvider] || '이메일 로그인');
-        }
+        setAccountProvider('이메일 로그인');
       }
-    };
+    } catch (error) {
+      console.error('Provider fetch error:', error);
+      setAccountProvider('이메일 로그인');
+    }
+  };
 
-    fetchUserProvider();
-  }, []);
+  fetchUserProvider();
+}, []);
 
   // === Functions ===
 

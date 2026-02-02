@@ -123,45 +123,54 @@ export default function SignUpPage() {
     setIsLoading(true);
     
     try {
-      // 1. Auth 회원가입
+      // 1. Auth 회원가입 요청
+      // full_name 메타데이터를 보내야 트리거가 public.users에 이름을 저장할 수 있습니다.
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: accountData.email.trim(),
         password: accountData.password,
         options: { 
-          data: { full_name: accountData.name.trim() }
+          data: { 
+            full_name: accountData.name.trim(), // 트리거에서 사용하는 키
+            marketing_agreed: agreedTerms.marketing 
+          }
         }
       });
 
       if (signUpError) throw signUpError;
-      if (!authData.user) throw new Error('회원가입에 실패했습니다.');
-
-      // 2. public.users 테이블에 기본 데이터 생성 (ID 연결)
-      const { error: upsertError } = await supabase
-        .from('users')
-        .upsert({
-          id: authData.user.id,
-          email: accountData.email.trim(),
-          name: accountData.name.trim(),
-          is_terms_agreed: true,
-          is_marketing_agreed: agreedTerms.marketing,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
-
-      if (upsertError) throw upsertError;
-
-      // 3. 임시 세션 데이터 저장 (다음 단계를 위함)
-      sessionStorage.setItem('signup_email', accountData.email.trim());
-      sessionStorage.setItem('signup_password', accountData.password);
-      sessionStorage.setItem('signup_user_id', authData.user.id);
-
-      toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
       
-      // 4. 휴대폰 인증 페이지로 이동 (세션을 유지하여 PrivateRoute 통과)
-      navigate('/auth/phone', { replace: true });
+      // 2. public.users 테이블 추가 정보 업데이트 (약관 동의 여부 등)
+      // 트리거가 이미 행을 생성했을 것이므로 update가 수행됩니다.
+      if (authData.user) {
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            is_terms_agreed: true,
+            is_marketing_agreed: agreedTerms.marketing,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', authData.user.id);
+
+        if (updateError) {
+          console.error('User Update Error (Non-fatal):', updateError);
+          // 업데이트 실패는 가입 차단 사유가 아니므로 로그만 남김
+        }
+
+        // 3. 임시 세션 데이터 저장
+        sessionStorage.setItem('signup_email', accountData.email.trim());
+        sessionStorage.setItem('signup_password', accountData.password);
+        sessionStorage.setItem('signup_user_id', authData.user.id);
+
+        toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
+        navigate('/auth/phone', { replace: true });
+      }
 
     } catch (error: any) {
       console.error('Signup Error:', error);
-      toast.error(error.message || '회원가입 중 오류가 발생했습니다.');
+      let message = error.message || '회원가입 중 오류가 발생했습니다.';
+      if (message.includes('Database error')) message = '서버 설정 오류입니다. (DB Trigger 확인 필요)';
+      if (message.includes('User already registered')) message = '이미 가입된 이메일입니다.';
+      
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }

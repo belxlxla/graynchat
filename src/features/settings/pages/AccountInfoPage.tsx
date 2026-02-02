@@ -117,26 +117,64 @@ export default function AccountInfoPage() {
     return phoneNumber;
   };
 
-  const fetchUserData = useCallback(async () => {
-    if (!user) return;
-    try {
-      const { data: dbData, error: dbError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-      if (dbError) throw dbError;
-      setProfile({
-        name: dbData?.name || user.user_metadata?.full_name || '사용자',
-        avatar: dbData?.avatar || null,
-        bg: dbData?.bg_image || null,
-        provider: user.app_metadata?.provider || 'email',
-        email: user.email || '이메일 없음',
-        phone: formatPhoneNumber(dbData?.phone || '번호 없음')
-      });
-      setBlockedCountries(dbData?.blocked_countries || []);
-    } catch (err) { console.error('Data load error:', err); }
-  }, [user]);
+const fetchUserData = useCallback(async () => {
+  if (!user) return;
+  try {
+    const { data: dbData, error: dbError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+      
+    if (dbError && dbError.code !== 'PGRST116') {
+      console.error('Data load error:', dbError);
+      return;
+    }
+
+    // provider 판별 로직 개선
+    let provider = 'email';
+    
+    // 1. user_metadata에서 provider 확인 (가장 우선)
+    if (user.user_metadata?.provider) {
+      provider = user.user_metadata.provider;
+    }
+    // 2. app_metadata에서 provider 확인
+    else if (user.app_metadata?.provider) {
+      provider = user.app_metadata.provider;
+    }
+    // 3. 이메일 패턴으로 판별
+    else if (user.email?.includes('@grayn.app')) {
+      provider = 'naver';
+    }
+    // 4. OAuth providers 확인
+    else if (user.app_metadata?.providers && Array.isArray(user.app_metadata.providers)) {
+      const providers = user.app_metadata.providers;
+      if (providers.includes('google')) provider = 'google';
+      else if (providers.includes('apple')) provider = 'apple';
+      else if (providers.includes('naver')) provider = 'naver';
+    }
+
+    // provider 표시명 변환
+    const providerDisplayName = {
+      'email': 'EMAIL',
+      'naver': 'NAVER',
+      'google': 'GOOGLE',
+      'apple': 'APPLE'
+    }[provider] || provider.toUpperCase();
+
+    setProfile({
+      name: dbData?.name || user.user_metadata?.full_name || '사용자',
+      avatar: dbData?.avatar || null,
+      bg: dbData?.bg_image || null,
+      provider: providerDisplayName,
+      email: dbData?.email || user.email || '이메일 없음',
+      phone: formatPhoneNumber(dbData?.phone || '번호 없음')
+    });
+    setBlockedCountries(dbData?.blocked_countries || []);
+  } catch (err) { 
+    console.error('Data load error:', err); 
+  }
+}, [user]);
 
   useEffect(() => { fetchUserData(); }, [fetchUserData]);
 
