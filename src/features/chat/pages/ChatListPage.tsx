@@ -57,35 +57,48 @@ export default function ChatListPage() {
     if (!user?.id) return;
     
     try {
-      const { data: roomsData, error } = await supabase
+      // 1. 내가 속한 방 ID들 먼저 가져오기
+      const { data: myMemberships, error: memberError } = await supabase
         .from('room_members')
-        .select(`
-          *,
-          room:chat_rooms (
-            id,
-            type,
-            title,
-            avatar,
-            last_message,
-            last_message_at,
-            members_count
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('last_message_at', { foreignTable: 'chat_rooms', ascending: false });
+        .select('room_id')
+        .eq('user_id', user.id);
 
-      if (error) throw error;
+      if (memberError) throw memberError;
       
-      if (!roomsData) {
+      if (!myMemberships || myMemberships.length === 0) {
         setChats([]);
+        setIsLoading(false);
         return;
       }
 
-      const validData = roomsData.filter(r => r && r.room);
+      const roomIds = myMemberships.map(m => m.room_id);
 
-      const friendUUIDs = validData
-        .filter(r => r.room.type === 'individual' && r.room.id?.includes('_'))
-        .map(r => r.room.id.split('_').find((id: string) => id !== user.id))
+      // 2. 해당 방들의 정보 가져오기
+      const { data: roomsData, error: roomsError } = await supabase
+        .from('chat_rooms')
+        .select('*')
+        .in('id', roomIds)
+        .order('last_message_at', { ascending: false });
+
+      if (roomsError) throw roomsError;
+
+      // 3. 각 방의 내 멤버 정보 가져오기 (unread_count 포함)
+      const { data: myRoomMembers, error: myMemberError } = await supabase
+        .from('room_members')
+        .select('room_id, unread_count')
+        .eq('user_id', user.id)
+        .in('room_id', roomIds);
+
+      if (myMemberError) throw myMemberError;
+
+      const unreadMap = new Map(
+        myRoomMembers?.map(m => [m.room_id, m.unread_count || 0]) || []
+      );
+
+      // 4. 1:1 채팅방의 상대방 정보 수집
+      const individualRooms = roomsData?.filter(r => r.type === 'individual') || [];
+      const friendUUIDs = individualRooms
+        .map(r => r.id.split('_').find((id: string) => id !== user.id))
         .filter((id): id is string => !!id && id.length > 20);
 
       let usersData: UserProfile[] = [];
@@ -108,8 +121,8 @@ export default function ChatListPage() {
         if (friendsResult.data) friendsData = friendsResult.data;
       }
 
-      const formattedData = validData.map((member: any): ChatRoom | null => {
-        const room = member.room;
+      // 5. 채팅방 목록 포맷팅
+      const formattedData = (roomsData || []).map((room): ChatRoom | null => {
         if (!room) return null;
 
         const isGroup = room.type === 'group';
@@ -132,7 +145,7 @@ export default function ChatListPage() {
           timestamp: room.last_message_at 
             ? new Date(room.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
             : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          unreadCount: member.unread_count || 0,
+          unreadCount: unreadMap.get(room.id) || 0,
           isMuted: false
         };
       }).filter((chat): chat is ChatRoom => chat !== null);
@@ -162,6 +175,7 @@ export default function ChatListPage() {
             const chatIndex = prevChats.findIndex(c => c.id === newMsg.room_id);
             
             if (chatIndex === -1) {
+              // 새로운 방에 메시지가 왔으면 전체 재조회
               fetchChats();
               return prevChats;
             }
@@ -192,6 +206,7 @@ export default function ChatListPage() {
           filter: `user_id=eq.${user.id}` 
         }, 
         () => {
+          // room_members 변경시 전체 재조회
           fetchChats();
         }
       )
@@ -203,6 +218,7 @@ export default function ChatListPage() {
           table: 'chat_rooms'
         },
         (payload) => {
+          // chat_rooms 변경시 전체 재조회
           fetchChats();
         }
       )

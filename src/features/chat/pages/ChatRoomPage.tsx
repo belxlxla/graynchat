@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -114,31 +114,28 @@ export default function ChatRoomPage() {
     }
 
     try {
+      // 1. 채팅방 정보 조회
       const { data: room, error: roomError } = await supabase
         .from('chat_rooms')
-        .select('id, type, title, created_by, members_count')
+        .select('id, type, title, created_by, members_count, avatar')
         .eq('id', chatId)
         .maybeSingle();
 
-      if (roomError) throw roomError;
-
-      let memberIds: string[] = [];
-
-      if (room) {
-        const { data: members, error: membersError } = await supabase
-          .from('room_members')
-          .select('user_id')
-          .eq('room_id', chatId);
-
-        if (membersError) throw membersError;
-        memberIds = members?.map(m => m.user_id) || [];
-      } else {
-        if (!isGroupChat) {
-          const ids = chatId.split('_');
-          memberIds = ids.filter(id => id.length > 0);
-        }
+      if (roomError) {
+        console.error('Room fetch error:', roomError);
       }
 
+      // 2. 참여자 목록 조회
+      const { data: members, error: membersError } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', chatId);
+
+      if (membersError) throw membersError;
+
+      const memberIds = members?.map(m => m.user_id) || [];
+
+      // 3. 참여자 프로필 조회
       if (memberIds.length > 0) {
         const { data: profiles, error: profilesError } = await supabase
           .from('users')
@@ -153,6 +150,7 @@ export default function ChatRoomPage() {
         });
         setMemberProfiles(profileMap);
 
+        // 4. 채팅방 제목 설정
         if (isGroupChat) {
           setRoomTitle(room?.title || `그룹 채팅 (${memberIds.length}명)`);
         } else {
@@ -178,6 +176,7 @@ export default function ChatRoomPage() {
         }
       }
 
+      // 5. 메시지 조회
       const { data: msgData, error: msgError } = await supabase
         .from('messages')
         .select('*')
@@ -188,12 +187,12 @@ export default function ChatRoomPage() {
 
       setMessages(msgData || []);
       
-      if (room) {
-        markAsRead();
-      }
+      // 6. 읽음 처리
+      markAsRead();
 
     } catch (e) {
       console.error("초기 데이터 로드 오류:", e);
+      toast.error('채팅방 정보를 불러오는데 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
