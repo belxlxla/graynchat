@@ -74,30 +74,41 @@ export default function FriendsListPage() {
   }, []);
 
   const fetchMyProfile = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return;
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('name, avatar, bg_image, status_message')
-        .eq('id', session.user.id)
-        .maybeSingle();
+    const { data, error } = await supabase
+      .from('users')
+      .select('name, avatar, bg_image, status_message')
+      .eq('id', session.user.id)
+      .maybeSingle();
 
-      if (error) throw error;
-      
-      if (data) {
-        setMyProfile({
-          name: data.name || '사용자',
-          status: data.status_message || '',
-          avatar: data.avatar || null,
-          bg: data.bg_image || null
-        });
-      }
-    } catch (e) { 
-      console.error("MyProfile Load Error", e); 
+    if (error) {
+      console.error('Profile fetch error:', error);
+      return;
     }
-  }, []);
+    
+    if (data) {
+      setMyProfile({
+        name: data.name || session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
+        status: data.status_message || '',
+        avatar: data.avatar || null,
+        bg: data.bg_image || null
+      });
+    } else {
+      // ✅ users 테이블에 데이터가 없는 경우 user_metadata 사용
+      setMyProfile({
+        name: session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
+        status: '',
+        avatar: null,
+        bg: null
+      });
+    }
+  } catch (e) { 
+    console.error("MyProfile Load Error", e); 
+  }
+}, []);
 
   const fetchFriends = useCallback(async () => {
     setIsLoading(true);
