@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -11,6 +11,7 @@ type Provider = 'google' | 'apple';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   
   const { triggerNaverLogin } = useNaverLogin();
 
@@ -22,73 +23,97 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
 
-  // ✅ Apple/Google OAuth 콜백 처리
+  // ✅ OAuth 콜백 처리 (Apple/Google)
   useEffect(() => {
     const handleOAuthCallback = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        const provider = session.user.app_metadata?.provider;
+      // URL에 해시 프래그먼트가 있는지 확인 (OAuth 리다이렉트)
+      if (!location.hash && !window.location.hash) {
+        return;
+      }
+
+      try {
+        // 세션 가져오기
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        // Apple 또는 Google 로그인 후 처리
+        if (sessionError) {
+          console.error('Session Error:', sessionError);
+          return;
+        }
+
+        if (!session?.user) {
+          return;
+        }
+
+        const user = session.user;
+        const provider = user.app_metadata?.provider || 
+                        user.app_metadata?.providers?.[0] || 
+                        'email';
+        
+        // Apple 또는 Google 로그인인 경우에만 처리
         if (provider === 'apple' || provider === 'google') {
-          const userId = session.user.id;
-          const userEmail = session.user.email;
-          const userName = session.user.user_metadata?.full_name || 
-                          session.user.user_metadata?.name || 
+          const userId = user.id;
+          const userEmail = user.email;
+          const userName = user.user_metadata?.full_name || 
+                          user.user_metadata?.name || 
+                          user.user_metadata?.email?.split('@')[0] ||
                           userEmail?.split('@')[0] || 
                           '사용자';
+          const userAvatar = user.user_metadata?.avatar_url || 
+                            user.user_metadata?.picture || 
+                            null;
 
-          try {
-            // users 테이블 확인
-            const { data: existingUser } = await supabase
-              .from('users')
-              .select('id')
-              .eq('id', userId)
-              .maybeSingle();
+          // users 테이블 동기화
+          const { data: existingUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', userId)
+            .maybeSingle();
 
-            if (!existingUser) {
-              // 신규 사용자 - users 테이블에 추가
-              await supabase.from('users').insert({
-                id: userId,
-                email: userEmail,
-                name: userName,
-                avatar: session.user.user_metadata?.avatar_url || null,
-                phone: null,
-                status_message: '그레인을 시작했어요!',
-              });
-
-              toast.success(`${userName}님 환영합니다!`);
-            } else {
-              // 기존 사용자 - 프로필 업데이트
-              await supabase.from('users').update({
-                name: userName,
-                avatar: session.user.user_metadata?.avatar_url || null,
-                updated_at: new Date().toISOString(),
-              }).eq('id', userId);
-
-              toast.success(`${userName}님 환영합니다!`);
-            }
-
-            // user_metadata 업데이트
-            await supabase.auth.updateUser({
-              data: {
-                provider: provider,
-                full_name: userName,
-              }
+          if (!existingUser) {
+            // 신규 사용자
+            await supabase.from('users').insert({
+              id: userId,
+              email: userEmail,
+              name: userName,
+              avatar: userAvatar,
+              phone: null,
+              status_message: '그레인을 시작했어요!',
             });
-
-            navigate('/main/friends');
-          } catch (error) {
-            console.error('OAuth User Sync Error:', error);
-            toast.error('프로필 동기화에 실패했습니다.');
+          } else {
+            // 기존 사용자 업데이트
+            await supabase.from('users').update({
+              name: userName,
+              avatar: userAvatar,
+              updated_at: new Date().toISOString(),
+            }).eq('id', userId);
           }
+
+          // user_metadata 업데이트
+          await supabase.auth.updateUser({
+            data: {
+              provider: provider,
+              full_name: userName,
+            }
+          });
+
+          toast.success(`${userName}님 환영합니다!`);
+          
+          // URL 해시 제거
+          window.history.replaceState({}, document.title, '/auth/login');
+          
+          // 메인 페이지로 이동
+          setTimeout(() => {
+            navigate('/main/friends', { replace: true });
+          }, 500);
         }
+      } catch (error) {
+        console.error('OAuth Callback Error:', error);
+        toast.error('로그인 처리 중 오류가 발생했습니다.');
       }
     };
 
     handleOAuthCallback();
-  }, [navigate]);
+  }, [location, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -223,14 +248,14 @@ export default function LoginPage() {
 
   const handleSocialLogin = async (provider: Provider) => {
     try {
+      // 현재 URL을 명확하게 지정
+      const redirectUrl = `${window.location.origin}/auth/login`;
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/login`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          }
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: false,
         },
       });
 
