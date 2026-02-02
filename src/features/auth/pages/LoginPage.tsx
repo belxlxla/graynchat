@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import GraynLogo from '../../../assets/grayn_logo.svg'; 
@@ -15,10 +15,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // 2단계 인증 관련 상태
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 입력값 유효성 검사 및 공백 제거
     const targetEmail = email.trim();
     const targetPassword = password.trim();
 
@@ -28,33 +32,99 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: targetEmail,
-        password: targetPassword,
-      });
+      // 1. [RPC 호출] 로그인 전에 해당 이메일의 2단계 인증 설정 여부를 먼저 확인
+      const { data: userSettings, error: rpcError } = await supabase
+        .rpc('get_user_2fa_info', { email_input: targetEmail });
 
-      if (error) {
-        // ✨ 에러 메시지에 따른 상세 처리
-        if (error.message.includes('Email not confirmed')) {
-          toast.error('이메일 인증이 완료되지 않았습니다. 메일함을 확인해주세요.');
-        } else if (error.message.includes('Invalid login credentials')) {
-          toast.error('이메일 또는 비밀번호가 일치하지 않습니다.');
-        } else if (error.status === 400) {
-          toast.error('잘못된 요청입니다. 계정 정보를 다시 확인해주세요.');
-        } else {
-          toast.error(error.message || '로그인에 실패했습니다.');
-        }
-        throw error;
+      if (rpcError) {
+        // RPC 함수가 없거나 에러가 나면 일반 로그인 시도 (Fallback)
+        console.error('RPC Error:', rpcError);
+        await performNormalLogin(targetEmail, targetPassword);
+        return;
       }
 
-      if (data.user) {
-        // 유저 메타데이터에서 이름 가져오기 시도
-        const userName = data.user.user_metadata?.name || data.user.user_metadata?.full_name || '회원';
-        toast.success(`${userName}님 환영합니다!`);
+      // 2. 2단계 인증이 켜져 있는 경우
+      if (userSettings && userSettings.is_2fa_enabled) {
+        const method = userSettings.mfa_method || 'email';
+        setMfaMethod(method === 'phone' ? 'phone' : 'email');
+
+        // 비밀번호 로그인을 하지 않고, 바로 OTP 발송 (로그인 흐름을 OTP로 전환)
+        // 이렇게 하면 세션이 생성되지 않아 메인으로 튕기지 않습니다.
+        if (method === 'email') {
+          const { error: otpError } = await supabase.auth.signInWithOtp({ 
+            email: targetEmail 
+          });
+          if (otpError) throw otpError;
+          toast.success('이메일로 인증 코드가 발송되었습니다.');
+        } else {
+           // SMS 로직 (지원 예정 시 fallback)
+           toast('SMS 인증은 준비 중입니다. 이메일로 발송합니다.', { icon: 'ℹ️' });
+           await supabase.auth.signInWithOtp({ email: targetEmail });
+        }
+
+        setShow2FAModal(true); // 모달 열기
+        setIsLoading(false);   // 로딩 해제 (입력 대기)
+      } else {
+        // 3. 2단계 인증이 꺼져 있으면 일반 비밀번호 로그인 진행
+        await performNormalLogin(targetEmail, targetPassword);
+      }
+
+    } catch (error: any) {
+      console.error('Login Error:', error);
+      toast.error(error.message || '로그인 중 오류가 발생했습니다.');
+      setIsLoading(false);
+    }
+  };
+
+  // 일반 로그인 처리 함수 (비밀번호 사용)
+  const performNormalLogin = async (email: string, pass: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass,
+    });
+
+    if (error) {
+      if (error.message.includes('Email not confirmed')) {
+        toast.error('이메일 인증이 완료되지 않았습니다.');
+      } else if (error.message.includes('Invalid login credentials')) {
+        toast.error('이메일 또는 비밀번호가 일치하지 않습니다.');
+      } else {
+        toast.error(error.message || '로그인에 실패했습니다.');
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    if (data.user) {
+      const userName = data.user.user_metadata?.name || data.user.user_metadata?.full_name || '회원';
+      toast.success(`${userName}님 환영합니다!`);
+      navigate('/main/friends');
+    }
+  };
+
+  // 2단계 인증 코드 검증 및 최종 로그인 함수
+  const handleVerify2FA = async () => {
+    if (otpCode.length < 6) return toast.error('인증 코드를 입력해주세요.');
+
+    setIsLoading(true);
+    try {
+      // 코드가 맞으면 세션이 생성되고 로그인 완료됨
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: otpCode,
+        type: 'email', // SMS 사용 시 'sms'
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        setShow2FAModal(false);
+        toast.success('인증되었습니다.');
         navigate('/main/friends');
       }
     } catch (error: any) {
-      console.error('Login Error:', error);
+      console.error('2FA Verify Error:', error);
+      toast.error('인증 코드가 올바르지 않거나 만료되었습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -86,7 +156,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center">
+    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center relative">
       
       <div className="flex flex-col items-center mb-8">
         <motion.div 
@@ -155,7 +225,7 @@ export default function LoginPage() {
           disabled={isLoading}
           className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-6 hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2"
         >
-          {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : '이메일로 로그인'}
+          {isLoading && !show2FAModal ? <Loader2 className="w-5 h-5 animate-spin" /> : '이메일로 로그인'}
         </button>
       </motion.form>
 
@@ -232,6 +302,68 @@ export default function LoginPage() {
           로그인에 문제가 있나요?
         </button>
       </motion.div>
+
+      {/* ✨ 2단계 인증 모달 (최상위 노출) */}
+      <AnimatePresence>
+        {show2FAModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-black/95 backdrop-blur-md" 
+              onClick={() => {
+                // 배경 클릭 시 모달 닫기 방지
+              }}
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+              className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] border border-[#2C2C2E] rounded-[32px] p-8 text-center shadow-2xl"
+            >
+              <button 
+                onClick={() => { 
+                  setShow2FAModal(false); 
+                  setIsLoading(false);
+                }}
+                className="absolute top-6 right-6 text-[#8E8E93] hover:text-white"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="w-16 h-16 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <ShieldCheck size={32} className="text-brand-DEFAULT" />
+              </div>
+              
+              <h3 className="text-xl font-bold text-white mb-2">2단계 인증</h3>
+              <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">
+                {mfaMethod === 'email' ? '이메일' : '휴대폰'}로 발송된<br/>6자리 인증 코드를 입력해주세요.
+              </p>
+
+              <div className="mb-6">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="000000"
+                  className="w-full h-14 bg-[#2C2C2E] border border-[#3A3A3C] rounded-2xl text-center text-xl font-mono tracking-[0.5em] text-white focus:border-brand-DEFAULT focus:outline-none transition-colors"
+                  autoFocus
+                />
+              </div>
+
+              <button 
+                onClick={handleVerify2FA}
+                disabled={isLoading}
+                className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>인증하기 <ArrowRight size={18} /></>}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
