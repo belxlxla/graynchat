@@ -458,6 +458,7 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
+      // [수정] startRegistration에 전달하는 옵션을 JSON 객체로 감싸서 전달
       const publicKeyCredentialCreationOptions = {
         challenge: bufferToBase64url(challenge),
         rp: {
@@ -482,7 +483,8 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
         attestation: "none" as const,
       };
 
-      const credential = await startRegistration(publicKeyCredentialCreationOptions);
+      // [수정 핵심] optionsJSON 속성으로 전달
+      const credential = await startRegistration({ optionsJSON: publicKeyCredentialCreationOptions });
 
       // DB에 저장
       const { error: insertError } = await supabase
@@ -490,7 +492,7 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
         .insert({
           user_id: session.user.id,
           credential_id: credential.id,
-          public_key: credential.response.publicKey,
+          public_key: credential.response.publicKey, // 실제로는 base64 등으로 변환 필요할 수 있음
           device_type: getDeviceType(),
           counter: 0,
         });
