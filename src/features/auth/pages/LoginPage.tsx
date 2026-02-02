@@ -230,9 +230,6 @@ export default function LoginPage() {
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
-          },
-          data: {
-            provider: provider,
           }
         },
       });

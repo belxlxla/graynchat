@@ -81,7 +81,6 @@ export default function ProfileSetupPage() {
 useEffect(() => {
   const fetchSignupData = async () => {
     const signupUserId = sessionStorage.getItem('signup_user_id');
-    const signupEmail = sessionStorage.getItem('signup_email');
     
     if (!signupUserId && !user) {
       toast.error('회원가입 정보를 찾을 수 없습니다.');
