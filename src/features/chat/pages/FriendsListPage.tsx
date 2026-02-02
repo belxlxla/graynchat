@@ -1094,16 +1094,26 @@ function CreateChatModal({ isOpen, onClose, friends }: {
       return;
     }
     
+    const loadingToast = toast.loading('채팅방 생성 중...');
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+      if (!session?.user?.id) {
+        toast.dismiss(loadingToast);
+        toast.error('로그인이 필요합니다.');
+        return;
+      }
 
       const isGroup = selectedIds.length > 1;
       let roomId = "";
 
       if (!isGroup) {
         const friendId = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
-        if (!friendId) throw new Error("Friend ID not found");
+        if (!friendId) {
+          toast.dismiss(loadingToast);
+          toast.error('친구 정보를 찾을 수 없습니다.');
+          return;
+        }
 
         roomId = [session.user.id, friendId].sort().join("_");
 
@@ -1114,12 +1124,13 @@ function CreateChatModal({ isOpen, onClose, friends }: {
           .maybeSingle();
 
         if (existingRoom) {
-          navigate(`/chat/room/${roomId}`);
+          toast.dismiss(loadingToast);
+          toast.success('기존 채팅방으로 이동합니다.');
           onClose();
+          navigate(`/chat/room/${roomId}`);
           return;
         }
 
-        // ✅ 1:1 채팅방 생성
         const { error: roomError } = await supabase
           .from('chat_rooms')
           .insert([{ 
@@ -1131,9 +1142,11 @@ function CreateChatModal({ isOpen, onClose, friends }: {
             members_count: 2
           }]);
 
-        if (roomError) throw roomError;
+        if (roomError) {
+          console.error('Room insert error:', roomError);
+          throw roomError;
+        }
 
-        // ✅ room_members에 양쪽 모두 추가
         const { error: membersError } = await supabase
           .from('room_members')
           .insert([
@@ -1141,10 +1154,12 @@ function CreateChatModal({ isOpen, onClose, friends }: {
             { room_id: roomId, user_id: friendId, unread_count: 0 }
           ]);
 
-        if (membersError) throw membersError;
+        if (membersError) {
+          console.error('Members insert error:', membersError);
+          throw membersError;
+        }
 
       } else {
-        // ✅ 그룹 채팅방 생성
         roomId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         
         const title = `나 외 ${selectedIds.length}명`;
@@ -1160,9 +1175,11 @@ function CreateChatModal({ isOpen, onClose, friends }: {
             members_count: selectedIds.length + 1
           }]);
 
-        if (roomError) throw roomError;
+        if (roomError) {
+          console.error('Group room insert error:', roomError);
+          throw roomError;
+        }
 
-        // ✅ room_members에 나 + 선택된 친구들 모두 추가
         const memberInserts = [
           { room_id: roomId, user_id: session.user.id, unread_count: 0 }
         ];
@@ -1178,15 +1195,27 @@ function CreateChatModal({ isOpen, onClose, friends }: {
           .from('room_members')
           .insert(memberInserts);
 
-        if (membersError) throw membersError;
+        if (membersError) {
+          console.error('Group members insert error:', membersError);
+          throw membersError;
+        }
       }
 
-      toast.success(`${isGroup ? '그룹' : '1:1'} 채팅방이 준비되었습니다.`);
+      toast.dismiss(loadingToast);
+      toast.success(`${isGroup ? '그룹' : '1:1'} 채팅방이 생성되었습니다.`);
       onClose(); 
       navigate(`/chat/room/${roomId}`);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Create Chat Error:', e);
-      toast.error('채팅방 생성에 실패했습니다.');
+      toast.dismiss(loadingToast);
+      
+      if (e.message?.includes('duplicate key')) {
+        toast.error('이미 존재하는 채팅방입니다.');
+      } else if (e.message?.includes('violates foreign key')) {
+        toast.error('친구 정보가 올바르지 않습니다.');
+      } else {
+        toast.error('채팅방 생성에 실패했습니다.');
+      }
     }
   }, [selectedIds, user, friends, navigate, onClose]);
 
