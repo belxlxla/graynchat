@@ -909,6 +909,6 @@ function ImageViewerModal({ isOpen, initialIndex, images, onClose }: {
           />
         </AnimatePresence>
       </div>
-    </div>
+    </div> 
   );
 }

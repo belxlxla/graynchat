@@ -868,7 +868,7 @@ function EditTitleModal({ isOpen, onClose, currentTitle, onSave }: {
             확인
           </button>
         </div>
-      </motion.div>
+      </motion.div> 
     </div>
   );
 }
