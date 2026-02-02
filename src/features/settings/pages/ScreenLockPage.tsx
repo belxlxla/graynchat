@@ -12,6 +12,7 @@ import {
   browserSupportsWebAuthn,
   platformAuthenticatorIsAvailable
 } from '@simplewebauthn/browser';
+import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/types';
 
 export default function ScreenLockPage() {
   const navigate = useNavigate();
@@ -426,6 +427,19 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
     return 'Unknown';
   };
 
+  // Base64URL 인코딩 함수
+  const bufferToBase64url = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+  };
+
   const handleRegisterBiometric = async () => {
     setStatus('scanning');
     setIsProcessing(true);
@@ -445,28 +459,28 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
       const challenge = new Uint8Array(32);
       crypto.getRandomValues(challenge);
 
-      const publicKeyCredentialCreationOptions = {
-        challenge: Array.from(challenge),
+      const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptionsJSON = {
+        challenge: bufferToBase64url(challenge),
         rp: {
           name: "Grayn",
           id: window.location.hostname,
         },
         user: {
-          id: Array.from(new TextEncoder().encode(session.user.id)),
+          id: bufferToBase64url(new TextEncoder().encode(session.user.id)),
           name: session.user.email || session.user.id,
           displayName: session.user.email?.split('@')[0] || '사용자',
         },
         pubKeyCredParams: [
-          { alg: -7, type: "public-key" as const },  // ES256
-          { alg: -257, type: "public-key" as const }, // RS256
+          { alg: -7, type: "public-key" },  // ES256
+          { alg: -257, type: "public-key" }, // RS256
         ],
         authenticatorSelection: {
-          authenticatorAttachment: "platform" as const,
-          userVerification: "required" as const,
+          authenticatorAttachment: "platform",
+          userVerification: "required",
           requireResidentKey: false,
         },
         timeout: 60000,
-        attestation: "none" as const,
+        attestation: "none",
       };
 
       const credential = await startRegistration(publicKeyCredentialCreationOptions);
