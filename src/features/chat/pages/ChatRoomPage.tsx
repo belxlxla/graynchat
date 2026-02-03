@@ -60,6 +60,7 @@ export default function ChatRoomPage() {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [roomTitle, setRoomTitle] = useState('대화 중...'); 
+  const [roomAvatar, setRoomAvatar] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [memberProfiles, setMemberProfiles] = useState<Record<string, MemberProfile>>({});
   const [isFriend, setIsFriend] = useState<boolean>(true);
@@ -135,7 +136,7 @@ export default function ChatRoomPage() {
 
       const memberIds = members?.map(m => m.user_id) || [];
 
-      // 3. 참여자 프로필 조회
+      // 3. ✅ users 테이블에서 참여자 프로필 조회 (최우선)
       if (memberIds.length > 0) {
         const { data: profiles, error: profilesError } = await supabase
           .from('users')
@@ -153,10 +154,14 @@ export default function ChatRoomPage() {
         // 4. 채팅방 제목 설정
         if (isGroupChat) {
           setRoomTitle(room?.title || `그룹 채팅 (${memberIds.length}명)`);
+          setRoomAvatar(room?.avatar || null);
         } else {
+          // ✅ 1:1 채팅방 - users 테이블에서 상대방 정보 가져오기
           const friendId = memberIds.find(id => id !== user.id);
           if (friendId) {
             const friendProfile = profileMap[friendId];
+            
+            // ✅ friends 테이블에서 차단 여부 확인
             const { data: friendRecord } = await supabase
               .from('friends')
               .select('name, is_blocked')
@@ -165,12 +170,17 @@ export default function ChatRoomPage() {
               .maybeSingle();
 
             if (friendRecord) {
-              setRoomTitle(friendRecord.name || friendProfile?.name || '알 수 없는 사용자');
+              // 친구로 등록되어 있음
+              setRoomTitle(friendProfile?.name || '알 수 없는 사용자');
+              setRoomAvatar(friendProfile?.avatar || null);
               setIsFriend(true);
               setIsBlocked(!!friendRecord.is_blocked);
             } else {
+              // 친구로 등록되지 않음
               setRoomTitle(friendProfile?.name || '알 수 없는 사용자');
+              setRoomAvatar(friendProfile?.avatar || null);
               setIsFriend(false);
+              setIsBlocked(false);
             }
           }
         }
@@ -236,6 +246,18 @@ export default function ChatRoomPage() {
           if (newMsg.sender_id !== user.id) {
             setTimeout(markAsRead, 300);
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users'
+        },
+        () => {
+          // ✅ users 테이블 업데이트 시 채팅방 정보 갱신 (이름 변경 실시간 반영)
+          fetchInitialData();
         }
       )
       .subscribe();
@@ -353,12 +375,25 @@ export default function ChatRoomPage() {
     if (!friendId) return;
 
     try {
+      // ✅ users 테이블에서 실제 이름 가져오기
+      const { data: friendUser } = await supabase
+        .from('users')
+        .select('name, avatar, status_message')
+        .eq('id', friendId)
+        .maybeSingle();
+
+      const friendName = friendUser?.name || roomTitle;
+      const friendAvatar = friendUser?.avatar || roomAvatar;
+      const friendStatus = friendUser?.status_message || null;
+
       await supabase
         .from('friends')
         .upsert({
           user_id: user.id,
           friend_user_id: friendId,
-          name: roomTitle,
+          name: friendName,
+          avatar: friendAvatar,
+          status: friendStatus,
           friendly_score: 50,
           is_blocked: false
         });
@@ -382,12 +417,19 @@ export default function ChatRoomPage() {
     if (!window.confirm('차단하시겠습니까? 차단하면 메시지를 받을 수 없습니다.')) return;
 
     try {
+      // ✅ users 테이블에서 실제 이름 가져오기
+      const { data: friendUser } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', friendId)
+        .maybeSingle();
+
       await supabase
         .from('friends')
         .upsert({
           user_id: user.id,
           friend_user_id: friendId,
-          name: roomTitle,
+          name: friendUser?.name || roomTitle,
           is_blocked: true
         });
 
@@ -406,14 +448,12 @@ export default function ChatRoomPage() {
     
     return messages
       .filter(m => {
-        // 텍스트 메시지만 검색 (파일 제외)
         if (getFileType(m.content) !== 'text') return false;
         return m.content.toLowerCase().includes(lowerQuery);
       })
       .map(m => m.id);
   }, [searchQuery, messages]);
 
-  // 검색 시작 시 첫 번째 결과로 이동
   useEffect(() => {
     if (searchResults.length > 0 && currentSearchIndex === -1) {
       setCurrentSearchIndex(0);
@@ -449,7 +489,6 @@ export default function ChatRoomPage() {
     });
   };
 
-  // 검색 모드 종료 시 초기화
   const handleCloseSearch = () => {
     setIsSearching(false);
     setSearchQuery('');
@@ -460,7 +499,6 @@ export default function ChatRoomPage() {
   const renderMessageContent = (msg: Message, isMe: boolean) => {
     const type = getFileType(msg.content);
 
-    // 검색 하이라이트 처리
     const isHighlighted = searchResults.includes(msg.id);
     const isCurrentSearch = searchResults[currentSearchIndex] === msg.id;
 
@@ -525,7 +563,6 @@ export default function ChatRoomPage() {
       );
     }
 
-    // 텍스트 메시지 하이라이트
     const renderHighlightedText = (text: string) => {
       if (!searchQuery.trim() || !isHighlighted) return text;
 
@@ -559,11 +596,18 @@ export default function ChatRoomPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[#1C1C1E] text-white overflow-hidden relative">
       <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-30">
-        <div className="flex items-center">
+        <div className="flex items-center gap-3">
           <button onClick={() => navigate('/main/chats')} className="p-2">
             <ChevronLeft className="w-7 h-7" />
           </button>
-          <h1 className="text-base font-bold ml-1">{roomTitle}</h1>
+          <div className="w-9 h-9 rounded-full bg-[#3A3A3C] overflow-hidden border border-white/5">
+            {roomAvatar ? (
+              <img src={roomAvatar} className="w-full h-full object-cover" alt="" />
+            ) : (
+              isGroupChat ? <Users className="w-5 h-5 m-auto mt-2 text-[#8E8E93] opacity-50" /> : <UserIcon className="w-5 h-5 m-auto mt-2 text-[#8E8E93] opacity-50" />
+            )}
+          </div>
+          <h1 className="text-base font-bold">{roomTitle}</h1>
         </div>
         <div className="flex items-center gap-1">
           <button 
@@ -711,7 +755,7 @@ export default function ChatRoomPage() {
                 <div className={`max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                   {!isMe && isGroupChat && (
                     <span className="text-xs text-[#8E8E93] mb-1 ml-1">
-                      {sender?.name || '알수없음'}
+                      {sender?.name || '알 수 없는 사용자'}
                     </span>
                   )}
 

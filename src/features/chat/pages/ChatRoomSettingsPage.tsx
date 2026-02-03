@@ -98,7 +98,6 @@ export default function ChatRoomSettingsPage() {
         const myId = session?.user.id;
         if (!myId) return;
 
-        // 1. 채팅방 기본 정보
         const { data: room } = await supabase
           .from('chat_rooms')
           .select('id, type, title, avatar, members_count')
@@ -115,7 +114,6 @@ export default function ChatRoomSettingsPage() {
           memberCount = room.members_count || 0;
         }
 
-        // 2. 실제 참여자 수 (더 정확함)
         const { count: realCount } = await supabase
           .from('room_members')
           .select('*', { count: 'exact', head: true })
@@ -123,7 +121,7 @@ export default function ChatRoomSettingsPage() {
 
         memberCount = realCount || memberCount;
 
-        // 3. 1:1인 경우 상대방 정보 우선
+        // ✅ 1:1 채팅방이면 users 테이블에서 상대방 정보 우선 가져오기
         if (chatId.includes('_') && !chatId.startsWith('group_')) {
           const friendId = chatId.split('_').find(id => id !== myId);
           if (friendId) {
@@ -136,18 +134,6 @@ export default function ChatRoomSettingsPage() {
             if (userProfile) {
               title = userProfile.name;
               avatar = userProfile.avatar;
-            } else {
-              const { data: friend } = await supabase
-                .from('friends')
-                .select('name, avatar')
-                .eq('user_id', myId)
-                .eq('friend_user_id', friendId)
-                .maybeSingle();
-
-              if (friend) {
-                title = friend.name;
-                avatar = friend.avatar;
-              }
             }
           }
         }

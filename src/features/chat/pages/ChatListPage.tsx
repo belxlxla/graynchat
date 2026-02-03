@@ -57,7 +57,6 @@ export default function ChatListPage() {
     if (!user?.id) return;
     
     try {
-      // 1. 내가 속한 방 ID들 먼저 가져오기
       const { data: myMemberships, error: memberError } = await supabase
         .from('room_members')
         .select('room_id')
@@ -73,7 +72,6 @@ export default function ChatListPage() {
 
       const roomIds = myMemberships.map(m => m.room_id);
 
-      // 2. 해당 방들의 정보 가져오기
       const { data: roomsData, error: roomsError } = await supabase
         .from('chat_rooms')
         .select('*')
@@ -82,7 +80,6 @@ export default function ChatListPage() {
 
       if (roomsError) throw roomsError;
 
-      // 3. 각 방의 내 멤버 정보 가져오기 (unread_count 포함)
       const { data: myRoomMembers, error: myMemberError } = await supabase
         .from('room_members')
         .select('room_id, unread_count')
@@ -95,51 +92,59 @@ export default function ChatListPage() {
         myRoomMembers?.map(m => [m.room_id, m.unread_count || 0]) || []
       );
 
-      // 4. 1:1 채팅방의 상대방 정보 수집
+      // ✅ 1:1 채팅방의 상대방 UUID 추출
       const individualRooms = roomsData?.filter(r => r.type === 'individual') || [];
       const friendUUIDs = individualRooms
         .map(r => r.id.split('_').find((id: string) => id !== user.id))
         .filter((id): id is string => !!id && id.length > 20);
 
-      let usersData: UserProfile[] = [];
-      let friendsData: Friend[] = [];
+      let usersMap = new Map<string, UserProfile>();
 
+      // ✅ users 테이블에서 상대방 정보 가져오기 (최우선)
       if (friendUUIDs.length > 0) {
-        const [usersResult, friendsResult] = await Promise.all([
-          supabase
-            .from('users')
-            .select('id, name, avatar')
-            .in('id', friendUUIDs),
-          supabase
-            .from('friends')
-            .select('id, friend_user_id, name, avatar')
-            .eq('user_id', user.id)
-            .in('friend_user_id', friendUUIDs)
-        ]);
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name, avatar')
+          .in('id', friendUUIDs);
 
-        if (usersResult.data) usersData = usersResult.data;
-        if (friendsResult.data) friendsData = friendsResult.data;
+        if (usersData) {
+          usersData.forEach(u => {
+            usersMap.set(u.id, u);
+          });
+        }
       }
 
-      // 5. 채팅방 목록 포맷팅
+      // ✅ 채팅방 목록 포맷팅
       const formattedData = (roomsData || []).map((room): ChatRoom | null => {
         if (!room) return null;
 
         const isGroup = room.type === 'group';
-        const friendIdFromRoom = !isGroup ? room.id.split('_').find((id: string) => id !== user.id) : null;
         
-        const userProfile = !isGroup ? usersData.find(u => u.id === friendIdFromRoom) : null;
-        const friendProfile = !isGroup ? friendsData.find(f => f.friend_user_id === friendIdFromRoom) : null;
+        let title = '알 수 없는 사용자';
+        let avatar: string | null = null;
+
+        // ✅ 그룹 채팅방
+        if (isGroup) {
+          title = room.title || `그룹 채팅`;
+          avatar = room.avatar;
+        } 
+        // ✅ 1:1 채팅방 - users 테이블에서 상대방 정보 가져오기
+        else {
+          const friendId = room.id.split('_').find((id: string) => id !== user.id);
+          if (friendId) {
+            const userProfile = usersMap.get(friendId);
+            if (userProfile) {
+              title = userProfile.name;
+              avatar = userProfile.avatar;
+            }
+          }
+        }
         
         return {
           id: room.id.toString(),
           type: room.type || 'individual',
-          title: isGroup 
-            ? room.title 
-            : (userProfile?.name || friendProfile?.name || room.title || '알 수 없는 사용자'),
-          avatar: !isGroup && userProfile 
-            ? userProfile.avatar 
-            : (!isGroup && friendProfile ? friendProfile.avatar : (room.avatar || null)),
+          title,
+          avatar,
           membersCount: room.members_count || (isGroup ? 3 : 1),
           lastMessage: room.last_message || '대화를 시작해보세요!',
           timestamp: room.last_message_at 
@@ -175,7 +180,6 @@ export default function ChatListPage() {
             const chatIndex = prevChats.findIndex(c => c.id === newMsg.room_id);
             
             if (chatIndex === -1) {
-              // 새로운 방에 메시지가 왔으면 전체 재조회
               fetchChats();
               return prevChats;
             }
@@ -206,7 +210,6 @@ export default function ChatListPage() {
           filter: `user_id=eq.${user.id}` 
         }, 
         () => {
-          // room_members 변경시 전체 재조회
           fetchChats();
         }
       )
@@ -218,7 +221,18 @@ export default function ChatListPage() {
           table: 'chat_rooms'
         },
         () => {
-          // chat_rooms 변경시 전체 재조회
+          fetchChats();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users'
+        },
+        () => {
+          // ✅ users 테이블 업데이트 시 채팅 목록 갱신 (이름 변경 실시간 반영)
           fetchChats();
         }
       )
@@ -233,14 +247,41 @@ export default function ChatListPage() {
     if (!user?.id) return;
     
     try {
-      const { data, error } = await supabase
+      // ✅ friends 테이블에서 기본 정보 가져오기
+      const { data: friendsData, error: friendsError } = await supabase
         .from('friends')
         .select('id, friend_user_id, name, avatar')
         .eq('user_id', user.id)
         .order('name', { ascending: true });
       
-      if (error) throw error;
-      if (data) setFriendsList(data);
+      if (friendsError) throw friendsError;
+
+      if (friendsData && friendsData.length > 0) {
+        const friendUUIDs = friendsData.map(f => f.friend_user_id).filter(Boolean);
+
+        // ✅ users 테이블에서 실시간 정보 가져오기
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name, avatar')
+          .in('id', friendUUIDs);
+
+        const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+
+        // ✅ friends와 users 정보 병합 (users 우선)
+        const mergedFriends = friendsData.map(friend => {
+          const userInfo = usersMap.get(friend.friend_user_id);
+          return {
+            id: friend.id,
+            friend_user_id: friend.friend_user_id,
+            name: userInfo?.name || friend.name,
+            avatar: userInfo?.avatar || friend.avatar
+          };
+        });
+
+        setFriendsList(mergedFriends);
+      } else {
+        setFriendsList([]);
+      }
     } catch (error) {
       console.error('Fetch Friends Error:', error);
     }
@@ -668,11 +709,20 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
           return;
         }
 
+        // ✅ users 테이블에서 실제 이름 가져오기
+        const { data: friendUser } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', friendId)
+          .maybeSingle();
+
+        const friendName = friendUser?.name || friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
+
         const { error: roomError } = await supabase
           .from('chat_rooms')
           .insert([{ 
             id: roomId,
-            title: friends.find(f => f.id === selectedIds[0])?.name || '새 대화',
+            title: friendName,
             type: 'individual',
             created_by: user.id,
             last_message: '대화를 시작해보세요!',

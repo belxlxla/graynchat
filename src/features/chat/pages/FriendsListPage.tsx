@@ -74,41 +74,40 @@ export default function FriendsListPage() {
   }, []);
 
   const fetchMyProfile = useCallback(async () => {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
 
-    const { data, error } = await supabase
-      .from('users')
-      .select('name, avatar, bg_image, status_message')
-      .eq('id', session.user.id)
-      .maybeSingle();
+      const { data, error } = await supabase
+        .from('users')
+        .select('name, avatar, bg_image, status_message')
+        .eq('id', session.user.id)
+        .maybeSingle();
 
-    if (error) {
-      console.error('Profile fetch error:', error);
-      return;
+      if (error) {
+        console.error('Profile fetch error:', error);
+        return;
+      }
+      
+      if (data) {
+        setMyProfile({
+          name: data.name || session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
+          status: data.status_message || '',
+          avatar: data.avatar || null,
+          bg: data.bg_image || null
+        });
+      } else {
+        setMyProfile({
+          name: session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
+          status: '',
+          avatar: null,
+          bg: null
+        });
+      }
+    } catch (e) { 
+      console.error("MyProfile Load Error", e); 
     }
-    
-    if (data) {
-      setMyProfile({
-        name: data.name || session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
-        status: data.status_message || '',
-        avatar: data.avatar || null,
-        bg: data.bg_image || null
-      });
-    } else {
-      // ✅ users 테이블에 데이터가 없는 경우 user_metadata 사용
-      setMyProfile({
-        name: session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
-        status: '',
-        avatar: null,
-        bg: null
-      });
-    }
-  } catch (e) { 
-    console.error("MyProfile Load Error", e); 
-  }
-}, []);
+  }, []);
 
   const fetchFriends = useCallback(async () => {
     setIsLoading(true);
@@ -222,34 +221,53 @@ export default function FriendsListPage() {
 
       const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
 
+      // ✅ 1. 먼저 기존 채팅방 확인
       const { data: existingRoom } = await supabase
         .from('chat_rooms')
         .select('id')
         .eq('id', sharedRoomId)
         .maybeSingle();
 
-      if (!existingRoom) {
-        const { error: roomError } = await supabase
-          .from('chat_rooms')
-          .insert([{ 
-            id: sharedRoomId,
-            title: friend.name,
-            type: 'individual',
-            created_by: session.user.id,
-            last_message: '새로운 대화를 시작해보세요!',
-            members_count: 2
-          }]);
+      if (existingRoom) {
+        // 이미 채팅방이 있으면 바로 이동
+        toast.dismiss(loadingToast);
+        setSelectedFriend(null);
+        navigate(`/chat/room/${sharedRoomId}`);
+        return;
+      }
 
-        if (roomError) throw roomError;
+      // ✅ 2. 채팅방이 없으면 새로 생성
+      const { error: roomError } = await supabase
+        .from('chat_rooms')
+        .insert([{ 
+          id: sharedRoomId,
+          title: friend.name,
+          type: 'individual',
+          created_by: session.user.id,
+          last_message: '새로운 대화를 시작해보세요!',
+          members_count: 2
+        }]);
 
-        const { error: membersError } = await supabase
-          .from('room_members')
-          .insert([
-            { room_id: sharedRoomId, user_id: session.user.id, unread_count: 0 },
-            { room_id: sharedRoomId, user_id: friend.friend_user_id, unread_count: 0 }
-          ]);
+      if (roomError) {
+        // 중복 키 에러면 이미 생성된 것이므로 무시하고 진행
+        if (roomError.code !== '23505') {
+          throw roomError;
+        }
+      }
 
-        if (membersError) throw membersError;
+      // ✅ 3. room_members에 나와 상대방 추가
+      const { error: membersError } = await supabase
+        .from('room_members')
+        .upsert([
+          { room_id: sharedRoomId, user_id: session.user.id, unread_count: 0 },
+          { room_id: sharedRoomId, user_id: friend.friend_user_id, unread_count: 0 }
+        ], { 
+          onConflict: 'room_id,user_id',
+          ignoreDuplicates: true 
+        });
+
+      if (membersError && membersError.code !== '23505') {
+        throw membersError;
       }
 
       toast.dismiss(loadingToast);
@@ -1128,6 +1146,7 @@ function CreateChatModal({ isOpen, onClose, friends }: {
 
         roomId = [session.user.id, friendId].sort().join("_");
 
+        // ✅ 기존 채팅방 확인
         const { data: existingRoom } = await supabase
           .from('chat_rooms')
           .select('id')
@@ -1142,6 +1161,7 @@ function CreateChatModal({ isOpen, onClose, friends }: {
           return;
         }
 
+        // ✅ 새 채팅방 생성
         const { error: roomError } = await supabase
           .from('chat_rooms')
           .insert([{ 
@@ -1153,20 +1173,22 @@ function CreateChatModal({ isOpen, onClose, friends }: {
             members_count: 2
           }]);
 
-        if (roomError) {
-          console.error('Room insert error:', roomError);
+        if (roomError && roomError.code !== '23505') {
           throw roomError;
         }
 
+        // ✅ room_members에 추가
         const { error: membersError } = await supabase
           .from('room_members')
-          .insert([
+          .upsert([
             { room_id: roomId, user_id: session.user.id, unread_count: 0 },
             { room_id: roomId, user_id: friendId, unread_count: 0 }
-          ]);
+          ], {
+            onConflict: 'room_id,user_id',
+            ignoreDuplicates: true
+          });
 
-        if (membersError) {
-          console.error('Members insert error:', membersError);
+        if (membersError && membersError.code !== '23505') {
           throw membersError;
         }
 
@@ -1186,10 +1208,7 @@ function CreateChatModal({ isOpen, onClose, friends }: {
             members_count: selectedIds.length + 1
           }]);
 
-        if (roomError) {
-          console.error('Group room insert error:', roomError);
-          throw roomError;
-        }
+        if (roomError) throw roomError;
 
         const memberInserts = [
           { room_id: roomId, user_id: session.user.id, unread_count: 0 }
@@ -1206,10 +1225,7 @@ function CreateChatModal({ isOpen, onClose, friends }: {
           .from('room_members')
           .insert(memberInserts);
 
-        if (membersError) {
-          console.error('Group members insert error:', membersError);
-          throw membersError;
-        }
+        if (membersError) throw membersError;
       }
 
       toast.dismiss(loadingToast);
@@ -1219,14 +1235,7 @@ function CreateChatModal({ isOpen, onClose, friends }: {
     } catch (e: any) {
       console.error('Create Chat Error:', e);
       toast.dismiss(loadingToast);
-      
-      if (e.message?.includes('duplicate key')) {
-        toast.error('이미 존재하는 채팅방입니다.');
-      } else if (e.message?.includes('violates foreign key')) {
-        toast.error('친구 정보가 올바르지 않습니다.');
-      } else {
-        toast.error('채팅방 생성에 실패했습니다.');
-      }
+      toast.error('채팅방 생성에 실패했습니다.');
     }
   }, [selectedIds, user, friends, navigate, onClose]);
 

@@ -40,6 +40,12 @@ import ContentsPage from '../features/contents/pages/ContentsPage';
 // [추가] 리포트 결과 페이지 import
 import ReportResultPage from '../features/contents/pages/ReportResultPage';
 
+import TimeCapsuleCreatePage from '../features/time-capsule/pages/TimeCapsuleCreatePage';
+import TimeCapsuleSentPage from '../features/time-capsule/pages/TimeCapsuleSentPage';
+import TimeCapsuleEditPage from '../features/time-capsule/pages/TimeCapsuleEditPage';
+import TimeCapsuleInboxPage from '../features/time-capsule/pages/TimeCapsuleInboxPage';
+import TimeCapsuleViewPage from '../features/time-capsule/pages/TimeCapsuleViewPage';
+
 // --- [STEP 5 핵심: Capacitor 라이브러리 추가] ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
@@ -217,6 +223,11 @@ function AppContent() {
         <Route path="/settings/help" element={<CustomerServicePage />} />
         <Route path="/settings/help/report" element={<ReportCenterPage />} />
         <Route path="/settings/help/report/illegal" element={<IllegalContentReportPage />} /> 
+        <Route path="/time-capsule/create" element={<TimeCapsuleCreatePage />} />
+<Route path="/time-capsule/sent" element={<TimeCapsuleSentPage />} />
+<Route path="/time-capsule/edit/:id" element={<TimeCapsuleEditPage />} />
+<Route path="/time-capsule/inbox" element={<TimeCapsuleInboxPage />} />
+<Route path="/time-capsule/view/:id" element={<TimeCapsuleViewPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/main/friends" replace />} />

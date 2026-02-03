@@ -12,7 +12,6 @@ export default function ContentsPage() {
   const [activeTab, setActiveTab] = useState<'lab' | 'membership'>('lab');
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
 
-  // [수정] ease: "easeOut" 뒤에 as const를 붙여 리터럴 타입으로 고정 (TypeScript 에러 해결)
   const fadeVariants = {
     hidden: { opacity: 0, y: 10 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
@@ -36,7 +35,24 @@ export default function ContentsPage() {
     }, 1500);
   };
 
-  // --- [2. 정기 구독 핸들러 (멤버십)] ---
+  // --- [2. 타임캡슐 결제 핸들러] ---
+  const handleTimeCapsulePayment = () => {
+    setIsPaymentProcessing(true);
+    const platform = Capacitor.getPlatform();
+
+    console.log(`[${platform}] 단건 결제 요청: time_capsule_6900`);
+
+    setTimeout(() => {
+      setIsPaymentProcessing(false);
+      toast.success('타임캡슐 이용권이 발급되었습니다!', {
+        style: { background: '#333', color: '#fff', borderRadius: '10px' },
+        icon: '⏰'
+      });
+      navigate('/time-capsule/create');
+    }, 1500);
+  };
+
+  // --- [3. 정기 구독 핸들러 (멤버십)] ---
   const handleSubscription = (planId: string, planName: string) => {
     setIsPaymentProcessing(true);
     const platform = Capacitor.getPlatform();
@@ -139,26 +155,37 @@ export default function ContentsPage() {
                   <Hourglass className="w-4 h-4 text-orange-400" />
                   <h3 className="text-sm font-bold text-gray-300">타임 캡슐</h3>
                 </div>
-                <div className="bg-[#1C1C1E] rounded-2xl overflow-hidden border border-white/5 p-6 shadow-lg shadow-black/50">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h2 className="text-lg font-bold text-white mb-1">미래로 보내는 편지</h2>
-                      <p className="text-sm text-gray-400">지정한 날짜까지 절대 열리지 않습니다.</p>
+                <div className="bg-[#1C1C1E] rounded-2xl overflow-hidden border border-white/5 shadow-lg shadow-black/50">
+                  <div className="p-6 pb-4">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h2 className="text-lg font-bold text-white mb-1">미래로 보내는 편지</h2>
+                        <p className="text-sm text-gray-400">지정한 날짜까지 절대 열리지 않습니다.</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mt-6">
+                      {[
+                        { label: '3일 뒤', price: '무료', icon: <Zap className="w-4 h-4 mb-2 text-gray-400" /> },
+                        { label: '1년 뒤', price: '1,000원', icon: <Lock className="w-4 h-4 mb-2 text-orange-400" /> },
+                        { label: '10년 뒤', price: '5,000원', icon: <Infinity className="w-4 h-4 mb-2 text-orange-400" /> },
+                      ].map((item, idx) => (
+                        <button key={idx} className="flex flex-col items-center justify-center py-4 bg-[#2C2C2E] rounded-xl border border-white/5 active:scale-95 transition-all hover:border-orange-500/50">
+                          {item.icon}
+                          <span className="text-xs font-medium text-gray-300 mb-0.5">{item.label}</span>
+                          <span className="text-[11px] font-bold text-white">{item.price}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mt-6">
-                    {[
-                      { label: '3일 뒤', price: '무료', icon: <Zap className="w-4 h-4 mb-2 text-gray-400" /> },
-                      { label: '1년 뒤', price: '1,000원', icon: <Lock className="w-4 h-4 mb-2 text-orange-400" /> },
-                      { label: '10년 뒤', price: '5,000원', icon: <Infinity className="w-4 h-4 mb-2 text-orange-400" /> },
-                    ].map((item, idx) => (
-                      <button key={idx} className="flex flex-col items-center justify-center py-4 bg-[#2C2C2E] rounded-xl border border-white/5 active:scale-95 transition-all hover:border-orange-500/50">
-                        {item.icon}
-                        <span className="text-xs font-medium text-gray-300 mb-0.5">{item.label}</span>
-                        <span className="text-[11px] font-bold text-white">{item.price}</span>
-                      </button>
-                    ))}
-                  </div>
+
+                  {/* 타임캡슐 결제 버튼 */}
+                  <button 
+                    onClick={handleTimeCapsulePayment} 
+                    className="w-full py-4 bg-gradient-to-r from-orange-600 to-orange-500 text-white text-sm font-bold border-t border-white/5 hover:from-orange-700 hover:to-orange-600 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                  >
+                    <Hourglass className="w-4 h-4" />
+                    6,900원으로 타임캡슐 보내기
+                  </button>
                 </div>
               </section>
             </motion.div>
@@ -192,7 +219,6 @@ export default function ContentsPage() {
                     <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> Best Value
                   </div>
                   <div className="w-full h-full bg-[#151515] rounded-[22px] p-5 flex items-center justify-between relative overflow-hidden">
-                    {/* 배경 데코 */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 blur-[40px] rounded-full" />
                     
                     <div className="flex flex-col items-start z-10">
