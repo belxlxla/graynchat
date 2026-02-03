@@ -11,7 +11,6 @@ type Provider = 'google' | 'apple';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  
   const { triggerNaverLogin } = useNaverLogin();
 
   const [email, setEmail] = useState('');
@@ -23,23 +22,18 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
 
-  // ✅ Supabase Auth State 변화 감지
+  // ✅ OAuth 콜백 처리
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔔 Auth Event:', event);
-        
         if (event === 'SIGNED_IN' && session?.user) {
           const user = session.user;
-          
           const provider = user.app_metadata?.provider || 
                           user.app_metadata?.providers?.[0] || 
                           'email';
 
-          console.log('✅ Provider:', provider);
-          console.log('👤 User:', user);
+          console.log('✅ Sign in detected:', provider);
 
-          // Apple 또는 Google 로그인인 경우
           if (provider === 'apple' || provider === 'google') {
             setIsOAuthProcessing(true);
 
@@ -52,15 +46,11 @@ export default function LoginPage() {
                 userName = user.user_metadata.full_name;
               } else if (user.user_metadata?.name) {
                 userName = user.user_metadata.name;
-              } else if (user.user_metadata?.email) {
-                userName = user.user_metadata.email.split('@')[0];
               }
 
               const userAvatar = user.user_metadata?.avatar_url || 
                                 user.user_metadata?.picture || 
                                 null;
-
-              console.log('💾 Syncing:', { userId, userName, userEmail });
 
               // users 테이블 동기화
               const { data: existingUser } = await supabase
@@ -86,7 +76,6 @@ export default function LoginPage() {
                 }).eq('id', userId);
               }
 
-              // user_metadata 업데이트
               await supabase.auth.updateUser({
                 data: {
                   provider: provider,
@@ -97,7 +86,7 @@ export default function LoginPage() {
               toast.success(`${userName}님 환영합니다!`);
               navigate('/main/friends', { replace: true });
             } catch (error) {
-              console.error('💥 Sync error:', error);
+              console.error('Sync error:', error);
               toast.error('로그인 처리 중 오류가 발생했습니다.');
               setIsOAuthProcessing(false);
             }
@@ -144,9 +133,7 @@ export default function LoginPage() {
           toast.success('이메일로 인증 코드가 발송되었습니다.');
         } else {
           toast('SMS 인증 코드를 입력해주세요.', { icon: 'ℹ️' });
-          await supabase.auth
-            .signInWithOtp({ email: targetEmail })
-            .catch(() => {});
+          await supabase.auth.signInWithOtp({ email: targetEmail }).catch(() => {});
         }
 
         setShow2FAModal(true);
@@ -180,18 +167,16 @@ export default function LoginPage() {
     }
 
     if (data.user) {
-      const userName =
-        data.user.user_metadata?.name ||
-        data.user.user_metadata?.full_name ||
-        '회원';
+      const userName = data.user.user_metadata?.name || 
+                      data.user.user_metadata?.full_name || 
+                      '회원';
       toast.success(`${userName}님 환영합니다!`);
       navigate('/main/friends');
     }
   };
 
   const handleVerify2FA = async () => {
-    if (otpCode.length < 6)
-      return toast.error('인증 코드를 입력해주세요.');
+    if (otpCode.length < 6) return toast.error('인증 코드를 입력해주세요.');
 
     setIsLoading(true);
 
@@ -242,7 +227,7 @@ export default function LoginPage() {
 
   const handleSocialLogin = async (provider: Provider) => {
     try {
-      console.log('🚀 Starting OAuth for:', provider);
+      console.log('🚀 OAuth Start:', provider);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: provider,
@@ -255,7 +240,7 @@ export default function LoginPage() {
 
       console.log('✅ OAuth initiated');
     } catch (error: any) {
-      console.error('💥 Social Login Error:', error);
+      console.error('💥 OAuth Error:', error);
       toast.error(`${provider} 로그인에 실패했습니다.`);
     }
   };
@@ -314,7 +299,7 @@ export default function LoginPage() {
       </motion.div>
 
       <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.6 }} className="flex gap-4 justify-center w-full max-w-sm mx-auto">
-        <button onClick={() => handleSocialLogin('google')} className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg" title="Google 로그인">
+        <button onClick={() => handleSocialLogin('google')} className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg">
           <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -323,13 +308,13 @@ export default function LoginPage() {
           </svg>
         </button>
 
-        <button onClick={triggerNaverLogin} className="w-12 h-12 bg-[#03C75A] rounded-full flex items-center justify-center hover:bg-[#02B350] transition-colors shadow-lg" title="Naver 로그인">
+        <button onClick={triggerNaverLogin} className="w-12 h-12 bg-[#03C75A] rounded-full flex items-center justify-center hover:bg-[#02B350] transition-colors shadow-lg">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M9.13 6.8L4.25 0H0V14H4.25V6.8L9.5 14H14V0H9.13V6.8Z" fill="white"/>
           </svg>
         </button>
 
-        <button onClick={() => handleSocialLogin('apple')} className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg" title="Apple 로그인">
+        <button onClick={() => handleSocialLogin('apple')} className="w-12 h-12 bg-white rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="black" xmlns="http://www.w3.org/2000/svg">
             <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.63-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74s2.57-.99 4.31-.82c.51.03 2.26.2 3.32 1.73-3.03 1.76-2.39 5.51.64 6.77-.52 1.55-1.25 3.09-2.35 4.55zM12.03 7.25c-.25-2.19 1.62-3.99 3.63-4.25.32 2.45-2.38 4.23-3.63 4.25z"/>
           </svg>
@@ -349,7 +334,7 @@ export default function LoginPage() {
       <AnimatePresence>
         {show2FAModal && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => {}}/>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/95 backdrop-blur-md"/>
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] border border-[#2C2C2E] rounded-[32px] p-8 text-center shadow-2xl">
               <button onClick={() => { setShow2FAModal(false); setIsLoading(false); }} className="absolute top-6 right-6 text-[#8E8E93] hover:text-white">
                 <X size={20}/>
