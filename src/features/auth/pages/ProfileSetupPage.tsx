@@ -77,40 +77,37 @@ export default function ProfileSetupPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const backgroundInputRef = useRef<HTMLInputElement>(null);
 
-  // 회원가입 정보 확인
-useEffect(() => {
-  const fetchSignupData = async () => {
-    const signupUserId = sessionStorage.getItem('signup_user_id');
-    
-    if (!signupUserId && !user) {
-      toast.error('회원가입 정보를 찾을 수 없습니다.');
-      navigate('/auth/signup', { replace: true });
-      return;
-    }
-
-    // ✅ users 테이블에서 기존 이름 가져오기
-    if (signupUserId || user?.id) {
-      try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('name, email')
-          .eq('id', signupUserId || user?.id)
-          .maybeSingle();
-
-        if (data && !error) {
-          // 이미 저장된 이름이 있으면 사용
-          if (data.name && data.name !== '사용자') {
-            setNickname(data.name);
-          }
-        }
-      } catch (err) {
-        console.error('Fetch user data error:', err);
+  useEffect(() => {
+    const fetchSignupData = async () => {
+      const signupUserId = sessionStorage.getItem('signup_user_id');
+      
+      if (!signupUserId && !user) {
+        toast.error('회원가입 정보를 찾을 수 없습니다.');
+        navigate('/auth/signup', { replace: true });
+        return;
       }
-    }
-  };
 
-  fetchSignupData();
-}, [user, navigate]);
+      if (signupUserId || user?.id) {
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('name, email')
+            .eq('id', signupUserId || user?.id)
+            .maybeSingle();
+
+          if (data && !error) {
+            if (data.name && data.name !== '사용자') {
+              setNickname(data.name);
+            }
+          }
+        } catch (err) {
+          console.error('Fetch user data error:', err);
+        }
+      }
+    };
+
+    fetchSignupData();
+  }, [user, navigate]);
 
   const isFormValid = useMemo(() => {
     return nickname.trim().length >= 2;
@@ -200,71 +197,76 @@ useEffect(() => {
     }
   }, [user]);
 
- const handleComplete = useCallback(async () => {
-  const userId = user?.id || sessionStorage.getItem('signup_user_id');
-  
-  if (!userId) {
-    toast.error('사용자 정보를 찾을 수 없습니다.');
-    return;
-  }
-
-  if (!isFormValid) {
-    toast.error('닉네임을 2자 이상 입력해주세요.');
-    return;
-  }
-
-  setIsSaving(true);
-
-  try {
-    let finalAvatar: string | null = null;
-    let finalBg: string | null = null;
-
-    // 이미지 업로드
-    if (avatarBlob) {
-      finalAvatar = await uploadImage(avatarBlob, 'avatar');
-    }
-
-    if (bgBlob) {
-      finalBg = await uploadImage(bgBlob, 'background');
-    }
-
-    // ✅ 프로필 업데이트 (UPSERT 방식으로 변경)
-    const updateData: any = {
-      name: nickname.trim(),
-      status_message: statusMessage.trim() || '그레인을 시작했어요!',
-      updated_at: new Date().toISOString()
-    };
-
-    // 이미지가 업로드된 경우에만 추가
-    if (finalAvatar) updateData.avatar = finalAvatar;
-    if (finalBg) updateData.bg_image = finalBg;
-
-    const { error: updateError } = await supabase
-      .from('users')
-      .update(updateData)
-      .eq('id', userId);
-
-    if (updateError) throw updateError;
-
-    // 세션 스토리지 정리
-    sessionStorage.removeItem('signup_email');
-    sessionStorage.removeItem('signup_password');
-    sessionStorage.removeItem('signup_user_id');
-
-    toast.success('그레인 가입을 환영합니다! 🎉');
-
-    // 메인 페이지로 이동
-    setTimeout(() => {
-      navigate('/main/friends', { replace: true });
-    }, 800);
+  const handleComplete = useCallback(async () => {
+    const userId = user?.id || sessionStorage.getItem('signup_user_id');
     
-  } catch (error) {
-    console.error('Profile save error:', error);
-    toast.error('프로필 저장에 실패했습니다.');
-  } finally {
-    setIsSaving(false);
-  }
-}, [user, nickname, statusMessage, avatarBlob, bgBlob, isFormValid, uploadImage, navigate]);
+    if (!userId) {
+      toast.error('사용자 정보를 찾을 수 없습니다.');
+      return;
+    }
+
+    if (!isFormValid) {
+      toast.error('닉네임을 2자 이상 입력해주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      let finalAvatar: string | null = null;
+      let finalBg: string | null = null;
+
+      if (avatarBlob) {
+        finalAvatar = await uploadImage(avatarBlob, 'avatar');
+      }
+
+      if (bgBlob) {
+        finalBg = await uploadImage(bgBlob, 'background');
+      }
+
+      // [핵심] 전화번호가 metadata에는 있는데 DB에 없다면 DB로 복사
+      const metaPhone = user?.user_metadata?.phone || user?.user_metadata?.mobile;
+      
+      const updateData: any = {
+        name: nickname.trim(),
+        status_message: statusMessage.trim() || '그레인을 시작했어요!',
+        updated_at: new Date().toISOString()
+      };
+
+      // 메타데이터에 번호가 있다면 DB에도 저장 (이미 있으면 덮어쓰기)
+      if (metaPhone) {
+        updateData.phone = metaPhone;
+      } else if (user?.phone) {
+        updateData.phone = user.phone;
+      }
+
+      if (finalAvatar) updateData.avatar = finalAvatar;
+      if (finalBg) updateData.bg_image = finalBg;
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', userId);
+
+      if (updateError) throw updateError;
+
+      sessionStorage.removeItem('signup_email');
+      sessionStorage.removeItem('signup_password');
+      sessionStorage.removeItem('signup_user_id');
+
+      toast.success('그레인 가입을 환영합니다! 🎉');
+
+      setTimeout(() => {
+        navigate('/main/friends', { replace: true });
+      }, 800);
+      
+    } catch (error) {
+      console.error('Profile save error:', error);
+      toast.error('프로필 저장에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [user, nickname, statusMessage, avatarBlob, bgBlob, isFormValid, uploadImage, navigate]);
 
   return (
     <div className="h-[100dvh] flex flex-col bg-dark-bg text-white overflow-hidden font-sans">

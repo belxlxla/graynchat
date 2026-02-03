@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   ChevronLeft, Mail, Lock, User, Loader2, 
-  Check, ChevronRight, Eye, EyeOff, X
+  Check, ChevronRight, Eye, EyeOff, X, Phone
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -11,10 +11,13 @@ import { supabase } from '../../../shared/lib/supabaseClient';
 export default function SignUpPage() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [isAppleLoading, setIsAppleLoading] = useState(false);
 
+  // [수정] phone 필드 초기값
   const [accountData, setAccountData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
   });
@@ -113,24 +116,49 @@ export default function SignUpPage() {
            accountData.password === accountData.confirmPassword;
   }, [confirmPasswordError, accountData.confirmPassword, accountData.password]);
 
+  // 애플 로그인
+  const handleAppleLogin = async () => {
+    setIsAppleLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: {
+          redirectTo: window.location.origin, 
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error('Apple Login Error:', error);
+      toast.error('Apple 로그인에 실패했습니다.');
+      setIsAppleLoading(false);
+    }
+  };
+
+  // 일반 회원가입
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!accountData.name.trim()) return toast.error('이름을 입력해주세요.');
     if (!accountData.email.trim()) return toast.error('이메일을 입력해주세요.');
+    if (!accountData.phone.trim()) return toast.error('전화번호를 입력해주세요.'); // 전화번호 체크
     if (!isRequiredAgreed) return toast.error('필수 약관에 동의해 주세요.');
 
     setIsLoading(true);
     
     try {
-      // 1. Auth 회원가입 요청
-      // full_name 메타데이터를 보내야 트리거가 public.users에 이름을 저장할 수 있습니다.
+      // 1. Auth 회원가입 요청 (Metadata에 전화번호 저장)
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: accountData.email.trim(),
         password: accountData.password,
         options: { 
           data: { 
-            full_name: accountData.name.trim(), // 트리거에서 사용하는 키
+            full_name: accountData.name.trim(),
+            phone: accountData.phone.trim(), // 메타데이터 저장
             marketing_agreed: agreedTerms.marketing 
           }
         }
@@ -138,21 +166,21 @@ export default function SignUpPage() {
 
       if (signUpError) throw signUpError;
       
-      // 2. public.users 테이블 추가 정보 업데이트 (약관 동의 여부 등)
-      // 트리거가 이미 행을 생성했을 것이므로 update가 수행됩니다.
+      // 2. public.users 테이블 업데이트 (Upsert 사용)
       if (authData.user) {
         const { error: updateError } = await supabase
           .from('users')
-          .update({
+          .upsert({
+            id: authData.user.id,
+            email: accountData.email.trim(),
+            phone: accountData.phone.trim(), // DB 저장
             is_terms_agreed: true,
             is_marketing_agreed: agreedTerms.marketing,
             updated_at: new Date().toISOString()
-          })
-          .eq('id', authData.user.id);
+          }, { onConflict: 'id' }); // 충돌 시 업데이트
 
         if (updateError) {
           console.error('User Update Error (Non-fatal):', updateError);
-          // 업데이트 실패는 가입 차단 사유가 아니므로 로그만 남김
         }
 
         // 3. 임시 세션 데이터 저장
@@ -160,7 +188,7 @@ export default function SignUpPage() {
         sessionStorage.setItem('signup_password', accountData.password);
         sessionStorage.setItem('signup_user_id', authData.user.id);
 
-        toast.success('계정이 생성되었습니다. 본인인증을 진행합니다.');
+        toast.success('계정이 생성되었습니다.');
         navigate('/auth/phone', { replace: true });
       }
 
@@ -200,8 +228,36 @@ export default function SignUpPage() {
             <h2 className="text-2xl font-bold text-brand-DEFAULT mb-2">계정 만들기</h2>
             <p className="text-[#8E8E93] text-sm">서비스 이용을 위한 계정을 생성합니다.</p>
           </div>
+
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={handleAppleLogin}
+              disabled={isAppleLoading}
+              className="w-full flex items-center justify-center gap-2 bg-white text-black font-bold py-3.5 rounded-2xl hover:bg-gray-100 transition-colors shadow-lg active:scale-[0.98]"
+            >
+              {isAppleLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.63-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74s2.57-.99 4.31-.82c.51.03 2.26.2 3.32 1.73-3.03 1.76-2.39 5.51.64 6.77-.52 1.55-1.25 3.09-2.35 4.55zM12.03 7.25c-.25-2.19 1.62-3.99 3.63-4.25.32 2.45-2.38 4.23-3.63 4.25z"/>
+                  </svg>
+                  Apple로 계속하기
+                </>
+              )}
+            </button>
+            
+            <div className="flex items-center gap-3 my-6">
+              <div className="h-[1px] bg-[#3A3A3C] flex-1" />
+              <span className="text-xs text-[#636366]">또는 이메일로 가입</span>
+              <div className="h-[1px] bg-[#3A3A3C] flex-1" />
+            </div>
+          </div>
+
           <form className="space-y-5" onSubmit={handleCreateAccount}>
             <div className="space-y-4">
+              {/* 이름 */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
                 <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
@@ -212,6 +268,22 @@ export default function SignUpPage() {
                     value={accountData.name} 
                     onChange={handleAccountChange} 
                     placeholder="실명으로 입력해 주세요" 
+                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
+                  />
+                </div>
+              </div>
+
+              {/* [추가] 전화번호 */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#8E8E93] ml-1">전화번호</label>
+                <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
+                  <Phone className="w-5 h-5 text-[#636366] mr-3" />
+                  <input 
+                    name="phone" 
+                    type="tel" 
+                    value={accountData.phone} 
+                    onChange={(e) => setAccountData({ ...accountData, phone: e.target.value.replace(/[^0-9]/g, '') })} 
+                    placeholder="01012345678" 
                     className="bg-transparent text-white text-sm w-full focus:outline-none" 
                   />
                 </div>
@@ -349,9 +421,9 @@ export default function SignUpPage() {
 
             <button 
               type="submit" 
-              disabled={isLoading || !isRequiredAgreed || !isPasswordValid || !isConfirmPasswordValid} 
+              disabled={isLoading || !isRequiredAgreed || !isPasswordValid || !isConfirmPasswordValid || !accountData.phone} 
               className={`w-full py-4 font-bold rounded-2xl mt-4 transition-all shadow-lg flex items-center justify-center gap-2 ${
-                isRequiredAgreed && isPasswordValid && isConfirmPasswordValid
+                isRequiredAgreed && isPasswordValid && isConfirmPasswordValid && accountData.phone
                   ? 'bg-brand-DEFAULT text-white hover:bg-brand-hover' 
                   : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed border border-[#3A3A3C]'
               }`}

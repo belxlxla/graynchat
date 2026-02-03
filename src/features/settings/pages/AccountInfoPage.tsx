@@ -94,7 +94,6 @@ export default function AccountInfoPage() {
   const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null); 
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-  // ✨ 크롭 관련 상태
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
@@ -117,64 +116,59 @@ export default function AccountInfoPage() {
     return phoneNumber;
   };
 
-const fetchUserData = useCallback(async () => {
-  if (!user) return;
-  try {
-    const { data: dbData, error: dbError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
-      
-    if (dbError && dbError.code !== 'PGRST116') {
-      console.error('Data load error:', dbError);
-      return;
-    }
+  const fetchUserData = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data: dbData, error: dbError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+        
+      if (dbError && dbError.code !== 'PGRST116') {
+        console.error('Data load error:', dbError);
+        return;
+      }
 
-    // provider 판별 로직 개선
-    let provider = 'email';
-    
-    // 1. user_metadata에서 provider 확인 (가장 우선)
-    if (user.user_metadata?.provider) {
-      provider = user.user_metadata.provider;
-    }
-    // 2. app_metadata에서 provider 확인
-    else if (user.app_metadata?.provider) {
-      provider = user.app_metadata.provider;
-    }
-    // 3. 이메일 패턴으로 판별
-    else if (user.email?.includes('@grayn.app')) {
-      provider = 'naver';
-    }
-    // 4. OAuth providers 확인
-    else if (user.app_metadata?.providers && Array.isArray(user.app_metadata.providers)) {
-      const providers = user.app_metadata.providers;
-      if (providers.includes('google')) provider = 'google';
-      else if (providers.includes('apple')) provider = 'apple';
-      else if (providers.includes('naver')) provider = 'naver';
-    }
+      let provider = 'email';
+      if (user.user_metadata?.provider) {
+        provider = user.user_metadata.provider;
+      } else if (user.app_metadata?.provider) {
+        provider = user.app_metadata.provider;
+      } else if (user.email?.includes('@grayn.app')) {
+        provider = 'naver';
+      } else if (user.app_metadata?.providers && Array.isArray(user.app_metadata.providers)) {
+        const providers = user.app_metadata.providers;
+        if (providers.includes('google')) provider = 'google';
+        else if (providers.includes('apple')) provider = 'apple';
+        else if (providers.includes('naver')) provider = 'naver';
+      }
 
-    // provider 표시명 변환
-    const providerDisplayName = {
-      'email': 'EMAIL',
-      'naver': 'NAVER',
-      'google': 'GOOGLE',
-      'apple': 'APPLE'
-    }[provider] || provider.toUpperCase();
+      const providerDisplayName = {
+        'email': 'EMAIL',
+        'naver': 'NAVER',
+        'google': 'GOOGLE',
+        'apple': 'APPLE'
+      }[provider] || provider.toUpperCase();
 
-    setProfile({
-      name: dbData?.name || user.user_metadata?.full_name || '사용자',
-      avatar: dbData?.avatar || null,
-      bg: dbData?.bg_image || null,
-      provider: providerDisplayName,
-      email: dbData?.email || user.email || '이메일 없음',
-      phone: formatPhoneNumber(dbData?.phone || '번호 없음')
-    });
-    setBlockedCountries(dbData?.blocked_countries || []);
-  } catch (err) { 
-    console.error('Data load error:', err); 
-  }
-}, [user]);
+      // [핵심 수정] DB -> Auth Phone -> User Metadata 순으로 확인
+      // user.user_metadata.phone: 일반 가입 시 options.data에 넣은 값
+      const metaPhone = user.user_metadata?.phone || user.user_metadata?.mobile;
+      const userPhone = dbData?.phone || user.phone || metaPhone || '번호 없음';
+
+      setProfile({
+        name: dbData?.name || user.user_metadata?.full_name || '사용자',
+        avatar: dbData?.avatar || null,
+        bg: dbData?.bg_image || null,
+        provider: providerDisplayName,
+        email: dbData?.email || user.email || '이메일 없음',
+        phone: formatPhoneNumber(userPhone)
+      });
+      setBlockedCountries(dbData?.blocked_countries || []);
+    } catch (err) { 
+      console.error('Data load error:', err); 
+    }
+  }, [user]);
 
   useEffect(() => { fetchUserData(); }, [fetchUserData]);
 
