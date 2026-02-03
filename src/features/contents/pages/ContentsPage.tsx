@@ -5,27 +5,27 @@ import {
   BarChart2, Hourglass, Sparkles, Zap, Lock, Infinity, Check, Loader2, Crown, Star 
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { Capacitor } from '@capacitor/core'; // 플랫폼 감지용
+import { Capacitor } from '@capacitor/core';
 
 export default function ContentsPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'lab' | 'membership'>('lab');
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
 
+  // [수정] ease 배열을 문자열 "easeOut"으로 변경하여 타입 에러 해결
   const fadeVariants = {
     hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.1, 0.25, 1.0] } },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
     exit: { opacity: 0, transition: { duration: 0.2 } }
   };
 
   // --- [1. 단건 결제 핸들러 (리포트)] ---
   const handleOneTimePayment = () => {
     setIsPaymentProcessing(true);
-    const platform = Capacitor.getPlatform(); // 'ios', 'android', 'web'
+    const platform = Capacitor.getPlatform();
 
     console.log(`[${platform}] 단건 결제 요청: report_unlock_2900`);
 
-    // 시뮬레이션: 실제 결제 로직은 여기에 작성 (Portone / IAP)
     setTimeout(() => {
       setIsPaymentProcessing(false);
       toast.success('리포트 잠금이 해제되었습니다!', {
@@ -43,11 +43,6 @@ export default function ContentsPage() {
 
     console.log(`[${platform}] 구독 요청: ${planId}`);
 
-    // --- [실제 인앱결제 연동 가이드] ---
-    // 1. Android: Google Play Billing Client 호출
-    // 2. iOS: StoreKit 호출
-    // 보통 'cordova-plugin-purchase' 같은 라이브러리를 사용합니다.
-    
     setTimeout(() => {
       setIsPaymentProcessing(false);
       
@@ -55,8 +50,6 @@ export default function ContentsPage() {
         style: { background: '#333', color: '#fff', borderRadius: '10px' },
         icon: '👑'
       });
-      
-      // 결제 성공 후 로직 (예: 상태 갱신)
     }, 2000);
   };
 
@@ -84,7 +77,6 @@ export default function ContentsPage() {
       <header className="pt-safe-top px-5 pb-4 bg-[#000000]/80 backdrop-blur-xl sticky top-0 z-40 border-b border-white/5">
         <div className="flex items-center justify-between h-12 mb-4">
           <h1 className="text-2xl font-bold tracking-tight text-white">Store</h1>
-          {/* 포인트 잔액 등 표시 가능 */}
         </div>
         <div className="relative flex bg-[#1C1C1E] p-1 rounded-xl h-11 border border-white/5">
           <motion.div 
@@ -141,7 +133,7 @@ export default function ContentsPage() {
                 </div>
               </section>
 
-              {/* 타임 캡슐 섹션 (기존 유지) */}
+              {/* 타임 캡슐 섹션 */}
               <section>
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <Hourglass className="w-4 h-4 text-orange-400" />
@@ -172,7 +164,7 @@ export default function ContentsPage() {
             </motion.div>
           )}
 
-          {/* === TAB 2: 프리미엄 멤버십 (디자인 전면 수정) === */}
+          {/* === TAB 2: 프리미엄 멤버십 === */}
           {activeTab === 'membership' && (
             <motion.div key="membership" variants={fadeVariants} initial="hidden" animate="visible" exit="exit" className="space-y-6">
               
@@ -191,7 +183,7 @@ export default function ContentsPage() {
               {/* 2. 멤버십 플랜 리스트 */}
               <div className="space-y-4">
                 
-                {/* [BEST] 연간 플랜 (강조형) */}
+                {/* [BEST] 연간 플랜 */}
                 <button 
                   onClick={() => handleSubscription('grain_yearly', '연간 멤버십')}
                   className="relative w-full p-1 rounded-3xl bg-gradient-to-r from-orange-500 via-red-500 to-purple-600 shadow-[0_0_20px_rgba(236,80,34,0.3)] active:scale-[0.98] transition-transform"
@@ -221,7 +213,7 @@ export default function ContentsPage() {
                   </div>
                 </button>
 
-                {/* 월간 플랜 (기본형) */}
+                {/* 월간 플랜 */}
                 <button 
                   onClick={() => handleSubscription('grain_monthly', '월간 멤버십')}
                   className="w-full p-5 bg-[#1C1C1E] border border-white/5 rounded-3xl flex items-center justify-between active:bg-[#2C2C2E] transition-colors"

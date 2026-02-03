@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ArrowLeft, Share2, Clock, MessageCircle, 
-  Heart, TrendingUp, Calendar, Download,
+  Heart, TrendingUp, Download,
   Search, User as UserIcon, Briefcase, Home, ChevronRight, AlertCircle
+  // [수정] Calendar 제거 (사용 안 함)
 } from 'lucide-react';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
@@ -42,7 +43,8 @@ export default function ReportResultPage() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
-  const [selectedRelation, setSelectedRelation] = useState<typeof RELATION_TYPES[0] | null>(null);
+  
+  // [수정] selectedRelation 제거 (사용 안 함)
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -53,7 +55,6 @@ export default function ReportResultPage() {
     const fetchFriends = async () => {
       try {
         setLoadingFriends(true);
-        // Supabase Query: friendships 테이블과 public.users를 조인
         const { data, error } = await supabase
           .from('friendships')
           .select(`
@@ -66,7 +67,7 @@ export default function ReportResultPage() {
             )
           `)
           .eq('user_id', user.id)
-          .eq('status', 'accepted'); // 수락된 친구만
+          .eq('status', 'accepted');
 
         if (error) {
             console.error('Supabase Error:', error);
@@ -96,7 +97,7 @@ export default function ReportResultPage() {
     LocalNotifications.requestPermissions();
   }, []);
 
-  // 3. 분석 로직 (실제 대화 카운트)
+  // 3. 분석 로직
   const startAnalysis = async () => {
     if (!user || !selectedFriend) return;
     setStep('analyzing');
@@ -180,7 +181,7 @@ export default function ReportResultPage() {
     else if (step === 'result') navigate(-1);
   };
 
-  // --- 렌더링 (이전과 동일하지만 중요 로직은 위에서 처리됨) ---
+  // --- 렌더링 ---
   const renderUserSelection = () => (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-5">
       <h2 className="text-xl font-bold text-white mb-2">누구와의 관계를<br/>알아볼까요?</h2>
@@ -254,7 +255,7 @@ export default function ReportResultPage() {
             <button
               key={type.id}
               onClick={() => {
-                setSelectedRelation(type);
+                // [수정] setSelectedRelation 제거 후 바로 분석 시작
                 startAnalysis();
               }}
               className="relative w-full p-5 rounded-2xl bg-[#1C1C1E] border border-white/5 hover:border-white/20 active:scale-[0.98] transition-all text-left flex items-center justify-between group"
