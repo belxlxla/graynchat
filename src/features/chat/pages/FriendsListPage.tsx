@@ -34,6 +34,72 @@ interface MyProfile {
 type StepType = 'permission' | 'complete' | 'list';
 type ChatStepType = 'select-type' | 'select-friends';
 
+// ✅ 실제 연락처 동기화 유틸리티
+const requestContactsPermission = async (): Promise<boolean> => {
+  try {
+    // ✅ Web Contacts API 사용 (Chrome, Edge 등에서 지원)
+    if ('contacts' in navigator && 'ContactsManager' in window) {
+      const props = ['name', 'tel'];
+      const opts = { multiple: true };
+      
+      // @ts-ignore - Contacts API는 실험적 기능
+      const contacts = await navigator.contacts.select(props, opts);
+      
+      if (contacts && contacts.length > 0) {
+        // 연락처 정보를 localStorage에 저장
+        const contactsData = contacts.map((contact: any) => ({
+          name: contact.name?.[0] || '',
+          phone: contact.tel?.[0] || ''
+        }));
+        localStorage.setItem('grayn_synced_contacts', JSON.stringify(contactsData));
+        return true;
+      }
+      return false;
+    } 
+    
+    // ✅ iOS PWA (Safari)
+    // @ts-ignore
+    if (window.webkit?.messageHandlers?.contacts) {
+      return new Promise((resolve) => {
+        // @ts-ignore
+        window.webkit.messageHandlers.contacts.postMessage({ action: 'request' });
+        
+        // iOS에서 메시지 응답 대기
+        // @ts-ignore
+        window.handleContactsResponse = (granted: boolean) => {
+          resolve(granted);
+        };
+      });
+    }
+    
+    // ✅ Android PWA
+    // @ts-ignore
+    if (window.Android?.requestContacts) {
+      // @ts-ignore
+      const result = await window.Android.requestContacts();
+      return result === 'granted';
+    }
+    
+    // ✅ 지원하지 않는 브라우저
+    toast('이 브라우저는 연락처 동기화를 지원하지 않습니다.', { icon: '⚠️' });
+    return false;
+    
+  } catch (error) {
+    console.error('Contacts permission error:', error);
+    return false;
+  }
+};
+
+// ✅ 동기화된 연락처 가져오기
+const getSyncedContacts = (): Array<{ name: string; phone: string }> => {
+  try {
+    const data = localStorage.getItem('grayn_synced_contacts');
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+};
+
 export default function FriendsListPage() {
   const navigate = useNavigate();
 
@@ -65,13 +131,82 @@ export default function FriendsListPage() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const handleAllowContacts = useCallback(() => {
-    localStorage.setItem('grayn_contact_permission', 'granted');
-    setStep('complete');
-    setTimeout(() => {
-      setStep('list');
-    }, 1500);
+  // ✅ 실제 연락처 동기화 핸들러
+  const handleAllowContacts = useCallback(async () => {
+    const loadingToast = toast.loading('연락처 권한을 요청하는 중...');
+    
+    const granted = await requestContactsPermission();
+    
+    toast.dismiss(loadingToast);
+    
+    if (granted) {
+      localStorage.setItem('grayn_contact_permission', 'granted');
+      toast.success('연락처 동기화가 완료되었습니다!');
+      setStep('complete');
+      
+      // ✅ 동기화된 연락처로 친구 자동 추가 (선택사항)
+      await syncContactsToFriends();
+      
+      setTimeout(() => {
+        setStep('list');
+      }, 1500);
+    } else {
+      toast.error('연락처 권한이 거부되었습니다.');
+    }
   }, []);
+
+  // ✅ 동기화된 연락처를 friends 테이블에 자동 추가
+  const syncContactsToFriends = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
+
+      const contacts = getSyncedContacts();
+      if (contacts.length === 0) return;
+
+      const syncPromises = contacts.map(async (contact) => {
+        if (!contact.phone) return;
+
+        // 그레인 사용자 중 해당 전화번호가 있는지 확인
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, name, avatar, phone, status_message')
+          .eq('phone', contact.phone)
+          .neq('id', session.user.id)
+          .maybeSingle();
+
+        if (users) {
+          // 이미 친구인지 확인
+          const { data: existing } = await supabase
+            .from('friends')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .eq('friend_user_id', users.id)
+            .maybeSingle();
+
+          if (!existing) {
+            // 친구 추가
+            await supabase.from('friends').insert({
+              user_id: session.user.id,
+              friend_user_id: users.id,
+              name: users.name,
+              phone: users.phone,
+              avatar: users.avatar,
+              status: users.status_message,
+              friendly_score: 50,
+              is_favorite: false,
+              is_blocked: false
+            });
+          }
+        }
+      });
+
+      await Promise.all(syncPromises);
+      toast.success('연락처에서 그레인 사용자를 찾았습니다!');
+    } catch (error) {
+      console.error('Sync contacts error:', error);
+    }
+  };
 
   const fetchMyProfile = useCallback(async () => {
     try {
@@ -378,7 +513,10 @@ export default function FriendsListPage() {
             허용하기
           </button>
           <button 
-            onClick={() => setStep('list')} 
+            onClick={() => {
+              localStorage.setItem('grayn_contact_permission', 'denied');
+              setStep('list');
+            }} 
             className="mt-4 text-[#8E8E93] text-sm"
           >
             나중에 하기
@@ -944,7 +1082,6 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
   );
 }
 
-// ✅ 개선된 친구 추가 모달
 function AddFriendModal({ isOpen, onClose, onFriendAdded }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -974,13 +1111,11 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
 
       const cleanPhone = phone.replace(/[^0-9]/g, '');
 
-      // ✅ 전화번호로만 검색 (이름은 필터링용)
       let query = supabase
         .from('users')
         .select('id, name, avatar, status_message, phone')
         .eq('phone', cleanPhone);
 
-      // 이름이 입력되었으면 추가 필터
       if (name.trim()) {
         query = query.ilike('name', `%${name.trim()}%`);
       }
@@ -996,7 +1131,6 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
         return;
       }
 
-      // 본인 제외
       const filtered = users.filter(u => u.id !== session.user.id);
 
       if (filtered.length === 0) {
@@ -1030,7 +1164,6 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
         return;
       }
 
-      // 이미 친구인지 확인
       const { data: alreadyFriend } = await supabase
         .from('friends')
         .select('id')
@@ -1392,91 +1525,92 @@ function CreateChatModal({ isOpen, onClose, friends }: {
                   placeholder="이름 검색" 
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none" 
-                />
-                {searchTerm && (
-                  <button onClick={() => setSearchTerm('')}>
-                    <X className="w-4 h-4 text-[#8E8E93]" />
-                  </button>
-                )}
-              </div>
-            </div>
+                  className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none"
+/>
+{searchTerm && (
+<button onClick={() => setSearchTerm('')}>
+<X className="w-4 h-4 text-[#8E8E93]" />
+</button>
+)}
+</div>
+</div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-              {filteredFriends.length > 0 ? (
-                filteredFriends.map(friend => { 
-                  const isSelected = selectedIds.includes(friend.id); 
-                  return (
-                    <div 
-                      key={friend.id} 
-                      onClick={() => toggleSelection(friend.id)} 
-                      className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
-                        isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
-                        {friend.avatar ? (
-                          <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/>
-                        ) : (
-                          <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
-                          {friend.name}
-                        </p>
-                      </div>
-                      {isSelected ? (
-                        <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/20" />
-                      ) : (
-                        <Circle className="text-[#3A3A3C] w-5 h-5" />
-                      )}
-                    </div>
-                  ) 
-                })
-              ) : (
-                <div className="flex flex-col items-center justify-center h-32 text-[#636366]">
-                  <p className="text-sm">검색 결과가 없습니다.</p>
+<div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+          {filteredFriends.length > 0 ? (
+            filteredFriends.map(friend => { 
+              const isSelected = selectedIds.includes(friend.id); 
+              return (
+                <div 
+                  key={friend.id} 
+                  onClick={() => toggleSelection(friend.id)} 
+                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
+                    isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
+                    {friend.avatar ? (
+                      <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/>
+                    ) : (
+                      <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
+                      {friend.name}
+                    </p>
+                  </div>
+                  {isSelected ? (
+                    <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/20" />
+                  ) : (
+                    <Circle className="text-[#3A3A3C] w-5 h-5" />
+                  )}
                 </div>
-              )}
+              ) 
+            })
+          ) : (
+            <div className="flex flex-col items-center justify-center h-32 text-[#636366]">
+              <p className="text-sm">검색 결과가 없습니다.</p>
             </div>
-            <div className="p-4 border-t border-[#2C2C2E] shrink-0">
-              <button 
-                onClick={handleCreate} 
-                disabled={selectedIds.length === 0} 
-                className={`w-full h-12 rounded-xl font-bold text-white transition-all ${
-                  selectedIds.length > 0 
-                    ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' 
-                    : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'
-                }`}
-              >
-                {selectedIds.length}명과 시작하기
-              </button>
-            </div>
-          </>
-        )}
-      </motion.div>
-    </ModalBackdrop>
-  );
+          )}
+        </div>
+        <div className="p-4 border-t border-[#2C2C2E] shrink-0">
+          <button 
+            onClick={handleCreate} 
+            disabled={selectedIds.length === 0} 
+            className={`w-full h-12 rounded-xl font-bold text-white transition-all ${
+              selectedIds.length > 0 
+                ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' 
+                : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'
+            }`}
+          >
+            {selectedIds.length}명과 시작하기
+          </button>
+        </div>
+      </>
+    )}
+  </motion.div>
+</ModalBackdrop>
+
+);
+}
+function ModalBackdrop({ children, onClick }: {
+children: React.ReactNode;
+onClick?: () => void
+}) {
+return (
+<div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClick}>
+<motion.div
+initial={{ opacity: 0 }}
+animate={{ opacity: 1 }}
+exit={{ opacity: 0 }}
+className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+/>
+<div className="relative z-10 w-full flex justify-center pointer-events-none">
+<div className="pointer-events-auto w-full flex justify-center">
+{children}
+</div>
+</div>
+</div>
+);
 }
 
-function ModalBackdrop({ children, onClick }: { 
-  children: React.ReactNode; 
-  onClick?: () => void 
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClick}>
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        exit={{ opacity: 0 }} 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
-      />
-      <div className="relative z-10 w-full flex justify-center pointer-events-none">
-        <div className="pointer-events-auto w-full flex justify-center">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
