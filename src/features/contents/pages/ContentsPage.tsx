@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FileText, MessageSquare, Sparkles, 
   ChevronRight, Hourglass, Send, Clock, Archive, Lock, Unlock,
@@ -31,11 +30,9 @@ export default function ContentsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // 권한 및 로딩 상태
-  const [hasTimeCapsuleAccess, setHasTimeCapsuleAccess] = useState(false);
-  const [hasReportAccess, setHasReportAccess] = useState(false);
+  // 결제 로딩 및 타겟 상태
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
-  const [paymentTarget, setPaymentTarget] = useState<'capsule_unlock' | 'new_capsule' | 'report' | null>(null);
+  const [paymentTarget, setPaymentTarget] = useState<'capsule' | 'report' | null>(null);
   
   // 타임캡슐 데이터 상태
   const [activeTab, setActiveTab] = useState<TabType>('sent');
@@ -43,20 +40,7 @@ export default function ContentsPage() {
   const [receivedCapsules, setReceivedCapsules] = useState<TimeCapsule[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
 
-  // 1. 권한 체크
-  useEffect(() => {
-    const checkAccess = () => {
-      if (!user?.id) return;
-      const capsuleAccess = localStorage.getItem(`timecapsule_access_${user.id}`);
-      const reportAccess = localStorage.getItem(`report_access_${user.id}`);
-      
-      if (capsuleAccess === 'true') setHasTimeCapsuleAccess(true);
-      if (reportAccess === 'true') setHasReportAccess(true);
-    };
-    checkAccess();
-  }, [user]);
-
-  // 2. 타임캡슐 데이터 로드
+  // 1. 타임캡슐 데이터 로드
   useEffect(() => {
     if (!user?.id) {
       setIsDataLoading(false);
@@ -65,6 +49,7 @@ export default function ContentsPage() {
 
     const fetchCapsules = async () => {
       try {
+        // 보낸 캡슐 조회
         const { data: sentData } = await supabase
           .from('time_capsules')
           .select('*')
@@ -82,6 +67,7 @@ export default function ContentsPage() {
           })));
         }
 
+        // 받은 캡슐 조회
         const { data: receivedData } = await supabase
           .from('time_capsules')
           .select('*')
@@ -109,7 +95,7 @@ export default function ContentsPage() {
   }, [user]);
 
   // --- 결제 및 페이지 이동 핸들러 ---
-  const handlePaymentAndNavigate = async (type: 'capsule_unlock' | 'new_capsule' | 'report') => {
+  const handlePaymentAndNavigate = async (type: 'capsule' | 'report') => {
     if (!user?.id) return;
     
     setIsPaymentLoading(true);
@@ -119,16 +105,12 @@ export default function ContentsPage() {
       // 결제 시뮬레이션 (1.5초)
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      if (type === 'capsule_unlock') {
-        localStorage.setItem(`timecapsule_access_${user.id}`, 'true');
-        setHasTimeCapsuleAccess(true);
-        toast.success('타임캡슐 기능이 해제되었습니다.');
-      } else if (type === 'new_capsule') {
+      if (type === 'capsule') {
+        // 4,900원 결제 성공 시 -> 생성 페이지로 이동
         toast.success('4,900원 결제 완료! 캡슐을 생성합니다.');
         navigate('/time-capsule/create');
       } else {
-        localStorage.setItem(`report_access_${user.id}`, 'true');
-        setHasReportAccess(true);
+        // 2,900원 결제 성공 시 -> 리포트 페이지로 이동
         toast.success('2,900원 결제 완료! 리포트를 분석합니다.');
         navigate('/main/contents/report');
       }
@@ -140,7 +122,7 @@ export default function ContentsPage() {
     }
   };
 
-  // --- Helper ---
+  // --- Helper Functions ---
   const getTimeRemaining = (unlockAt: string) => {
     const diff = new Date(unlockAt).getTime() - new Date().getTime();
     if (diff <= 0) return '잠금 해제됨';
@@ -168,141 +150,110 @@ export default function ContentsPage() {
             <h2 className="text-lg font-bold">타임캡슐</h2>
           </div>
 
-          {!hasTimeCapsuleAccess ? (
-            // [구매 전] 기능 잠금 해제 (6,900원)
+          <div className="space-y-4">
+            {/* 새 캡슐 보내기 버튼 (결제 트리거) */}
             <button
-              onClick={() => handlePaymentAndNavigate('capsule_unlock')}
+              onClick={() => handlePaymentAndNavigate('capsule')}
               disabled={isPaymentLoading}
-              className="w-full bg-[#1C1C1E] border border-white/10 rounded-2xl p-6 text-left active:scale-[0.98] transition-transform relative overflow-hidden"
+              className="w-full bg-[#1C1C1E] border border-white/10 rounded-2xl p-5 flex items-center justify-between active:scale-[0.98] transition-transform relative overflow-hidden group"
             >
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 bg-[#2C2C2E] rounded-2xl flex items-center justify-center">
-                  <Hourglass className="w-6 h-6 text-orange-500" />
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-[#2C2C2E] rounded-xl flex items-center justify-center text-orange-500 group-hover:text-white transition-colors">
+                  <Send className="w-6 h-6" />
                 </div>
-                <div className="bg-[#2C2C2E] px-3 py-1.5 rounded-lg border border-white/5">
-                  <span className="text-sm font-bold text-orange-500">₩6,900</span>
+                <div className="text-left">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="font-bold text-white text-lg">새 캡슐 보내기</p>
+                    <span className="text-[11px] font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">
+                      ₩4,900
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-400">친구에게 미래의 감동을 선물하세요</p>
                 </div>
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">미래로 보내는 편지</h3>
-              <p className="text-sm text-gray-400 leading-relaxed mb-6">
-                지정한 날짜에만 열리는 특별한 메시지.<br/>
-                평생 간직할 추억을 선물하세요.
-              </p>
               
-              <div className="w-full h-12 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-2">
-                {isPaymentLoading && paymentTarget === 'capsule_unlock' ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <><span>기능 잠금 해제</span><Unlock className="w-4 h-4" /></>
-                )}
-              </div>
+              {isPaymentLoading && paymentTarget === 'capsule' ? (
+                <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
+              ) : (
+                <ChevronRight className="w-6 h-6 text-gray-600 group-hover:text-white" />
+              )}
             </button>
-          ) : (
-            <div className="space-y-4">
-              {/* 새 캡슐 보내기 버튼 (결제 트리거) */}
-              <button
-                onClick={() => handlePaymentAndNavigate('new_capsule')}
-                disabled={isPaymentLoading}
-                className="w-full bg-[#1C1C1E] border border-white/10 rounded-2xl p-5 flex items-center justify-between active:scale-[0.98] transition-transform relative overflow-hidden group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-[#2C2C2E] rounded-xl flex items-center justify-center text-orange-500 group-hover:text-white transition-colors">
-                    <Send className="w-6 h-6" />
+
+            {/* 탭 & 리스트 (기존 내역 확인용) */}
+            <div className="bg-[#1C1C1E] rounded-2xl border border-[#2C2C2E] overflow-hidden">
+              <div className="flex border-b border-[#2C2C2E]">
+                <button
+                  onClick={() => setActiveTab('sent')}
+                  className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'sent' ? 'text-white bg-[#252525]' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  보낸 캡슐 ({sentCapsules.length})
+                </button>
+                <div className="w-[1px] bg-[#2C2C2E]" />
+                <button
+                  onClick={() => setActiveTab('received')}
+                  className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'received' ? 'text-white bg-[#252525]' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  받은 캡슐 ({receivedCapsules.length})
+                </button>
+              </div>
+
+              <div className="p-3 min-h-[150px]">
+                {isDataLoading ? (
+                  <div className="flex flex-col items-center justify-center h-40 text-gray-500 gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+                    <span className="text-xs">데이터 불러오는 중</span>
                   </div>
-                  <div className="text-left">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-bold text-white text-lg">새 캡슐 보내기</p>
-                      <span className="text-[11px] font-bold text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">
-                        ₩4,900
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-400">친구에게 미래의 감동을 선물하세요</p>
-                  </div>
-                </div>
-                
-                {isPaymentLoading && paymentTarget === 'new_capsule' ? (
-                  <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
                 ) : (
-                  <ChevronRight className="w-6 h-6 text-gray-600 group-hover:text-white" />
-                )}
-              </button>
-
-              {/* 탭 & 리스트 (기존 내역 확인용) */}
-              <div className="bg-[#1C1C1E] rounded-2xl border border-[#2C2C2E] overflow-hidden">
-                <div className="flex border-b border-[#2C2C2E]">
-                  <button
-                    onClick={() => setActiveTab('sent')}
-                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'sent' ? 'text-white bg-[#252525]' : 'text-gray-500 hover:text-gray-300'}`}
-                  >
-                    보낸 캡슐 ({sentCapsules.length})
-                  </button>
-                  <div className="w-[1px] bg-[#2C2C2E]" />
-                  <button
-                    onClick={() => setActiveTab('received')}
-                    className={`flex-1 py-4 text-sm font-medium transition-colors ${activeTab === 'received' ? 'text-white bg-[#252525]' : 'text-gray-500 hover:text-gray-300'}`}
-                  >
-                    받은 캡슐 ({receivedCapsules.length})
-                  </button>
-                </div>
-
-                <div className="p-3 min-h-[150px]">
-                  {isDataLoading ? (
-                    <div className="flex flex-col items-center justify-center h-40 text-gray-500 gap-2">
-                      <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
-                      <span className="text-xs">데이터 불러오는 중</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {(activeTab === 'sent' ? sentCapsules : receivedCapsules).length === 0 ? (
-                        <div className="text-center py-12 text-gray-500">
-                          <Archive className="w-10 h-10 mx-auto mb-3 opacity-20" />
-                          <p className="text-sm font-medium">
-                            {activeTab === 'sent' ? '보낸 타임캡슐이 없습니다.' : '받은 타임캡슐이 없습니다.'}
-                          </p>
-                        </div>
-                      ) : (
-                        (activeTab === 'sent' ? sentCapsules : receivedCapsules).map(c => {
-                          const locked = !canView(c);
-                          const name = activeTab === 'sent' ? c.receiver_name : c.sender_name;
-                          
-                          return (
-                            <div key={c.id} 
-                              onClick={() => !locked && activeTab === 'received' && navigate(`/time-capsule/view/${c.id}`)}
-                              className={`p-4 rounded-xl border flex items-center justify-between transition-colors ${
-                                locked 
-                                  ? 'bg-[#151515] border-[#252525] text-gray-500' 
-                                  : 'bg-[#252525] border-orange-500/20 text-white cursor-pointer hover:bg-[#2a2a2a]'
-                              }`}
-                            >
-                              <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${locked ? 'bg-[#2C2C2E]' : 'bg-orange-500/10'}`}>
-                                  {locked ? <Lock className="w-5 h-5 text-gray-600" /> : <Unlock className="w-5 h-5 text-orange-500" />}
-                                </div>
-                                <div>
-                                  <p className="text-base font-bold mb-0.5">{name}</p>
-                                  <p className="text-xs opacity-70 flex items-center gap-1.5">
-                                    <Clock className="w-3 h-3" /> {getTimeRemaining(c.unlock_at)}
-                                  </p>
-                                </div>
+                  <div className="space-y-3">
+                    {(activeTab === 'sent' ? sentCapsules : receivedCapsules).length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">
+                        <Archive className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm font-medium">
+                          {activeTab === 'sent' ? '보낸 타임캡슐이 없습니다.' : '받은 타임캡슐이 없습니다.'}
+                        </p>
+                      </div>
+                    ) : (
+                      (activeTab === 'sent' ? sentCapsules : receivedCapsules).map(c => {
+                        const locked = !canView(c);
+                        const name = activeTab === 'sent' ? c.receiver_name : c.sender_name;
+                        
+                        return (
+                          <div key={c.id} 
+                            onClick={() => !locked && activeTab === 'received' && navigate(`/time-capsule/view/${c.id}`)}
+                            className={`p-4 rounded-xl border flex items-center justify-between transition-colors ${
+                              locked 
+                                ? 'bg-[#151515] border-[#252525] text-gray-500' 
+                                : 'bg-[#252525] border-orange-500/20 text-white cursor-pointer hover:bg-[#2a2a2a]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${locked ? 'bg-[#2C2C2E]' : 'bg-orange-500/10'}`}>
+                                {locked ? <Lock className="w-5 h-5 text-gray-600" /> : <Unlock className="w-5 h-5 text-orange-500" />}
                               </div>
-                              {activeTab === 'sent' && canEdit(c) && (
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); navigate(`/time-capsule/edit/${c.id}`); }}
-                                  className="text-xs font-bold text-white bg-[#3A3A3C] px-3 py-1.5 rounded-lg hover:bg-[#48484A] transition-colors"
-                                >
-                                  수정
-                                </button>
-                              )}
+                              <div>
+                                <p className="text-base font-bold mb-0.5">{name}</p>
+                                <p className="text-xs opacity-70 flex items-center gap-1.5">
+                                  <Clock className="w-3 h-3" /> {getTimeRemaining(c.unlock_at)}
+                                </p>
+                              </div>
                             </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
+                            {activeTab === 'sent' && canEdit(c) && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); navigate(`/time-capsule/edit/${c.id}`); }}
+                                className="text-xs font-bold text-white bg-[#3A3A3C] px-3 py-1.5 rounded-lg hover:bg-[#48484A] transition-colors"
+                              >
+                                수정
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-          )}
+          </div>
         </section>
 
         <div className="h-[1px] bg-[#2C2C2E]" />
@@ -322,12 +273,11 @@ export default function ContentsPage() {
           >
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-[#2C2C2E] rounded-xl flex items-center justify-center text-purple-500 group-hover:text-white transition-colors">
-                <FileText className="w-6 h-6" />
+                <Sparkles className="w-6 h-6" />
               </div>
               <div className="text-left">
                 <div className="flex items-center gap-2 mb-0.5">
                   <p className="font-bold text-white text-lg">AI 친구 리포트</p>
-                  {/* [수정] 요청하신 2,900원 가격표 추가 */}
                   <span className="text-[11px] font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
                     ₩2,900
                   </span>
