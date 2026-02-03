@@ -837,7 +837,7 @@ export default function ChatRoomPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-orange-400">
-                  {timeCapsuleNotice.receiver_name}님께 타임캡슐 전송됨
+                  {timeCapsuleNotice.receiver_name}님 타임캡슐 도착
                 </p>
                 <p className="text-xs text-orange-300/80 mt-0.5">
                   잠금 해제까지: {timeRemaining || getTimeUntilUnlock()}
