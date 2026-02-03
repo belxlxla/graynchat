@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ArrowLeft, Share2, Clock, MessageCircle, 
+  ArrowLeft, MessageCircle, 
   Heart, TrendingUp, Download,
   Search, User as UserIcon, Briefcase, Home, ChevronRight, AlertCircle,
-  Thermometer, Activity, Sparkles, Zap, Brain, ThumbsUp, Star
+  Thermometer, Activity, Sparkles, Brain, ThumbsUp, Star
 } from 'lucide-react';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
@@ -16,7 +16,6 @@ import { Share } from '@capacitor/share';
 import html2canvas from 'html2canvas';
 import toast from 'react-hot-toast';
 
-// 카테고리 정의
 const RELATION_TYPES = [
   { id: 'dating', label: '썸 · 연인', icon: Heart, color: 'text-pink-400', bg: 'bg-pink-500/10', desc: '애정도와 설렘 분석' },
   { id: 'friend', label: '찐친 · 우정', icon: UserIcon, color: 'text-green-400', bg: 'bg-green-500/10', desc: '티키타카와 의리 분석' },
@@ -31,28 +30,19 @@ interface Friend {
   avatar: string | null;
 }
 
-// 상세 분석 결과 인터페이스
 interface AnalysisResult {
-  score: number; // 0~100 종합 점수
+  score: number;
   totalMessages: number;
   myShare: number;
   friendShare: number;
-  
-  // 공통 지표
   avgReplyTime: string;
   topKeywords: string[];
-  
-  // 카테고리별 특화 데이터
-  category: string; // dating, friend, business, family
-  mainTitle: string; // ex) "운명의 데스티니", "환상의 콤비"
-  subTitle: string; // ex) "서로에게 푹 빠져있네요!"
-  
-  // 상세 스탯 (3가지)
-  stat1Label: string; stat1Value: number; // ex) 애정 온도
-  stat2Label: string; stat2Value: number; // ex) 밀당 지수
-  stat3Label: string; stat3Value: number; // ex) 소통 빈도
-  
-  // AI 코멘트
+  category: string;
+  mainTitle: string;
+  subTitle: string;
+  stat1Label: string; stat1Value: number;
+  stat2Label: string; stat2Value: number;
+  stat3Label: string; stat3Value: number;
   detailedAnalysis: string;
   advice: string;
 }
@@ -65,15 +55,12 @@ export default function ReportResultPage() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
-  const [selectedRelationId, setSelectedRelationId] = useState<string>('friend'); // 기본값
   
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // 이미지 저장을 위한 Ref
   const resultRef = useRef<HTMLDivElement>(null);
 
-  // 1. 친구 목록 로드
   useEffect(() => {
     if (!user) return;
 
@@ -100,7 +87,6 @@ export default function ReportResultPage() {
     fetchFriends();
   }, [user]);
 
-  // 2. 알림 권한
   useEffect(() => {
     const requestPerms = async () => {
       await LocalNotifications.requestPermissions();
@@ -108,19 +94,15 @@ export default function ReportResultPage() {
     requestPerms();
   }, []);
 
-  // 3. 관계 유형 선택 후 분석 시작
   const handleRelationSelect = (relationId: string) => {
-    setSelectedRelationId(relationId);
     startAnalysis(relationId);
   };
 
-  // 4. 고도화된 분석 로직 (카테고리별 분기 처리)
   const startAnalysis = async (relationId: string) => {
     if (!user || !selectedFriend) return;
     setStep('analyzing');
 
     try {
-      // (1) 실제 대화 데이터 조회
       const { data: myRooms } = await supabase.from('room_members').select('room_id').eq('user_id', user.id);
       const { data: friendRooms } = await supabase.from('room_members').select('room_id').eq('user_id', selectedFriend.friend_user_id);
       
@@ -137,7 +119,7 @@ export default function ReportResultPage() {
           .select('sender_id, created_at, content')
           .eq('room_id', commonRoomId)
           .order('created_at', { ascending: false })
-          .limit(2000); // 최대 2000개 분석
+          .limit(2000);
 
         if (msgs && msgs.length > 0) {
           totalCount = msgs.length;
@@ -145,56 +127,53 @@ export default function ReportResultPage() {
         }
       }
 
-      // (2) 기본 지표 계산
       const myShare = totalCount > 0 ? Math.round((myCount / totalCount) * 100) : 0;
       const friendShare = 100 - myShare;
       
-      // 점수 계산 (대화량 + 밸런스 + 관계 유형 가중치)
-      let baseScore = Math.min((totalCount / 300) * 50, 50); // 대화량 점수 (50점 만점)
-      const balanceRatio = Math.abs(0.5 - (myShare / 100)); // 0에 가까울수록 좋음
-      const balanceScore = Math.max(0, 40 - (balanceRatio * 80)); // 밸런스 점수 (40점 만점)
-      const bonusScore = 10 + Math.floor(Math.random() * 10); // AI 보정치 (10~20점)
+      let baseScore = Math.min((totalCount / 300) * 50, 50);
+      const balanceRatio = Math.abs(0.5 - (myShare / 100));
+      const balanceScore = Math.max(0, 40 - (balanceRatio * 80));
+      const bonusScore = 10 + Math.floor(Math.random() * 10);
       
       let finalScore = Math.min(100, Math.floor(baseScore + balanceScore + bonusScore));
-      if (totalCount < 10) finalScore = Math.floor(Math.random() * 30) + 10; // 대화가 너무 적을 때
+      if (totalCount < 10) finalScore = Math.floor(Math.random() * 30) + 10;
 
-      // (3) 카테고리별 맞춤형 리포트 생성 (Generative Logic Simulation)
       let resultData: Partial<AnalysisResult> = {};
 
-      if (relationId === 'dating') { // 썸/연인
+      if (relationId === 'dating') {
         resultData = {
           mainTitle: finalScore >= 80 ? "🔥 불타는 로맨스" : finalScore >= 50 ? "💕 썸 타는 중" : "👀 탐색전 단계",
           subTitle: finalScore >= 80 ? "두 분의 애정 전선은 '맑음' 입니다!" : "조금 더 적극적인 표현이 필요해요.",
-          stat1Label: "애정 온도", stat1Value: Math.min(100, 36.5 + finalScore * 0.6), // 36.5 ~ 99.9
-          stat2Label: "밀당 지수", stat2Value: Math.floor(Math.random() * 40) + 30, // 랜덤성
+          stat1Label: "애정 온도", stat1Value: Math.min(100, 36.5 + finalScore * 0.6),
+          stat2Label: "밀당 지수", stat2Value: Math.floor(Math.random() * 40) + 30,
           stat3Label: "설렘 포인트", stat3Value: finalScore,
-          detailedAnalysis: `두 사람의 대화에서는 서로를 향한 관심이 ${finalScore >= 70 ? '매우 강하게' : '은근하게'} 드러나고 있습니다. 답장 속도와 이모티콘 사용 빈도를 볼 때, ${finalScore >= 70 ? '서로에게 푹 빠져있는 상태네요.' : '아직은 조심스럽게 알아가는 단계로 보입니다.'}`,
+          detailedAnalysis: `두 사람의 대화에서는 서로를 향한 관심이 ${finalScore >= 70 ? '매우 강하게' : '은근하게'} 드러나고 있습니다.`,
           advice: finalScore >= 80 ? "지금 이 분위기 그대로 데이트를 신청해보세요!" : "가벼운 질문으로 대화의 물꼬를 더 터보세요.",
           topKeywords: ['보고싶어', '사랑해', '뭐해?', '밥', '영화', '주말']
         };
-      } else if (relationId === 'friend') { // 우정
+      } else if (relationId === 'friend') {
         resultData = {
           mainTitle: finalScore >= 80 ? "💎 평생 갈 찐친" : finalScore >= 50 ? "🍺 술친구 가능" : "👋 어색한 사이",
           subTitle: finalScore >= 80 ? "눈빛만 봐도 통하는 영혼의 단짝!" : "친해지면 정말 잘 맞을 것 같아요.",
           stat1Label: "의리 지수", stat1Value: finalScore,
           stat2Label: "티키타카", stat2Value: Math.min(100, finalScore + 10),
           stat3Label: "개그 코드", stat3Value: Math.floor(Math.random() * 50) + 50,
-          detailedAnalysis: `대화의 핑퐁이 ${finalScore >= 70 ? '환상적입니다.' : '나쁘지 않습니다.'} 서로 부담 없이 연락할 수 있는 편안한 관계이며, ${finalScore >= 80 ? '비밀을 털어놓아도 될 만큼 신뢰가 두텁습니다.' : '공통된 관심사를 찾으면 더 급속도로 친해질 수 있습니다.'}`,
+          detailedAnalysis: `대화의 핑퐁이 ${finalScore >= 70 ? '환상적입니다.' : '나쁘지 않습니다.'} 서로 부담 없이 연락할 수 있는 편안한 관계입니다.`,
           advice: "이번 주말에 가볍게 맥주 한 잔 어떠세요?",
           topKeywords: ['ㅋㅋㅋ', '미친', '진짜', 'ㅇㅈ', '술', '노래방']
         };
-      } else if (relationId === 'business') { // 비즈니스
+      } else if (relationId === 'business') {
         resultData = {
           mainTitle: finalScore >= 80 ? "🤝 환상의 파트너" : finalScore >= 50 ? "📄 원만한 협업" : "🧊 사무적인 관계",
           subTitle: "업무 효율을 최대로 끌어올릴 수 있습니다.",
           stat1Label: "업무 호흡", stat1Value: finalScore,
           stat2Label: "신뢰도", stat2Value: finalScore + 5,
           stat3Label: "소통 명확성", stat3Value: 90,
-          detailedAnalysis: `군더더기 없는 깔끔한 소통이 특징입니다. ${finalScore >= 70 ? '업무 스타일이 잘 맞아 시너지가 기대됩니다.' : '서로의 업무 스타일에 적응해가는 단계입니다.'} 감정 소모 없이 일에 집중할 수 있는 최적의 파트너입니다.`,
+          detailedAnalysis: `군더더기 없는 깔끔한 소통이 특징입니다. ${finalScore >= 70 ? '업무 스타일이 잘 맞아 시너지가 기대됩니다.' : '서로의 업무 스타일에 적응해가는 단계입니다.'}`,
           advice: "업무 외적인 스몰토크로 라포를 형성해보세요.",
           topKeywords: ['확인', '감사합니다', '넵', '파일', '일정', '회의']
         };
-      } else { // 가족
+      } else {
         resultData = {
           mainTitle: finalScore >= 80 ? "❤️ 화목한 가족" : "🏠 현실 가족",
           subTitle: "가장 든든한 내 편입니다.",
@@ -207,7 +186,6 @@ export default function ReportResultPage() {
         };
       }
 
-      // 최종 데이터 병합
       const finalResult: AnalysisResult = {
         score: finalScore,
         totalMessages: totalCount,
@@ -222,13 +200,11 @@ export default function ReportResultPage() {
         stat2Label: resultData.stat2Label!, stat2Value: resultData.stat2Value!,
         stat3Label: resultData.stat3Label!, stat3Value: resultData.stat3Value!,
         detailedAnalysis: resultData.detailedAnalysis!,
-        advice: resultData.advice!,
-        comment: "" // Not used directly in new layout
+        advice: resultData.advice!
       };
 
       setAnalysisResult(finalResult);
 
-      // (4) 알림 및 결과 화면 이동
       setTimeout(async () => {
         await LocalNotifications.schedule({
           notifications: [
@@ -242,7 +218,7 @@ export default function ReportResultPage() {
           ]
         });
         setStep('result');
-      }, 3000); // 3초 분석 연출
+      }, 3000);
 
     } catch (e) {
       console.error('분석 에러:', e);
@@ -250,23 +226,20 @@ export default function ReportResultPage() {
     }
   };
 
-  // 4. 고품질 이미지 저장 핸들러
   const handleSaveImage = async () => {
     if (!resultRef.current || !selectedFriend) return;
     const loadingToast = toast.loading('고화질 리포트 생성 중...');
 
     try {
-      // 고해상도 캡처 설정
       const canvas = await html2canvas(resultRef.current, {
         useCORS: true,
-        scale: 3, // 3배 해상도 (깨짐 방지)
-        backgroundColor: '#141414', // 배경색 명시
+        scale: 3,
+        backgroundColor: '#141414',
         logging: false,
         onclone: (documentClone) => {
-          // 캡처 시에만 적용될 스타일 (필요하다면)
           const element = documentClone.getElementById('capture-target');
           if (element) {
-            element.style.padding = '40px'; // 여백 확보
+            element.style.padding = '40px';
           }
         }
       });
@@ -274,7 +247,6 @@ export default function ReportResultPage() {
       const base64Data = canvas.toDataURL('image/png', 1.0);
 
       if (Capacitor.isNativePlatform()) {
-        // 모바일: 파일 저장 후 공유 시트 열기
         const fileName = `grayn_report_${Date.now()}.png`;
         const savedFile = await Filesystem.writeFile({
           path: fileName,
@@ -290,7 +262,6 @@ export default function ReportResultPage() {
         
         toast.success('저장 옵션을 선택해주세요.', { id: loadingToast });
       } else {
-        // 웹: 다운로드
         const link = document.createElement('a');
         link.href = base64Data;
         link.download = `grayn_report_${selectedFriend.name}.png`;
@@ -309,7 +280,6 @@ export default function ReportResultPage() {
     else if (step === 'result') navigate(-1);
   };
 
-  // --- [UI 1] 친구 선택 ---
   const renderUserSelection = () => (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 flex flex-col h-full">
       <h2 className="text-2xl font-bold text-white mb-2">분석할 대상을<br/>선택해주세요</h2>
@@ -363,7 +333,6 @@ export default function ReportResultPage() {
     </motion.div>
   );
 
-  // --- [UI 2] 관계 유형 선택 ---
   const renderRelationSelection = () => (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-5 flex flex-col h-full">
       <h2 className="text-2xl font-bold text-white mb-2">어떤 사이인가요?</h2>
@@ -396,7 +365,6 @@ export default function ReportResultPage() {
     </motion.div>
   );
 
-  // --- [UI 3] 분석 중 (애니메이션) ---
   const renderAnalyzing = () => (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col items-center justify-center p-6 text-center">
       <div className="relative w-40 h-40 mb-10">
@@ -421,7 +389,6 @@ export default function ReportResultPage() {
     </motion.div>
   );
 
-  // --- [UI 4] 결과 리포트 (저장 대상) ---
   const renderResult = () => {
     if (!analysisResult) return null;
     const { 
@@ -430,20 +397,17 @@ export default function ReportResultPage() {
       stat2Label, stat2Value, stat3Label, stat3Value, detailedAnalysis, advice
     } = analysisResult;
     
-    // 점수 색상
     const scoreColor = score >= 80 ? 'text-pink-500' : score >= 50 ? 'text-purple-500' : 'text-blue-500';
     const borderColor = score >= 80 ? 'border-pink-500/50' : 'border-purple-500/50';
 
     return (
       <div className="animate-fade-in pb-20">
-        {/* === [이미지 저장 영역 시작] === */}
         <div 
           id="capture-target" 
           ref={resultRef} 
           className="bg-[#141414] p-6 text-white min-h-screen"
-          style={{ fontFamily: 'Pretendard, sans-serif' }} // 폰트 강제
+          style={{ fontFamily: 'Pretendard, sans-serif' }}
         >
-          {/* Header */}
           <div className="text-center mb-8 pt-4">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold tracking-widest text-gray-300 mb-4 border border-white/10">
               <Sparkles className="w-3 h-3 text-yellow-400" /> GRAIN PREMIUM REPORT
@@ -457,9 +421,7 @@ export default function ReportResultPage() {
             </p>
           </div>
 
-          {/* 1. Main Score Card */}
           <div className={`bg-[#1C1C1E] rounded-3xl p-6 border ${borderColor} relative overflow-hidden shadow-2xl mb-6`}>
-            {/* Background Effect */}
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-br from-purple-500/20 to-pink-500/20 blur-3xl rounded-full" />
             
             <div className="relative z-10 text-center">
@@ -476,7 +438,6 @@ export default function ReportResultPage() {
             </div>
           </div>
 
-          {/* 2. Hexagon Stats (3 columns) */}
           <div className="grid grid-cols-3 gap-3 mb-6">
             <div className="bg-[#1C1C1E] p-3 rounded-2xl border border-white/10 text-center flex flex-col items-center justify-center h-28">
               <div className="mb-2 p-2 bg-pink-500/10 rounded-full">
@@ -501,7 +462,6 @@ export default function ReportResultPage() {
             </div>
           </div>
 
-          {/* 3. Message Balance */}
           <div className="bg-[#1C1C1E] p-5 rounded-2xl border border-white/10 mb-6">
             <div className="flex justify-between items-center mb-3">
               <span className="text-xs font-bold text-gray-400">대화 점유율</span>
@@ -509,7 +469,7 @@ export default function ReportResultPage() {
             </div>
             <div className="h-4 bg-[#2C2C2E] rounded-full overflow-hidden flex relative">
               <div style={{ width: `${myShare}%` }} className="h-full bg-brand-DEFAULT" />
-              <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-black/50 z-10" /> {/* Center line */}
+              <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-black/50 z-10" />
             </div>
             <div className="flex justify-between mt-2 text-xs font-medium">
               <span className="text-brand-DEFAULT">나 {myShare}%</span>
@@ -517,7 +477,6 @@ export default function ReportResultPage() {
             </div>
           </div>
 
-          {/* 4. Detailed Analysis Text */}
           <div className="bg-[#1C1C1E] p-5 rounded-2xl border border-white/10 mb-6">
             <h4 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
               <Brain className="w-4 h-4 text-purple-400" /> AI 정밀 분석
@@ -525,6 +484,18 @@ export default function ReportResultPage() {
             <p className="text-sm text-gray-300 leading-relaxed text-justify">
               {detailedAnalysis}
             </p>
+            
+            <div className="mt-4 pt-4 border-t border-white/5 grid grid-cols-2 gap-4">
+               <div>
+                  <h5 className="text-xs text-gray-500 mb-1">평균 답장 시간</h5>
+                  <p className="text-sm font-bold text-white">{avgReplyTime}</p>
+               </div>
+               <div>
+                  <h5 className="text-xs text-gray-500 mb-1">소통 스타일</h5>
+                  <p className="text-sm font-bold text-white">상호작용 활발</p>
+               </div>
+            </div>
+
             <div className="mt-4 pt-4 border-t border-white/5">
               <h4 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                 <ThumbsUp className="w-4 h-4 text-green-400" /> 솔루션
@@ -533,7 +504,6 @@ export default function ReportResultPage() {
             </div>
           </div>
 
-          {/* 5. Keywords Tag Cloud */}
           <div className="flex flex-wrap gap-2 justify-center opacity-80">
             {topKeywords.map((word, i) => (
               <span key={i} className="px-3 py-1.5 bg-[#252529] rounded-lg text-xs text-gray-400 border border-white/5">
@@ -546,9 +516,7 @@ export default function ReportResultPage() {
             <p className="text-[9px] text-gray-700 tracking-widest">GENERATED BY GRAIN AI</p>
           </div>
         </div>
-        {/* === [이미지 저장 영역 끝] === */}
 
-        {/* 하단 고정 버튼 */}
         <div className="fixed bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-black via-black/90 to-transparent z-50">
           <button 
             onClick={handleSaveImage}
