@@ -109,7 +109,7 @@ export default function PhoneAuthPage() {
       }
 
       toast.success('인증되었습니다.');
-      // ✨ [수정 핵심] App.tsx에 정의된 경로인 /auth/profile-setup으로 이동
+      // [경로 수정] 인증 후 프로필 설정으로 이동
       navigate('/auth/profile-setup', { replace: true });
       
     } catch (error) {

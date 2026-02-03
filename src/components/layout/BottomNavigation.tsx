@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, MoreHorizontal, Layers, Rocket, Sparkles, X } from 'lucide-react';
+import { MessageCircle, MoreHorizontal, Layers, Sparkles } from 'lucide-react'; // Rocket, X 제거, Sparkles 추가
 import { supabase } from '../../shared/lib/supabaseClient';
 import { useAuth } from '../../features/auth/contexts/AuthContext';
 import GraynLogo from '../../assets/grayn_logo.svg';
@@ -11,13 +11,14 @@ export default function BottomNavigation() {
   const location = useLocation();
   const { user } = useAuth();
   
-  const [isContentModalOpen, setIsContentModalOpen] = useState(false);
+  // 모달 관련 state 제거됨
   const [hasUnreadChats, setHasUnreadChats] = useState(false);
 
   const navItems = [
     { id: 'friends', path: '/main/friends', icon: 'custom', label: '홈' },
     { id: 'chats', path: '/main/chats', icon: <MessageCircle className="w-7 h-7" />, label: '채팅' },
-    { id: 'contents', path: '/main/contents', icon: <Layers className="w-7 h-7" />, label: '콘텐츠' },
+    // 아이콘을 Layers -> Sparkles로 변경 (새로운 콘텐츠/스토어 느낌)
+    { id: 'contents', path: '/main/contents', icon: <Sparkles className="w-7 h-7" />, label: '콘텐츠' },
     { id: 'settings', path: '/main/settings', icon: <MoreHorizontal className="w-7 h-7" />, label: '설정' },
   ];
 
@@ -65,12 +66,9 @@ export default function BottomNavigation() {
     };
   }, [user]);
 
+  // 클릭 핸들러 단순화: 모달 조건문 제거하고 바로 이동
   const handleNavClick = (id: string, path: string) => {
-    if (id === 'contents') {
-      setIsContentModalOpen(true);
-    } else {
-      navigate(path);
-    }
+    navigate(path);
   };
 
   return (
@@ -147,76 +145,8 @@ export default function BottomNavigation() {
           );
         })}
       </nav>
-
-      {/* 콘텐츠 준비중 모달 */}
-      <AnimatePresence>
-        {isContentModalOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center px-6">
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
-              onClick={() => setIsContentModalOpen(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            />
-            
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-              animate={{ scale: 1, opacity: 1, y: 0 }} 
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="relative w-full max-w-[320px] bg-[#1C1C1E] border border-white/10 rounded-3xl p-8 overflow-hidden shadow-2xl text-center"
-            >
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-40 bg-brand-DEFAULT/20 blur-[60px] rounded-full pointer-events-none" />
-
-              <button 
-                onClick={() => setIsContentModalOpen(false)}
-                className="absolute top-4 right-4 text-[#8E8E93] hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="relative mb-6 flex justify-center">
-                <div className="w-20 h-20 bg-gradient-to-br from-[#3A3A3C] to-[#2C2C2E] rounded-full flex items-center justify-center shadow-inner border border-white/5 relative z-10">
-                  <Rocket className="w-10 h-10 text-brand-DEFAULT fill-brand-DEFAULT/20 -ml-1 -mt-1" />
-                </div>
-                
-                <motion.div 
-                  className="absolute -top-3 -right-2 z-20"
-                  animate={{ 
-                    y: [0, -8, 0],       
-                    rotate: [0, 20, -10], 
-                    scale: [1, 1.2, 1], 
-                    opacity: [0.8, 1, 0.8]
-                  }}
-                  transition={{ 
-                    duration: 3.5, 
-                    ease: "easeInOut", 
-                    repeat: Infinity,
-                    repeatType: "mirror"
-                  }}
-                >
-                  <Sparkles className="w-7 h-7 text-yellow-400 fill-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]" />
-                </motion.div>
-              </div>
-
-              <h3 className="text-xl font-bold text-white mb-3">그레인 콘텐츠</h3>
-              <div className="text-[13px] text-[#8E8E93] leading-relaxed space-y-1 mb-8">
-                <p>해당 페이지는 현재 그레인이</p>
-                <p>더 풍성한 앱이 되기 위해 <span className="text-brand-DEFAULT font-semibold">준비중</span>입니다.</p>
-                <p className="pt-2">잠시만 기다려주시면 곧 오픈하겠습니다!</p>
-              </div>
-
-              <button 
-                onClick={() => setIsContentModalOpen(false)}
-                className="w-full py-3.5 bg-brand-DEFAULT rounded-xl text-white font-bold text-sm hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20"
-              >
-                기대해주세요!
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      
+      {/* 모달(준비중 팝업) 코드는 제거되었습니다. 이제 /main/contents 페이지로 바로 이동합니다. */}
     </>
   );
 }

@@ -22,64 +22,68 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
 
-  // ✅ OAuth 콜백 처리
+  // ✅ OAuth 콜백 및 데이터 동기화 처리
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
           const user = session.user;
+          // provider 확인 (메타데이터 우선)
           const provider = user.app_metadata?.provider || 
                           user.app_metadata?.providers?.[0] || 
                           'email';
 
           console.log('✅ Sign in detected:', provider);
 
-          if (provider === 'apple' || provider === 'google') {
+          // 소셜 로그인인 경우 동기화 진행
+          if (provider !== 'email') {
             setIsOAuthProcessing(true);
 
             try {
               const userId = user.id;
               const userEmail = user.email;
               
-              let userName = userEmail?.split('@')[0] || '사용자';
-              if (user.user_metadata?.full_name) {
-                userName = user.user_metadata.full_name;
-              } else if (user.user_metadata?.name) {
-                userName = user.user_metadata.name;
-              }
+              // 이름 추출 (메타데이터 우선)
+              let userName = user.user_metadata?.full_name || 
+                             user.user_metadata?.name || 
+                             userEmail?.split('@')[0] || '사용자';
 
+              // 아바타 추출
               const userAvatar = user.user_metadata?.avatar_url || 
                                 user.user_metadata?.picture || 
                                 null;
 
-              // users 테이블 동기화
-              const { data: existingUser } = await supabase
-                .from('users')
-                .select('id')
-                .eq('id', userId)
-                .maybeSingle();
+              // 전화번호 추출 (메타데이터 우선)
+              const userPhone = user.user_metadata?.phone || 
+                               user.user_metadata?.mobile || 
+                               user.phone || 
+                               null;
 
-              if (!existingUser) {
-                await supabase.from('users').insert({
+              // [핵심] users 테이블 동기화 (Upsert)
+              // 기존 데이터가 있으면 update, 없으면 insert
+              const { error: upsertError } = await supabase
+                .from('users')
+                .upsert({
                   id: userId,
                   email: userEmail,
                   name: userName,
                   avatar: userAvatar,
-                  phone: null,
-                  status_message: '그레인을 시작했어요!',
-                });
-              } else {
-                await supabase.from('users').update({
-                  name: userName,
-                  avatar: userAvatar,
+                  // 전화번호가 있는 경우에만 업데이트 (기존 번호 유지를 위해)
+                  ...(userPhone && { phone: userPhone }),
                   updated_at: new Date().toISOString(),
-                }).eq('id', userId);
-              }
+                }, { 
+                  onConflict: 'id',
+                  ignoreDuplicates: false 
+                });
 
+              if (upsertError) throw upsertError;
+
+              // Auth 메타데이터도 최신화
               await supabase.auth.updateUser({
                 data: {
                   provider: provider,
                   full_name: userName,
+                  ...(userPhone && { phone: userPhone })
                 }
               });
 
@@ -87,7 +91,9 @@ export default function LoginPage() {
               navigate('/main/friends', { replace: true });
             } catch (error) {
               console.error('Sync error:', error);
-              toast.error('로그인 처리 중 오류가 발생했습니다.');
+              // 에러가 나도 로그인은 성공했으므로 이동은 시킴
+              navigate('/main/friends', { replace: true });
+            } finally {
               setIsOAuthProcessing(false);
             }
           }
@@ -116,7 +122,7 @@ export default function LoginPage() {
       );
 
       if (rpcError) {
-        console.error('RPC Error:', rpcError);
+        // RPC 에러 시 일반 로그인 시도
         await performNormalLogin(targetEmail, targetPassword);
         return;
       }
@@ -227,20 +233,20 @@ export default function LoginPage() {
 
   const handleSocialLogin = async (provider: Provider) => {
     try {
-      console.log('🚀 OAuth Start:', provider);
-      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: provider,
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`, // 콜백 URL 명시
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        }
       });
 
-      if (error) {
-        console.error('❌ OAuth Error:', error);
-        throw error;
-      }
-
-      console.log('✅ OAuth initiated');
+      if (error) throw error;
     } catch (error: any) {
-      console.error('💥 OAuth Error:', error);
+      console.error('OAuth Error:', error);
       toast.error(`${provider} 로그인에 실패했습니다.`);
     }
   };

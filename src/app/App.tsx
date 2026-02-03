@@ -36,6 +36,10 @@ import ReportCenterPage from '../features/settings/pages/ReportCenterPage';
 import IllegalContentReportPage from '../features/settings/pages/IllegalContentReportPage'; 
 import MainLayout from '../components/layout/MainLayout';
 
+import ContentsPage from '../features/contents/pages/ContentsPage';
+// [추가] 리포트 결과 페이지 import
+import ReportResultPage from '../features/contents/pages/ReportResultPage';
+
 // --- [STEP 5 핵심: Capacitor 라이브러리 추가] ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
@@ -185,9 +189,13 @@ function AppContent() {
           <Route index element={<Navigate to="friends" replace />} />
           <Route path="friends" element={<FriendsListPage />} />
           <Route path="chats" element={<ChatListPage />} />
-          <Route path="contents" element={<div className="h-full flex items-center justify-center text-white">🚧 콘텐츠 준비 중</div>} />
+          {/* 콘텐츠 페이지 라우트 연결 */}
+          <Route path="contents" element={<ContentsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
+
+        {/* [추가] 리포트 결과 페이지 연결 (MainLayout 밖으로 빼서 탭바 가림) */}
+        <Route path="/main/contents/report" element={<ReportResultPage />} />
 
         <Route path="/chat/room/:chatId" element={<ChatRoomPage />} />
         <Route path="/chat/room/:chatId/settings" element={<ChatRoomSettingsPage />} />

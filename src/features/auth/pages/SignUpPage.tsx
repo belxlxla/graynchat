@@ -13,7 +13,7 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isAppleLoading, setIsAppleLoading] = useState(false);
 
-  // [수정] phone 필드 초기값
+  // [수정] phone 필드 초기값 보장
   const [accountData, setAccountData] = useState({
     name: '',
     email: '',
@@ -123,7 +123,7 @@ export default function SignUpPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
-          redirectTo: window.location.origin, 
+          redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -173,6 +173,7 @@ export default function SignUpPage() {
           .upsert({
             id: authData.user.id,
             email: accountData.email.trim(),
+            name: accountData.name.trim(),
             phone: accountData.phone.trim(), // DB 저장
             is_terms_agreed: true,
             is_marketing_agreed: agreedTerms.marketing,
