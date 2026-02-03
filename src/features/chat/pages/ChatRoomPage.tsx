@@ -5,7 +5,7 @@ import {
   ChevronLeft, Send, MoreHorizontal, ShieldAlert, 
   Search, ChevronUp, ChevronDown, Plus, ImageIcon, 
   Camera, FileText, Smile, X, Download, ChevronRight,
-  User as UserIcon, Ban, Sparkles, Rocket, Users
+  User as UserIcon, Ban, Sparkles, Rocket, Users, Hourglass
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -24,6 +24,12 @@ interface MemberProfile {
   id: string; 
   name: string; 
   avatar: string | null; 
+}
+
+interface TimeCapsuleNotice {
+  id: string;
+  unlock_at: string;
+  receiver_name: string;
 }
 
 // 파일 타입 판별
@@ -75,6 +81,10 @@ export default function ChatRoomPage() {
 
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [initialImageIndex, setInitialImageIndex] = useState(0);
+
+  // 타임캡슐 알림
+  const [timeCapsuleNotice, setTimeCapsuleNotice] = useState<TimeCapsuleNotice | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState('');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -208,6 +218,70 @@ export default function ChatRoomPage() {
     }
   }, [chatId, user?.id, isGroupChat, markAsRead]);
 
+  // 타임캡슐 확인
+  const checkTimeCapsule = useCallback(async () => {
+    if (!chatId || !user?.id || isGroupChat) {
+      setTimeCapsuleNotice(null);
+      return;
+    }
+
+    const friendId = chatId.split('_').find(id => id !== user.id);
+    if (!friendId) return;
+
+    try {
+      // 내가 보낸 타임캡슐 확인
+      const { data } = await supabase
+        .from('time_capsules')
+        .select('id, unlock_at, receiver_id')
+        .eq('sender_id', user.id)
+        .eq('receiver_id', friendId)
+        .eq('is_unlocked', false)
+        .gte('unlock_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        const { data: receiverData } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', data.receiver_id)
+          .single();
+
+        setTimeCapsuleNotice({
+          id: data.id,
+          unlock_at: data.unlock_at,
+          receiver_name: receiverData?.name || '친구'
+        });
+      } else {
+        setTimeCapsuleNotice(null);
+      }
+    } catch (error) {
+      console.error('타임캡슐 확인 실패:', error);
+    }
+  }, [chatId, user?.id, isGroupChat]);
+
+  // 타이머 계산
+  const getTimeUntilUnlock = useCallback(() => {
+    if (!timeCapsuleNotice) return '';
+
+    const now = new Date();
+    const unlock = new Date(timeCapsuleNotice.unlock_at);
+    const diff = unlock.getTime() - now.getTime();
+
+    if (diff <= 0) return '잠금 해제됨!';
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    if (days > 0) return `${days}일 ${hours}시간 ${minutes}분`;
+    if (hours > 0) return `${hours}시간 ${minutes}분 ${seconds}초`;
+    if (minutes > 0) return `${minutes}분 ${seconds}초`;
+    return `${seconds}초`;
+  }, [timeCapsuleNotice]);
+
   useEffect(() => {
     fetchInitialData();
 
@@ -268,6 +342,31 @@ export default function ChatRoomPage() {
       supabase.removeChannel(channel);
     };
   }, [chatId, user?.id, fetchInitialData, markAsRead]);
+
+  // 타임캡슐 확인
+  useEffect(() => {
+    checkTimeCapsule();
+  }, [checkTimeCapsule]);
+
+  // 1초마다 타이머 업데이트
+  useEffect(() => {
+    if (!timeCapsuleNotice) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const unlock = new Date(timeCapsuleNotice.unlock_at);
+      
+      if (now >= unlock) {
+        setTimeCapsuleNotice(null);
+        toast.success('타임캡슐이 잠금 해제되었습니다! 🎉');
+        checkTimeCapsule();
+      } else {
+        setTimeRemaining(getTimeUntilUnlock());
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timeCapsuleNotice, getTimeUntilUnlock, checkTimeCapsule]);
 
   useEffect(() => {
     if (scrollRef.current && !isSearching) {
@@ -722,6 +821,40 @@ export default function ChatRoomPage() {
           </button>
         </div>
       )}
+
+      {/* ✅ 타임캡슐 알림 (고정) */}
+      <AnimatePresence>
+        {timeCapsuleNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-gradient-to-r from-orange-500/20 to-orange-600/20 border-b border-orange-500/30 px-4 py-3 z-20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-orange-500/20 rounded-full flex items-center justify-center shrink-0">
+                <Hourglass className="w-5 h-5 text-orange-400 animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-orange-400">
+                  {timeCapsuleNotice.receiver_name}님께 타임캡슐 전송됨
+                </p>
+                <p className="text-xs text-orange-300/80 mt-0.5">
+                  잠금 해제까지: {timeRemaining || getTimeUntilUnlock()}
+                </p>
+              </div>
+              <div className="text-xs text-orange-400 font-mono bg-orange-500/10 px-3 py-1 rounded-full">
+                {new Date(timeCapsuleNotice.unlock_at).toLocaleDateString('ko-KR', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
         {isLoading ? (

@@ -1,38 +1,60 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ArrowLeft, Share2, Clock, MessageCircle, 
   Heart, TrendingUp, Download,
-  Search, User as UserIcon, Briefcase, Home, ChevronRight, AlertCircle
-  // [수정] Calendar 제거 (사용 안 함)
+  Search, User as UserIcon, Briefcase, Home, ChevronRight, AlertCircle,
+  Thermometer, Activity, Sparkles, Zap, Brain, ThumbsUp, Star
 } from 'lucide-react';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
+import html2canvas from 'html2canvas';
+import toast from 'react-hot-toast';
 
+// 카테고리 정의
 const RELATION_TYPES = [
-  { id: 'dating', label: '썸 · 연인', icon: Heart, color: 'text-pink-400', bg: 'bg-pink-500/10' },
-  { id: 'friend', label: '찐친 · 우정', icon: UserIcon, color: 'text-green-400', bg: 'bg-green-500/10' },
-  { id: 'business', label: '동료 · 비즈니스', icon: Briefcase, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-  { id: 'family', label: '가족', icon: Home, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+  { id: 'dating', label: '썸 · 연인', icon: Heart, color: 'text-pink-400', bg: 'bg-pink-500/10', desc: '애정도와 설렘 분석' },
+  { id: 'friend', label: '찐친 · 우정', icon: UserIcon, color: 'text-green-400', bg: 'bg-green-500/10', desc: '티키타카와 의리 분석' },
+  { id: 'business', label: '동료 · 비즈니스', icon: Briefcase, color: 'text-blue-400', bg: 'bg-blue-500/10', desc: '업무 호흡과 신뢰도' },
+  { id: 'family', label: '가족', icon: Home, color: 'text-orange-400', bg: 'bg-orange-500/10', desc: '유대감과 소통 패턴' },
 ];
 
 interface Friend {
-  id: string;
-  nickname: string;
-  profile_image: string | null;
-  status_message: string | null;
+  id: number;
+  friend_user_id: string;
+  name: string;
+  avatar: string | null;
 }
 
+// 상세 분석 결과 인터페이스
 interface AnalysisResult {
-  score: number;
+  score: number; // 0~100 종합 점수
   totalMessages: number;
   myShare: number;
   friendShare: number;
+  
+  // 공통 지표
   avgReplyTime: string;
   topKeywords: string[];
-  comment: string;
+  
+  // 카테고리별 특화 데이터
+  category: string; // dating, friend, business, family
+  mainTitle: string; // ex) "운명의 데스티니", "환상의 콤비"
+  subTitle: string; // ex) "서로에게 푹 빠져있네요!"
+  
+  // 상세 스탯 (3가지)
+  stat1Label: string; stat1Value: number; // ex) 애정 온도
+  stat2Label: string; stat2Value: number; // ex) 밀당 지수
+  stat3Label: string; stat3Value: number; // ex) 소통 빈도
+  
+  // AI 코멘트
+  detailedAnalysis: string;
+  advice: string;
 }
 
 export default function ReportResultPage() {
@@ -43,10 +65,13 @@ export default function ReportResultPage() {
   const [friends, setFriends] = useState<Friend[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(true);
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
+  const [selectedRelationId, setSelectedRelationId] = useState<string>('friend'); // 기본값
   
-  // [수정] selectedRelation 제거 (사용 안 함)
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // 이미지 저장을 위한 Ref
+  const resultRef = useRef<HTMLDivElement>(null);
 
   // 1. 친구 목록 로드
   useEffect(() => {
@@ -56,32 +81,15 @@ export default function ReportResultPage() {
       try {
         setLoadingFriends(true);
         const { data, error } = await supabase
-          .from('friendships')
-          .select(`
-            friend_id,
-            friend:users!friendships_friend_id_fkey (
-              id,
-              nickname,
-              profile_image,
-              status_message
-            )
-          `)
-          .eq('user_id', user.id)
-          .eq('status', 'accepted');
+          .from('friends')
+          .select('id, friend_user_id, name, avatar')
+          .eq('user_id', user.id);
 
-        if (error) {
-            console.error('Supabase Error:', error);
-            throw error;
+        if (error) throw error;
+
+        if (data) {
+          setFriends(data);
         }
-
-        const formattedFriends = data.map((item: any) => ({
-          id: item.friend.id,
-          nickname: item.friend.nickname || '알 수 없음',
-          profile_image: item.friend.profile_image,
-          status_message: item.friend.status_message,
-        }));
-
-        setFriends(formattedFriends);
       } catch (error) {
         console.error('친구 로딩 실패:', error);
       } finally {
@@ -94,18 +102,27 @@ export default function ReportResultPage() {
 
   // 2. 알림 권한
   useEffect(() => {
-    LocalNotifications.requestPermissions();
+    const requestPerms = async () => {
+      await LocalNotifications.requestPermissions();
+    };
+    requestPerms();
   }, []);
 
-  // 3. 분석 로직
-  const startAnalysis = async () => {
+  // 3. 관계 유형 선택 후 분석 시작
+  const handleRelationSelect = (relationId: string) => {
+    setSelectedRelationId(relationId);
+    startAnalysis(relationId);
+  };
+
+  // 4. 고도화된 분석 로직 (카테고리별 분기 처리)
+  const startAnalysis = async (relationId: string) => {
     if (!user || !selectedFriend) return;
     setStep('analyzing');
 
     try {
-      // (1) 채팅방 찾기
+      // (1) 실제 대화 데이터 조회
       const { data: myRooms } = await supabase.from('room_members').select('room_id').eq('user_id', user.id);
-      const { data: friendRooms } = await supabase.from('room_members').select('room_id').eq('user_id', selectedFriend.id);
+      const { data: friendRooms } = await supabase.from('room_members').select('room_id').eq('user_id', selectedFriend.friend_user_id);
       
       const myIds = myRooms?.map(r => r.room_id) || [];
       const friendIds = friendRooms?.map(r => r.room_id) || [];
@@ -113,53 +130,111 @@ export default function ReportResultPage() {
 
       let totalCount = 0;
       let myCount = 0;
-      let score = 0;
-
+      
       if (commonRoomId) {
         const { data: msgs } = await supabase
           .from('messages')
-          .select('sender_id')
+          .select('sender_id, created_at, content')
           .eq('room_id', commonRoomId)
           .order('created_at', { ascending: false })
-          .limit(1000);
+          .limit(2000); // 최대 2000개 분석
 
-        if (msgs) {
+        if (msgs && msgs.length > 0) {
           totalCount = msgs.length;
           myCount = msgs.filter(m => m.sender_id === user.id).length;
         }
       }
 
-      // 점수 계산
-      const volumeScore = Math.min((totalCount / 300) * 50, 50);
-      const myRatio = totalCount > 0 ? myCount / totalCount : 0.5;
-      const balanceScore = 50 * (1 - Math.abs(0.5 - myRatio) * 2);
-      score = Math.floor(Math.max(10, volumeScore + balanceScore));
-
-      // 결과 생성
-      let comment = "아직은 조금 어색해요";
-      if (score >= 90) comment = "영혼을 나눈 단짝!";
-      else if (score >= 70) comment = "급속도로 친해지는 중";
-      else if (score >= 50) comment = "알아가는 단계";
-
+      // (2) 기본 지표 계산
       const myShare = totalCount > 0 ? Math.round((myCount / totalCount) * 100) : 0;
+      const friendShare = 100 - myShare;
+      
+      // 점수 계산 (대화량 + 밸런스 + 관계 유형 가중치)
+      let baseScore = Math.min((totalCount / 300) * 50, 50); // 대화량 점수 (50점 만점)
+      const balanceRatio = Math.abs(0.5 - (myShare / 100)); // 0에 가까울수록 좋음
+      const balanceScore = Math.max(0, 40 - (balanceRatio * 80)); // 밸런스 점수 (40점 만점)
+      const bonusScore = 10 + Math.floor(Math.random() * 10); // AI 보정치 (10~20점)
+      
+      let finalScore = Math.min(100, Math.floor(baseScore + balanceScore + bonusScore));
+      if (totalCount < 10) finalScore = Math.floor(Math.random() * 30) + 10; // 대화가 너무 적을 때
 
-      setAnalysisResult({
-        score,
+      // (3) 카테고리별 맞춤형 리포트 생성 (Generative Logic Simulation)
+      let resultData: Partial<AnalysisResult> = {};
+
+      if (relationId === 'dating') { // 썸/연인
+        resultData = {
+          mainTitle: finalScore >= 80 ? "🔥 불타는 로맨스" : finalScore >= 50 ? "💕 썸 타는 중" : "👀 탐색전 단계",
+          subTitle: finalScore >= 80 ? "두 분의 애정 전선은 '맑음' 입니다!" : "조금 더 적극적인 표현이 필요해요.",
+          stat1Label: "애정 온도", stat1Value: Math.min(100, 36.5 + finalScore * 0.6), // 36.5 ~ 99.9
+          stat2Label: "밀당 지수", stat2Value: Math.floor(Math.random() * 40) + 30, // 랜덤성
+          stat3Label: "설렘 포인트", stat3Value: finalScore,
+          detailedAnalysis: `두 사람의 대화에서는 서로를 향한 관심이 ${finalScore >= 70 ? '매우 강하게' : '은근하게'} 드러나고 있습니다. 답장 속도와 이모티콘 사용 빈도를 볼 때, ${finalScore >= 70 ? '서로에게 푹 빠져있는 상태네요.' : '아직은 조심스럽게 알아가는 단계로 보입니다.'}`,
+          advice: finalScore >= 80 ? "지금 이 분위기 그대로 데이트를 신청해보세요!" : "가벼운 질문으로 대화의 물꼬를 더 터보세요.",
+          topKeywords: ['보고싶어', '사랑해', '뭐해?', '밥', '영화', '주말']
+        };
+      } else if (relationId === 'friend') { // 우정
+        resultData = {
+          mainTitle: finalScore >= 80 ? "💎 평생 갈 찐친" : finalScore >= 50 ? "🍺 술친구 가능" : "👋 어색한 사이",
+          subTitle: finalScore >= 80 ? "눈빛만 봐도 통하는 영혼의 단짝!" : "친해지면 정말 잘 맞을 것 같아요.",
+          stat1Label: "의리 지수", stat1Value: finalScore,
+          stat2Label: "티키타카", stat2Value: Math.min(100, finalScore + 10),
+          stat3Label: "개그 코드", stat3Value: Math.floor(Math.random() * 50) + 50,
+          detailedAnalysis: `대화의 핑퐁이 ${finalScore >= 70 ? '환상적입니다.' : '나쁘지 않습니다.'} 서로 부담 없이 연락할 수 있는 편안한 관계이며, ${finalScore >= 80 ? '비밀을 털어놓아도 될 만큼 신뢰가 두텁습니다.' : '공통된 관심사를 찾으면 더 급속도로 친해질 수 있습니다.'}`,
+          advice: "이번 주말에 가볍게 맥주 한 잔 어떠세요?",
+          topKeywords: ['ㅋㅋㅋ', '미친', '진짜', 'ㅇㅈ', '술', '노래방']
+        };
+      } else if (relationId === 'business') { // 비즈니스
+        resultData = {
+          mainTitle: finalScore >= 80 ? "🤝 환상의 파트너" : finalScore >= 50 ? "📄 원만한 협업" : "🧊 사무적인 관계",
+          subTitle: "업무 효율을 최대로 끌어올릴 수 있습니다.",
+          stat1Label: "업무 호흡", stat1Value: finalScore,
+          stat2Label: "신뢰도", stat2Value: finalScore + 5,
+          stat3Label: "소통 명확성", stat3Value: 90,
+          detailedAnalysis: `군더더기 없는 깔끔한 소통이 특징입니다. ${finalScore >= 70 ? '업무 스타일이 잘 맞아 시너지가 기대됩니다.' : '서로의 업무 스타일에 적응해가는 단계입니다.'} 감정 소모 없이 일에 집중할 수 있는 최적의 파트너입니다.`,
+          advice: "업무 외적인 스몰토크로 라포를 형성해보세요.",
+          topKeywords: ['확인', '감사합니다', '넵', '파일', '일정', '회의']
+        };
+      } else { // 가족
+        resultData = {
+          mainTitle: finalScore >= 80 ? "❤️ 화목한 가족" : "🏠 현실 가족",
+          subTitle: "가장 든든한 내 편입니다.",
+          stat1Label: "유대감", stat1Value: 100,
+          stat2Label: "소통 빈도", stat2Value: finalScore,
+          stat3Label: "효도 지수", stat3Value: Math.floor(finalScore * 0.8),
+          detailedAnalysis: `표현은 서툴러도 서로를 아끼는 마음이 느껴집니다. ${finalScore < 50 ? '최근 대화가 다소 부족해 보입니다.' : '서로의 안부를 자주 묻는 따뜻한 관계입니다.'}`,
+          advice: "오늘 따뜻한 안부 전화 한 통 드려보세요.",
+          topKeywords: ['밥', '일찍', '조심', '건강', '용돈', '엄마/아빠']
+        };
+      }
+
+      // 최종 데이터 병합
+      const finalResult: AnalysisResult = {
+        score: finalScore,
         totalMessages: totalCount,
         myShare,
-        friendShare: 100 - myShare,
-        avgReplyTime: score > 60 ? '빠름 (10분 이내)' : '보통 (1시간 이내)',
-        topKeywords: totalCount > 0 ? ['ㅋㅋㅋ', '진짜', '대박', '맞아'] : ['(대화 없음)'],
-        comment
-      });
+        friendShare,
+        avgReplyTime: finalScore > 70 ? '매우 빠름' : '보통',
+        category: relationId,
+        topKeywords: totalCount < 10 ? ['(데이터 부족)'] : resultData.topKeywords!,
+        mainTitle: resultData.mainTitle!,
+        subTitle: resultData.subTitle!,
+        stat1Label: resultData.stat1Label!, stat1Value: resultData.stat1Value!,
+        stat2Label: resultData.stat2Label!, stat2Value: resultData.stat2Value!,
+        stat3Label: resultData.stat3Label!, stat3Value: resultData.stat3Value!,
+        detailedAnalysis: resultData.detailedAnalysis!,
+        advice: resultData.advice!,
+        comment: "" // Not used directly in new layout
+      };
 
-      // 3초 후 알림 및 결과 화면 이동
+      setAnalysisResult(finalResult);
+
+      // (4) 알림 및 결과 화면 이동
       setTimeout(async () => {
         await LocalNotifications.schedule({
           notifications: [
             {
               title: "분석 완료! 💌",
-              body: `${selectedFriend.nickname}님과의 관계 점수는 ${score}점입니다!`,
+              body: `${selectedFriend.name}님과의 리포트가 도착했습니다.`,
               id: 1,
               schedule: { at: new Date(Date.now() + 100) },
               sound: undefined, attachments: undefined, actionTypeId: "", extra: null
@@ -167,11 +242,64 @@ export default function ReportResultPage() {
           ]
         });
         setStep('result');
-      }, 3000);
+      }, 3000); // 3초 분석 연출
 
     } catch (e) {
-      console.error(e);
+      console.error('분석 에러:', e);
       setStep('result');
+    }
+  };
+
+  // 4. 고품질 이미지 저장 핸들러
+  const handleSaveImage = async () => {
+    if (!resultRef.current || !selectedFriend) return;
+    const loadingToast = toast.loading('고화질 리포트 생성 중...');
+
+    try {
+      // 고해상도 캡처 설정
+      const canvas = await html2canvas(resultRef.current, {
+        useCORS: true,
+        scale: 3, // 3배 해상도 (깨짐 방지)
+        backgroundColor: '#141414', // 배경색 명시
+        logging: false,
+        onclone: (documentClone) => {
+          // 캡처 시에만 적용될 스타일 (필요하다면)
+          const element = documentClone.getElementById('capture-target');
+          if (element) {
+            element.style.padding = '40px'; // 여백 확보
+          }
+        }
+      });
+
+      const base64Data = canvas.toDataURL('image/png', 1.0);
+
+      if (Capacitor.isNativePlatform()) {
+        // 모바일: 파일 저장 후 공유 시트 열기
+        const fileName = `grayn_report_${Date.now()}.png`;
+        const savedFile = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data.split(',')[1],
+          directory: Directory.Cache
+        });
+
+        await Share.share({
+          title: '그레인 관계 리포트',
+          text: `${selectedFriend.name}님과의 관계 분석 결과입니다!`,
+          url: savedFile.uri,
+        });
+        
+        toast.success('저장 옵션을 선택해주세요.', { id: loadingToast });
+      } else {
+        // 웹: 다운로드
+        const link = document.createElement('a');
+        link.href = base64Data;
+        link.download = `grayn_report_${selectedFriend.name}.png`;
+        link.click();
+        toast.success('앨범에 저장되었습니다.', { id: loadingToast });
+      }
+    } catch (error) {
+      console.error('Save Error:', error);
+      toast.error('저장에 실패했습니다.', { id: loadingToast });
     }
   };
 
@@ -181,36 +309,35 @@ export default function ReportResultPage() {
     else if (step === 'result') navigate(-1);
   };
 
-  // --- 렌더링 ---
+  // --- [UI 1] 친구 선택 ---
   const renderUserSelection = () => (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-5">
-      <h2 className="text-xl font-bold text-white mb-2">누구와의 관계를<br/>알아볼까요?</h2>
-      <p className="text-sm text-gray-400 mb-6">대화를 분석할 친구를 선택해주세요.</p>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-5 flex flex-col h-full">
+      <h2 className="text-2xl font-bold text-white mb-2">분석할 대상을<br/>선택해주세요</h2>
+      <p className="text-sm text-gray-400 mb-6">최근 대화 기록을 바탕으로 분석합니다.</p>
 
       <div className="relative mb-6">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <Search className="h-5 w-5 text-gray-500" />
-        </div>
+        <Search className="absolute left-3 top-3 h-5 w-5 text-gray-500" />
         <input
           type="text"
-          className="block w-full pl-10 pr-3 py-3 border border-white/10 rounded-xl bg-[#1C1C1E] text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-          placeholder="친구 검색"
+          className="w-full pl-10 pr-4 py-3 bg-[#1C1C1E] border border-white/10 rounded-xl text-white placeholder-gray-500 focus:border-brand-DEFAULT focus:outline-none"
+          placeholder="이름 검색"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      <div className="space-y-2 pb-20">
+      <div className="flex-1 overflow-y-auto space-y-2 pb-20 custom-scrollbar">
         {loadingFriends ? (
           <div className="text-center text-gray-500 py-10">친구 목록을 불러오는 중...</div>
         ) : friends.length === 0 ? (
-          <div className="text-center text-gray-500 py-10 flex flex-col items-center">
-             <AlertCircle className="w-8 h-8 mb-2 opacity-50"/>
-             <p>친구가 없어요.<br/>친구를 먼저 추가해주세요!</p>
+          <div className="flex flex-col items-center justify-center py-20 text-gray-500 opacity-60">
+             <AlertCircle className="w-12 h-12 mb-3"/>
+             <p>친구 목록이 비어있습니다.</p>
+             <p className="text-xs mt-1">채팅 탭에서 친구를 추가해주세요.</p>
           </div>
         ) : (
           friends
-            .filter(f => f.nickname.toLowerCase().includes(searchTerm.toLowerCase()))
+            .filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()))
             .map((friend) => (
               <button
                 key={friend.id}
@@ -218,22 +345,17 @@ export default function ReportResultPage() {
                   setSelectedFriend(friend);
                   setStep('select_relation');
                 }}
-                className="w-full flex items-center p-3 rounded-xl hover:bg-[#1C1C1E] transition-colors border border-transparent hover:border-white/10"
+                className="w-full flex items-center p-3 rounded-xl bg-[#1C1C1E] border border-transparent hover:border-white/20 transition-all active:scale-[0.98]"
               >
-                <div className="w-12 h-12 rounded-full bg-[#2C2C2E] flex items-center justify-center text-gray-500 mr-4 border border-white/5 overflow-hidden">
-                  {friend.profile_image ? (
-                    <img src={friend.profile_image} alt={friend.nickname} className="w-full h-full object-cover" />
+                <div className="w-12 h-12 rounded-full bg-[#333] flex items-center justify-center overflow-hidden mr-4 border border-white/5">
+                  {friend.avatar ? (
+                    <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" />
                   ) : (
-                    <UserIcon className="w-6 h-6" />
+                    <UserIcon className="w-6 h-6 text-gray-500" />
                   )}
                 </div>
-                <div className="text-left flex-1">
-                  <div className="text-white font-medium">{friend.nickname}</div>
-                  <div className="text-xs text-gray-500 truncate max-w-[180px]">
-                    {friend.status_message || ''}
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-gray-600" />
+                <span className="text-white font-medium text-lg flex-1 text-left">{friend.name}</span>
+                <ChevronRight className="w-5 h-5 text-gray-500" />
               </button>
             ))
         )}
@@ -241,34 +363,32 @@ export default function ReportResultPage() {
     </motion.div>
   );
 
+  // --- [UI 2] 관계 유형 선택 ---
   const renderRelationSelection = () => (
-    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-5 h-full flex flex-col">
-      <h2 className="text-xl font-bold text-white mb-2">어떤 사이인가요?</h2>
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="p-5 flex flex-col h-full">
+      <h2 className="text-2xl font-bold text-white mb-2">어떤 사이인가요?</h2>
       <p className="text-sm text-gray-400 mb-8">
-        <span className="text-white font-bold">{selectedFriend?.nickname}</span>님과의 관계를 선택하면<br/>
-        더 정확한 분석이 가능합니다.
+        <span className="text-brand-DEFAULT font-bold">{selectedFriend?.name}</span>님과의 관계를 선택하면<br/>
+        맞춤형 정밀 분석이 시작됩니다.
       </p>
-      <div className="grid grid-cols-1 gap-3">
+      
+      <div className="grid grid-cols-1 gap-4">
         {RELATION_TYPES.map((type) => {
           const Icon = type.icon;
           return (
             <button
               key={type.id}
-              onClick={() => {
-                // [수정] setSelectedRelation 제거 후 바로 분석 시작
-                startAnalysis();
-              }}
-              className="relative w-full p-5 rounded-2xl bg-[#1C1C1E] border border-white/5 hover:border-white/20 active:scale-[0.98] transition-all text-left flex items-center justify-between group"
+              onClick={() => handleRelationSelect(type.id)}
+              className="w-full p-5 rounded-2xl bg-[#1C1C1E] border border-white/5 hover:border-brand-DEFAULT/50 active:scale-[0.98] transition-all text-left flex items-center gap-4 group"
             >
-              <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${type.bg} ${type.color}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                <span className="text-lg font-bold text-gray-200 group-hover:text-white transition-colors">
-                  {type.label}
-                </span>
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${type.bg} ${type.color} group-hover:scale-110 transition-transform`}>
+                <Icon className="w-6 h-6" />
               </div>
-              <div className="w-5 h-5 rounded-full border-2 border-[#3A3A3C] group-hover:border-white transition-colors" />
+              <div>
+                <span className="text-lg font-bold text-white block mb-1">{type.label}</span>
+                <span className="text-xs text-gray-500">{type.desc}</span>
+              </div>
+              <ChevronRight className="w-5 h-5 text-gray-600 ml-auto group-hover:text-white transition-colors" />
             </button>
           );
         })}
@@ -276,84 +396,166 @@ export default function ReportResultPage() {
     </motion.div>
   );
 
+  // --- [UI 3] 분석 중 (애니메이션) ---
   const renderAnalyzing = () => (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col items-center justify-center p-6 text-center">
-      <div className="relative w-32 h-32 mb-8">
-        <motion.div className="absolute inset-0 border-4 border-[#2C2C2E] rounded-full" />
+      <div className="relative w-40 h-40 mb-10">
+        <motion.div 
+          className="absolute inset-0 border-4 border-[#2C2C2E] rounded-full" 
+        />
         <motion.div 
           className="absolute inset-0 border-4 border-t-purple-500 border-r-transparent border-b-transparent border-l-transparent rounded-full"
           animate={{ rotate: 360 }}
           transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
         />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-2xl">🔍</span>
+        <div className="absolute inset-0 flex items-center justify-center flex-col gap-2">
+          <Brain className="w-12 h-12 text-purple-500 animate-pulse" />
         </div>
       </div>
-      <h2 className="text-xl font-bold mb-3">대화 기록 정밀 분석 중...</h2>
-      <p className="text-sm text-gray-500 mb-8">앱을 닫아도 알림으로 결과를 보내드려요!</p>
+      <h2 className="text-2xl font-bold text-white mb-3">AI 정밀 분석 중...</h2>
+      <div className="space-y-1 text-sm text-gray-500">
+        <p>대화 패턴 및 키워드 추출</p>
+        <p>감정 온도 계산 중</p>
+        <p>관계 리포트 생성 중</p>
+      </div>
     </motion.div>
   );
 
+  // --- [UI 4] 결과 리포트 (저장 대상) ---
   const renderResult = () => {
     if (!analysisResult) return null;
-    const { score, totalMessages, myShare, friendShare, avgReplyTime, topKeywords, comment } = analysisResult;
+    const { 
+      score, totalMessages, myShare, friendShare, avgReplyTime, 
+      topKeywords, mainTitle, subTitle, stat1Label, stat1Value, 
+      stat2Label, stat2Value, stat3Label, stat3Value, detailedAnalysis, advice
+    } = analysisResult;
+    
+    // 점수 색상
+    const scoreColor = score >= 80 ? 'text-pink-500' : score >= 50 ? 'text-purple-500' : 'text-blue-500';
+    const borderColor = score >= 80 ? 'border-pink-500/50' : 'border-purple-500/50';
+
     return (
-      <div className="animate-fade-in pb-8">
-        <section className="text-center pt-8 mb-8">
-          <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="inline-block relative">
-            <div className="text-[64px] font-black tracking-tighter leading-none bg-gradient-to-br from-purple-400 to-pink-500 bg-clip-text text-transparent">
-              {score}점
+      <div className="animate-fade-in pb-20">
+        {/* === [이미지 저장 영역 시작] === */}
+        <div 
+          id="capture-target" 
+          ref={resultRef} 
+          className="bg-[#141414] p-6 text-white min-h-screen"
+          style={{ fontFamily: 'Pretendard, sans-serif' }} // 폰트 강제
+        >
+          {/* Header */}
+          <div className="text-center mb-8 pt-4">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/10 rounded-full text-[10px] font-bold tracking-widest text-gray-300 mb-4 border border-white/10">
+              <Sparkles className="w-3 h-3 text-yellow-400" /> GRAIN PREMIUM REPORT
             </div>
-          </motion.div>
-          <h2 className="text-xl font-bold mt-4 mb-2 text-white">"{comment}"</h2>
-          <p className="text-sm text-gray-400">총 <span className="text-purple-400 font-bold">{totalMessages}통</span>의 대화를 분석했습니다.</p>
-        </section>
+            <h2 className="text-2xl font-bold mb-1">
+              <span className="text-gray-400">나 & </span>
+              <span className="text-white border-b-2 border-brand-DEFAULT pb-0.5">{selectedFriend?.name}</span>
+            </h2>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">
+              {new Date().toLocaleDateString()} • ANALYSIS COMPLETED
+            </p>
+          </div>
 
-        <div className="px-5 space-y-4">
-          <section className="bg-[#1C1C1E] rounded-2xl p-6 border border-white/5">
-            <div className="flex items-center gap-2 mb-6">
-              <MessageCircle className="w-4 h-4 text-gray-400" />
-              <h3 className="text-sm font-bold text-gray-200">대화 밸런스</h3>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between text-xs mb-1 text-gray-400"><span>나 ({myShare}%)</span></div>
-                <div className="h-2 bg-[#2C2C2E] rounded-full overflow-hidden">
-                  <motion.div initial={{ width: 0 }} animate={{ width: `${myShare}%` }} transition={{ duration: 1 }} className="h-full bg-gray-500 rounded-full" />
-                </div>
+          {/* 1. Main Score Card */}
+          <div className={`bg-[#1C1C1E] rounded-3xl p-6 border ${borderColor} relative overflow-hidden shadow-2xl mb-6`}>
+            {/* Background Effect */}
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-br from-purple-500/20 to-pink-500/20 blur-3xl rounded-full" />
+            
+            <div className="relative z-10 text-center">
+              <p className="text-sm font-medium text-gray-400 mb-2">종합 관계 점수</p>
+              <div className="flex items-center justify-center gap-1 mb-4">
+                <span className={`text-6xl font-black tracking-tighter ${scoreColor}`}>{score}</span>
+                <span className="text-xl text-gray-600 font-medium self-end mb-2">/100</span>
               </div>
-              <div>
-                <div className="flex justify-between text-xs mb-1 text-gray-400"><span>{selectedFriend?.nickname} ({friendShare}%)</span></div>
-                <div className="h-2 bg-[#2C2C2E] rounded-full overflow-hidden">
-                  <motion.div initial={{ width: 0 }} animate={{ width: `${friendShare}%` }} transition={{ duration: 1 }} className="h-full bg-purple-500 rounded-full" />
-                </div>
+              
+              <div className="bg-black/30 rounded-xl p-4 border border-white/5">
+                <h3 className="text-lg font-bold text-white mb-1">{mainTitle}</h3>
+                <p className="text-xs text-gray-400">{subTitle}</p>
               </div>
             </div>
-          </section>
+          </div>
 
-          <section className="grid grid-cols-2 gap-3">
-            <div className="bg-[#1C1C1E] p-5 rounded-2xl border border-white/5">
-              <div className="flex items-center gap-2 mb-2"><Clock className="w-4 h-4 text-blue-400" /><span className="text-xs text-gray-500">답장 속도</span></div>
-              <div className="text-xl font-bold">{avgReplyTime}</div>
+          {/* 2. Hexagon Stats (3 columns) */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="bg-[#1C1C1E] p-3 rounded-2xl border border-white/10 text-center flex flex-col items-center justify-center h-28">
+              <div className="mb-2 p-2 bg-pink-500/10 rounded-full">
+                <Thermometer className="w-5 h-5 text-pink-500" />
+              </div>
+              <p className="text-[10px] text-gray-500 mb-1">{stat1Label}</p>
+              <p className="text-lg font-bold text-white">{typeof stat1Value === 'number' ? stat1Value.toFixed(1) : stat1Value}</p>
             </div>
-            <div className="bg-[#1C1C1E] p-5 rounded-2xl border border-white/5">
-              <div className="flex items-center gap-2 mb-2"><Heart className="w-4 h-4 text-pink-400" /><span className="text-xs text-gray-500">감정 표현</span></div>
-              <div className="text-xl font-bold">긍정적</div>
+            <div className="bg-[#1C1C1E] p-3 rounded-2xl border border-white/10 text-center flex flex-col items-center justify-center h-28">
+              <div className="mb-2 p-2 bg-blue-500/10 rounded-full">
+                <Activity className="w-5 h-5 text-blue-500" />
+              </div>
+              <p className="text-[10px] text-gray-500 mb-1">{stat2Label}</p>
+              <p className="text-lg font-bold text-white">{stat2Value}</p>
             </div>
-          </section>
+            <div className="bg-[#1C1C1E] p-3 rounded-2xl border border-white/10 text-center flex flex-col items-center justify-center h-28">
+              <div className="mb-2 p-2 bg-yellow-500/10 rounded-full">
+                <Star className="w-5 h-5 text-yellow-500" />
+              </div>
+              <p className="text-[10px] text-gray-500 mb-1">{stat3Label}</p>
+              <p className="text-lg font-bold text-white">{stat3Value}</p>
+            </div>
+          </div>
 
-          <section className="bg-[#1C1C1E] rounded-2xl p-6 border border-white/5">
-            <div className="flex items-center gap-2 mb-4"><TrendingUp className="w-4 h-4 text-gray-400" /><h3 className="text-sm font-bold text-gray-200">많이 쓴 단어</h3></div>
-            <div className="flex flex-wrap gap-2">
-              {topKeywords.map((word, idx) => (
-                <span key={idx} className="px-3 py-1.5 rounded-lg font-medium text-sm bg-[#2C2C2E] text-gray-300 border border-white/5">{word}</span>
-              ))}
+          {/* 3. Message Balance */}
+          <div className="bg-[#1C1C1E] p-5 rounded-2xl border border-white/10 mb-6">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-xs font-bold text-gray-400">대화 점유율</span>
+              <span className="text-[10px] text-gray-600">{totalMessages} messages</span>
             </div>
-          </section>
+            <div className="h-4 bg-[#2C2C2E] rounded-full overflow-hidden flex relative">
+              <div style={{ width: `${myShare}%` }} className="h-full bg-brand-DEFAULT" />
+              <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-black/50 z-10" /> {/* Center line */}
+            </div>
+            <div className="flex justify-between mt-2 text-xs font-medium">
+              <span className="text-brand-DEFAULT">나 {myShare}%</span>
+              <span className="text-gray-500">상대방 {friendShare}%</span>
+            </div>
+          </div>
 
-          <button className="w-full py-4 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg">
+          {/* 4. Detailed Analysis Text */}
+          <div className="bg-[#1C1C1E] p-5 rounded-2xl border border-white/10 mb-6">
+            <h4 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+              <Brain className="w-4 h-4 text-purple-400" /> AI 정밀 분석
+            </h4>
+            <p className="text-sm text-gray-300 leading-relaxed text-justify">
+              {detailedAnalysis}
+            </p>
+            <div className="mt-4 pt-4 border-t border-white/5">
+              <h4 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                <ThumbsUp className="w-4 h-4 text-green-400" /> 솔루션
+              </h4>
+              <p className="text-sm text-gray-300 font-medium">"{advice}"</p>
+            </div>
+          </div>
+
+          {/* 5. Keywords Tag Cloud */}
+          <div className="flex flex-wrap gap-2 justify-center opacity-80">
+            {topKeywords.map((word, i) => (
+              <span key={i} className="px-3 py-1.5 bg-[#252529] rounded-lg text-xs text-gray-400 border border-white/5">
+                #{word}
+              </span>
+            ))}
+          </div>
+
+          <div className="mt-8 text-center">
+            <p className="text-[9px] text-gray-700 tracking-widest">GENERATED BY GRAIN AI</p>
+          </div>
+        </div>
+        {/* === [이미지 저장 영역 끝] === */}
+
+        {/* 하단 고정 버튼 */}
+        <div className="fixed bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-black via-black/90 to-transparent z-50">
+          <button 
+            onClick={handleSaveImage}
+            className="w-full py-4 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-transform"
+          >
             <Download className="w-5 h-5" />
-            결과 저장하기
+            결과 이미지로 저장하기
           </button>
         </div>
       </div>
@@ -370,11 +572,9 @@ export default function ReportResultPage() {
           {step === 'select_user' && '분석 대상 선택'}
           {step === 'select_relation' && '관계 유형 선택'}
           {step === 'analyzing' && '데이터 분석'}
-          {step === 'result' && '분석 리포트'}
+          {step === 'result' && '분석 결과'}
         </span>
-        <div className="w-10 flex justify-end">
-          {step === 'result' && <Share2 className="w-5 h-5 text-gray-400" />}
-        </div>
+        <div className="w-10" />
       </header>
 
       <main className="h-full">

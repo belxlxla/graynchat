@@ -47,8 +47,14 @@ export default function TimeCapsuleEditPage() {
         setMessage(data.message);
 
         const unlockDateTime = new Date(data.unlock_at);
-        setUnlockDate(unlockDateTime.toISOString().split('T')[0]);
-        setUnlockTime(unlockDateTime.toTimeString().substring(0, 5));
+        const year = unlockDateTime.getFullYear();
+        const month = String(unlockDateTime.getMonth() + 1).padStart(2, '0');
+        const day = String(unlockDateTime.getDate()).padStart(2, '0');
+        const hours = String(unlockDateTime.getHours()).padStart(2, '0');
+        const minutes = String(unlockDateTime.getMinutes()).padStart(2, '0');
+
+        setUnlockDate(`${year}-${month}-${day}`);
+        setUnlockTime(`${hours}:${minutes}`);
       } catch (error) {
         console.error('캡슐 로드 실패:', error);
         toast.error('타임캡슐을 불러올 수 없습니다.');
@@ -96,14 +102,19 @@ export default function TimeCapsuleEditPage() {
 
       if (error) throw error;
 
-      toast.success('타임캡슐이 수정되었습니다. 이제 더 이상 수정할 수 없습니다.', {
-        duration: 4000
+      toast.success('타임캡슐이 수정되었습니다. (재수정 불가)', {
+        duration: 4000,
+        style: { background: '#333', color: '#fff' }
       });
 
-      navigate('/time-capsule/sent');
+      navigate('/main/contents'); 
     } catch (error: any) {
       console.error('타임캡슐 수정 실패:', error);
-      toast.error('수정에 실패했습니다. 다시 시도해주세요.');
+      if (error.code === '42501') {
+        toast.error('수정 권한이 없거나 이미 수정된 캡슐입니다.');
+      } else {
+        toast.error('수정에 실패했습니다. 다시 시도해주세요.');
+      }
     } finally {
       setIsSaving(false);
     }

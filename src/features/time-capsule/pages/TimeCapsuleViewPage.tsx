@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ChevronLeft, User as UserIcon, Heart } from 'lucide-react';
+import { ChevronLeft, User as UserIcon, Heart, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
@@ -13,6 +13,7 @@ export default function TimeCapsuleViewPage() {
 
   const [capsule, setCapsule] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [deleteDate, setDeleteDate] = useState<string>('');
 
   useEffect(() => {
     const fetchCapsule = async () => {
@@ -39,6 +40,41 @@ export default function TimeCapsuleViewPage() {
           .select('id, name, avatar')
           .eq('id', data.sender_id)
           .single();
+
+        // 처음 열었을 때만 unlocked_at 업데이트
+        if (!data.is_unlocked) {
+          const now = new Date();
+          await supabase
+            .from('time_capsules')
+            .update({ 
+              is_unlocked: true, 
+              unlocked_at: now.toISOString() 
+            })
+            .eq('id', id);
+
+          // 1일 후 삭제 예정 날짜 계산
+          const deletionDate = new Date(now);
+          deletionDate.setDate(deletionDate.getDate() + 1);
+          setDeleteDate(deletionDate.toLocaleString('ko-KR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }));
+        } else if (data.unlocked_at) {
+          // 이미 열렸던 경우 기존 unlocked_at 기준으로 계산
+          const unlockedDate = new Date(data.unlocked_at);
+          const deletionDate = new Date(unlockedDate);
+          deletionDate.setDate(deletionDate.getDate() + 1);
+          setDeleteDate(deletionDate.toLocaleString('ko-KR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }));
+        }
 
         setCapsule({
           ...data,
@@ -135,11 +171,31 @@ export default function TimeCapsuleViewPage() {
             </p>
           </motion.div>
 
+          {/* 삭제 안내 */}
+          {deleteDate && (
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.6, duration: 0.5 }}
+              className="mt-6 bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4"
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-orange-400 mb-1">자동 삭제 안내</p>
+                  <p className="text-xs text-orange-300/80 leading-relaxed">
+                    이 타임캡슐은 <strong>{deleteDate}</strong>에 자동으로 삭제됩니다.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* 하트 아이콘 */}
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            transition={{ delay: 0.6, type: "spring", stiffness: 200 }}
+            transition={{ delay: 0.8, type: "spring", stiffness: 200 }}
             className="mt-8 flex justify-center"
           >
             <Heart className="w-8 h-8 text-orange-500 fill-orange-500" />

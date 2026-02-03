@@ -1,287 +1,534 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  BarChart2, Hourglass, Sparkles, Zap, Lock, Infinity, Check, Loader2, Crown, Star 
+  FileText, MessageSquare, Sparkles, Calculator, 
+  Heart, Briefcase, ChevronRight,
+  Hourglass, Send, Clock, Archive, Lock, Unlock
 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { Capacitor } from '@capacitor/core';
+import { supabase } from '../../../shared/lib/supabaseClient';
+import { useAuth } from '../../auth/contexts/AuthContext';
+
+type TabType = 'sent' | 'received';
+
+interface TimeCapsule {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  receiver_name?: string;
+  sender_name?: string;
+  message: string;
+  unlock_at: string;
+  created_at: string;
+  is_edited: boolean;
+  is_unlocked: boolean;
+}
 
 export default function ContentsPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'lab' | 'membership'>('lab');
-  const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
+  const { user } = useAuth();
 
-  const fadeVariants = {
-    hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
-    exit: { opacity: 0, transition: { duration: 0.2 } }
-  };
+  const [hasTimeCapsuleAccess, setHasTimeCapsuleAccess] = useState(false);
+  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState<TabType>('sent');
+  const [sentCapsules, setSentCapsules] = useState<TimeCapsule[]>([]);
+  const [receivedCapsules, setReceivedCapsules] = useState<TimeCapsule[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // --- [1. 단건 결제 핸들러 (리포트)] ---
-  const handleOneTimePayment = () => {
-    setIsPaymentProcessing(true);
-    const platform = Capacitor.getPlatform();
-
-    console.log(`[${platform}] 단건 결제 요청: report_unlock_2900`);
-
-    setTimeout(() => {
-      setIsPaymentProcessing(false);
-      toast.success('리포트 잠금이 해제되었습니다!', {
-        style: { background: '#333', color: '#fff', borderRadius: '10px' },
-        icon: '🔓'
-      });
-      navigate('/main/contents/report');
-    }, 1500);
-  };
-
-  // --- [2. 타임캡슐 결제 핸들러] ---
-  const handleTimeCapsulePayment = () => {
-    setIsPaymentProcessing(true);
-    const platform = Capacitor.getPlatform();
-
-    console.log(`[${platform}] 단건 결제 요청: time_capsule_6900`);
-
-    setTimeout(() => {
-      setIsPaymentProcessing(false);
-      toast.success('타임캡슐 이용권이 발급되었습니다!', {
-        style: { background: '#333', color: '#fff', borderRadius: '10px' },
-        icon: '⏰'
-      });
-      navigate('/time-capsule/create');
-    }, 1500);
-  };
-
-  // --- [3. 정기 구독 핸들러 (멤버십)] ---
-  const handleSubscription = (planId: string, planName: string) => {
-    setIsPaymentProcessing(true);
-    const platform = Capacitor.getPlatform();
-
-    console.log(`[${platform}] 구독 요청: ${planId}`);
-
-    setTimeout(() => {
-      setIsPaymentProcessing(false);
+  // 타임캡슐 결제 여부 확인
+  useEffect(() => {
+    const checkAccess = async () => {
+      if (!user?.id) return;
       
-      toast.success(`${planName} 구독이 시작되었습니다!`, {
-        style: { background: '#333', color: '#fff', borderRadius: '10px' },
-        icon: '👑'
+      const savedAccess = localStorage.getItem(`timecapsule_access_${user.id}`);
+      if (savedAccess === 'true') {
+        setHasTimeCapsuleAccess(true);
+      }
+    };
+    
+    checkAccess();
+  }, [user]);
+
+  // 타임캡슐 목록 가져오기
+  useEffect(() => {
+    if (!user?.id || !hasTimeCapsuleAccess) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchCapsules = async () => {
+      try {
+        // 보낸 타임캡슐
+        const { data: sentData } = await supabase
+          .from('time_capsules')
+          .select('*')
+          .eq('sender_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (sentData && sentData.length > 0) {
+          const receiverIds = sentData.map(c => c.receiver_id);
+          const { data: usersData } = await supabase
+            .from('users')
+            .select('id, name')
+            .in('id', receiverIds);
+
+          const usersMap = new Map(usersData?.map(u => [u.id, u.name]) || []);
+          
+          setSentCapsules(sentData.map(c => ({
+            ...c,
+            receiver_name: usersMap.get(c.receiver_id) || '알 수 없는 사용자'
+          })));
+        }
+
+        // 받은 타임캡슐
+        const { data: receivedData } = await supabase
+          .from('time_capsules')
+          .select('*')
+          .eq('receiver_id', user.id)
+          .order('unlock_at', { ascending: true });
+
+        if (receivedData && receivedData.length > 0) {
+          const senderIds = receivedData.map(c => c.sender_id);
+          const { data: usersData } = await supabase
+            .from('users')
+            .select('id, name')
+            .in('id', senderIds);
+
+          const usersMap = new Map(usersData?.map(u => [u.id, u.name]) || []);
+          
+          setReceivedCapsules(receivedData.map(c => ({
+            ...c,
+            sender_name: usersMap.get(c.sender_id) || '알 수 없는 사용자'
+          })));
+        }
+      } catch (error) {
+        console.error('타임캡슐 로드 실패:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCapsules();
+  }, [user, hasTimeCapsuleAccess]);
+
+  const handleTimeCapsulePayment = async () => {
+    if (!user?.id) return;
+
+    setIsPaymentLoading(true);
+
+    try {
+      const platform = Capacitor.getPlatform();
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      localStorage.setItem(`timecapsule_access_${user.id}`, 'true');
+      setHasTimeCapsuleAccess(true);
+
+      toast.success('타임캡슐 기능이 활성화되었습니다! ⏰', {
+        duration: 3000,
+        style: { background: '#333', color: '#fff' }
       });
-    }, 2000);
+
+      navigate('/time-capsule/create');
+    } catch (error) {
+      console.error('결제 실패:', error);
+      toast.error('결제에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsPaymentLoading(false);
+    }
+  };
+
+  const getTimeRemaining = (unlockAt: string) => {
+    const now = new Date();
+    const unlock = new Date(unlockAt);
+    const diff = unlock.getTime() - now.getTime();
+
+    if (diff <= 0) return '잠금 해제됨';
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+    if (days > 0) return `${days}일 ${hours}시간 남음`;
+    return `${hours}시간 남음`;
+  };
+
+  const canEdit = (capsule: TimeCapsule) => {
+    return !capsule.is_edited && 
+           !capsule.is_unlocked && 
+           new Date(capsule.unlock_at) > new Date();
+  };
+
+  const canView = (capsule: TimeCapsule) => {
+    return new Date(capsule.unlock_at) <= new Date();
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-[#000000] text-white pb-32 scrollbar-hide relative">
-      
-      {/* 결제 로딩 오버레이 */}
-      <AnimatePresence>
-        {isPaymentProcessing && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[999] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center"
-          >
-            <div className="relative">
-              <div className="absolute inset-0 bg-purple-500/30 blur-2xl rounded-full animate-pulse" />
-              <Loader2 className="w-12 h-12 text-purple-500 animate-spin relative z-10" />
-            </div>
-            <h3 className="text-lg font-bold text-white mt-6">스토어 연결 중...</h3>
-            <p className="text-xs text-gray-500 mt-2">안전하게 결제를 준비하고 있습니다.</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="h-full w-full flex flex-col bg-[#0f0f10] text-white overflow-hidden relative">
+      {/* Background Ambient Light */}
+      <div className="absolute top-0 left-0 w-full h-[300px] bg-gradient-to-b from-[#2a2a2e] to-transparent opacity-30 pointer-events-none" />
 
-      {/* 헤더 */}
-      <header className="pt-safe-top px-5 pb-4 bg-[#000000]/80 backdrop-blur-xl sticky top-0 z-40 border-b border-white/5">
-        <div className="flex items-center justify-between h-12 mb-4">
-          <h1 className="text-2xl font-bold tracking-tight text-white">Store</h1>
-        </div>
-        <div className="relative flex bg-[#1C1C1E] p-1 rounded-xl h-11 border border-white/5">
-          <motion.div 
-            className="absolute top-1 bottom-1 bg-[#3A3A3C] rounded-lg shadow-md"
-            initial={false}
-            animate={{ left: activeTab === 'lab' ? '4px' : '50%', width: 'calc(50% - 4px)' }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          />
-          <button onClick={() => setActiveTab('lab')} className={`flex-1 relative z-10 text-[13px] font-semibold transition-colors ${activeTab === 'lab' ? 'text-white' : 'text-[#8E8E93]'}`}>기능 실험실</button>
-          <button onClick={() => setActiveTab('membership')} className={`flex-1 relative z-10 text-[13px] font-semibold transition-colors ${activeTab === 'membership' ? 'text-white' : 'text-[#8E8E93]'}`}>프리미엄 멤버십</button>
-        </div>
+      <header className="h-16 px-6 flex items-center justify-between bg-[#0f0f10]/80 backdrop-blur-xl border-b border-white/5 shrink-0 z-20 sticky top-0">
+        <h1 className="text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+          콘텐츠
+        </h1>
       </header>
 
-      <main className="px-5 pt-6">
-        <AnimatePresence mode="wait">
-          
-          {/* === TAB 1: 기능 실험실 (리포트/타임캡슐) === */}
-          {activeTab === 'lab' && (
-            <motion.div key="lab" variants={fadeVariants} initial="hidden" animate="visible" exit="exit" className="space-y-8">
-              {/* 관계 분석 섹션 */}
-              <section>
-                <div className="flex items-center gap-2 mb-3 px-1">
-                  <BarChart2 className="w-4 h-4 text-purple-400" />
-                  <h3 className="text-sm font-bold text-gray-300">관계 분석</h3>
-                </div>
-                
-                <div className="bg-[#1C1C1E] rounded-2xl overflow-hidden border border-white/5 shadow-lg shadow-black/50">
-                  <div className="p-6 pb-4">
-                    <h2 className="text-lg font-bold text-white mb-2">우리 사이, 몇 점일까?</h2>
-                    <p className="text-sm text-gray-400 leading-relaxed mb-6">
-                      대화 패턴과 답장 시간을 AI가 정밀 분석해<br/>
-                      보이지 않는 <span className="text-purple-400">감정 온도</span>를 수치로 보여줍니다.
-                    </p>
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div className="bg-[#121212] p-4 rounded-xl border border-white/5 text-center">
-                        <div className="text-[11px] text-gray-500 mb-1">감정 온도</div>
-                        <div className="text-xl font-bold text-white">36.5°C</div>
-                      </div>
-                      <div className="bg-[#121212] p-4 rounded-xl border border-white/5 text-center">
-                        <div className="text-[11px] text-gray-500 mb-1">핵심 키워드</div>
-                        <div className="text-xl font-bold text-purple-400">설렘</div>
-                      </div>
-                    </div>
-                  </div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative z-10 pb-10">
+        
+        {/* === 타임캡슐 섹션 === */}
+        <section className="p-6 space-y-5">
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="p-2 rounded-xl bg-orange-500/10">
+              <Hourglass className="w-5 h-5 text-orange-500" />
+            </div>
+            <h2 className="text-xl font-bold text-white">타임캡슐</h2>
+          </div>
 
-                  {/* 단건 결제 버튼 */}
-                  <button 
-                    onClick={handleOneTimePayment} 
-                    className="w-full py-4 bg-[#2C2C2E] text-white text-sm font-bold border-t border-white/5 hover:bg-[#3A3A3C] transition-colors flex items-center justify-center gap-2 active:bg-[#444]"
-                  >
-                    <Sparkles className="w-4 h-4 text-purple-400" />
-                    2,900원으로 전체 리포트 열람
-                  </button>
-                </div>
-              </section>
-
-              {/* 타임 캡슐 섹션 */}
-              <section>
-                <div className="flex items-center gap-2 mb-3 px-1">
-                  <Hourglass className="w-4 h-4 text-orange-400" />
-                  <h3 className="text-sm font-bold text-gray-300">타임 캡슐</h3>
-                </div>
-                <div className="bg-[#1C1C1E] rounded-2xl overflow-hidden border border-white/5 shadow-lg shadow-black/50">
-                  <div className="p-6 pb-4">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h2 className="text-lg font-bold text-white mb-1">미래로 보내는 편지</h2>
-                        <p className="text-sm text-gray-400">지정한 날짜까지 절대 열리지 않습니다.</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 mt-6">
-                      {[
-                        { label: '3일 뒤', price: '무료', icon: <Zap className="w-4 h-4 mb-2 text-gray-400" /> },
-                        { label: '1년 뒤', price: '1,000원', icon: <Lock className="w-4 h-4 mb-2 text-orange-400" /> },
-                        { label: '10년 뒤', price: '5,000원', icon: <Infinity className="w-4 h-4 mb-2 text-orange-400" /> },
-                      ].map((item, idx) => (
-                        <button key={idx} className="flex flex-col items-center justify-center py-4 bg-[#2C2C2E] rounded-xl border border-white/5 active:scale-95 transition-all hover:border-orange-500/50">
-                          {item.icon}
-                          <span className="text-xs font-medium text-gray-300 mb-0.5">{item.label}</span>
-                          <span className="text-[11px] font-bold text-white">{item.price}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 타임캡슐 결제 버튼 */}
-                  <button 
-                    onClick={handleTimeCapsulePayment} 
-                    className="w-full py-4 bg-gradient-to-r from-orange-600 to-orange-500 text-white text-sm font-bold border-t border-white/5 hover:from-orange-700 hover:to-orange-600 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
-                  >
-                    <Hourglass className="w-4 h-4" />
-                    6,900원으로 타임캡슐 보내기
-                  </button>
-                </div>
-              </section>
-            </motion.div>
-          )}
-
-          {/* === TAB 2: 프리미엄 멤버십 === */}
-          {activeTab === 'membership' && (
-            <motion.div key="membership" variants={fadeVariants} initial="hidden" animate="visible" exit="exit" className="space-y-6">
+          {!hasTimeCapsuleAccess ? (
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleTimeCapsulePayment}
+              disabled={isPaymentLoading}
+              className="w-full relative overflow-hidden group rounded-3xl"
+            >
+              {/* Premium Gradient Background */}
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500 via-amber-500 to-orange-600" />
+              <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
               
-              {/* 1. 멤버십 헤더 */}
-              <div className="text-center pt-2 pb-2">
-                <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-tr from-yellow-400 to-orange-500 rounded-full mb-3 shadow-[0_0_20px_rgba(251,191,36,0.4)]">
-                  <Crown className="w-6 h-6 text-white fill-white" />
+              <div className="relative p-6 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shadow-inner border border-white/20">
+                    <Sparkles className="w-7 h-7 text-white fill-white/30" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-white font-bold text-lg leading-tight">타임캡슐 시작하기</p>
+                    <p className="text-orange-100 text-sm mt-1 font-medium">미래에 열리는 특별한 메시지</p>
+                  </div>
                 </div>
-                <h2 className="text-2xl font-bold text-white mb-2">Grain Premium</h2>
-                <p className="text-sm text-gray-400">
-                  모든 기능을 제한 없이.<br/>
-                  더 깊은 관계를 위한 최고의 선택.
-                </p>
-              </div>
-
-              {/* 2. 멤버십 플랜 리스트 */}
-              <div className="space-y-4">
-                
-                {/* [BEST] 연간 플랜 */}
-                <button 
-                  onClick={() => handleSubscription('grain_yearly', '연간 멤버십')}
-                  className="relative w-full p-1 rounded-3xl bg-gradient-to-r from-orange-500 via-red-500 to-purple-600 shadow-[0_0_20px_rgba(236,80,34,0.3)] active:scale-[0.98] transition-transform"
-                >
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-black px-3 py-1 rounded-full shadow-md z-10 uppercase tracking-wide flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> Best Value
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-white font-black text-xl tracking-tight">6,900원</span>
+                  <div className="flex items-center text-white/80 text-xs font-medium bg-black/10 px-2 py-1 rounded-lg">
+                    <span>구매하기</span>
+                    <ChevronRight className="w-3 h-3 ml-0.5" />
                   </div>
-                  <div className="w-full h-full bg-[#151515] rounded-[22px] p-5 flex items-center justify-between relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 blur-[40px] rounded-full" />
-                    
-                    <div className="flex flex-col items-start z-10">
-                      <span className="text-sm font-bold text-orange-400 mb-1">연간 멤버십</span>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-2xl font-bold text-white">₩47,000</span>
-                        <span className="text-sm text-gray-500 line-through">₩58,800</span>
-                      </div>
-                      <span className="text-[11px] text-gray-400 mt-2 bg-white/5 px-2 py-0.5 rounded-md">
-                        월 3,900원 수준 (20% SAVE)
-                      </span>
-                    </div>
-                    <div className="z-10">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center shadow-lg">
-                        <Check className="w-5 h-5 text-white stroke-[3]" />
-                      </div>
-                    </div>
-                  </div>
-                </button>
-
-                {/* 월간 플랜 */}
-                <button 
-                  onClick={() => handleSubscription('grain_monthly', '월간 멤버십')}
-                  className="w-full p-5 bg-[#1C1C1E] border border-white/5 rounded-3xl flex items-center justify-between active:bg-[#2C2C2E] transition-colors"
-                >
-                  <div className="flex flex-col items-start">
-                    <span className="text-sm font-medium text-gray-400">월간 멤버십</span>
-                    <span className="text-xl font-bold text-white mt-1">₩4,900</span>
-                  </div>
-                  <div className="w-6 h-6 rounded-full border-2 border-[#3A3A3C]" />
-                </button>
-              </div>
-
-              {/* 3. 혜택 그리드 */}
-              <div className="bg-[#1C1C1E] rounded-3xl p-6 border border-white/5">
-                <h4 className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-wider">PREMIUM BENEFITS</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { icon: Sparkles, text: "AI 분석 무제한" },
-                    { icon: Infinity, text: "타임캡슐 무료" },
-                    { icon: Zap, text: "광고 제거" },
-                    { icon: Lock, text: "시크릿 채팅" }
-                  ].map((item, i) => (
-                    <div key={i} className="flex flex-col items-start gap-2 p-3 bg-[#121212] rounded-2xl border border-white/5">
-                      <item.icon className="w-5 h-5 text-orange-400" />
-                      <span className="text-xs font-medium text-gray-300">{item.text}</span>
-                    </div>
-                  ))}
                 </div>
               </div>
 
-              {/* 4. 유의사항 */}
-              <div className="px-4 pb-8">
-                <p className="text-[10px] text-center text-gray-600 leading-relaxed">
-                  구독은 현재 기간이 종료되기 최소 24시간 전에 취소하지 않으면 자동으로 갱신됩니다. 
-                  계정 설정에서 언제든지 구독을 취소할 수 있습니다.
-                </p>
+              {isPaymentLoading && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-10">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-8 h-8 text-white animate-spin" />
+                    <span className="text-white text-sm font-medium">결제 처리 중...</span>
+                  </div>
+                </div>
+              )}
+            </motion.button>
+          ) : (
+            <div className="space-y-6">
+              {/* 타임캡슐 보내기 버튼 (활성화 상태) */}
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/time-capsule/create')}
+                className="w-full bg-gradient-to-r from-[#2C2C2E] to-[#252529] rounded-3xl p-1 shadow-lg border border-white/5 group"
+              >
+                <div className="bg-[#1C1C1E] rounded-[20px] p-5 flex items-center justify-between h-full relative overflow-hidden">
+                  <div className="absolute right-0 top-0 w-32 h-32 bg-orange-500/10 blur-[50px] rounded-full pointer-events-none group-hover:bg-orange-500/20 transition-colors" />
+                  
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-900/20">
+                      <Send className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-white font-bold text-lg">새 캡슐 보내기</p>
+                      <p className="text-gray-400 text-sm mt-0.5">친구에게 미래의 감동을 전하세요</p>
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* 탭 컨트롤 */}
+              <div className="flex p-1 bg-[#1C1C1E] rounded-xl border border-white/5">
+                <button
+                  onClick={() => setActiveTab('sent')}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all relative ${
+                    activeTab === 'sent' ? 'text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  {activeTab === 'sent' && (
+                    <motion.div
+                      layoutId="tab-pill"
+                      className="absolute inset-0 bg-[#2C2C2E] rounded-lg shadow-sm border border-white/5"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    <Send className="w-3.5 h-3.5" /> 보낸 캡슐 ({sentCapsules.length})
+                  </span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('received')}
+                  className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all relative ${
+                    activeTab === 'received' ? 'text-white' : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  {activeTab === 'received' && (
+                    <motion.div
+                      layoutId="tab-pill"
+                      className="absolute inset-0 bg-[#2C2C2E] rounded-lg shadow-sm border border-white/5"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    <Archive className="w-3.5 h-3.5" /> 받은 캡슐 ({receivedCapsules.length})
+                  </span>
+                </button>
               </div>
 
-            </motion.div>
+              {/* 캡슐 리스트 */}
+              <div className="min-h-[200px]">
+                {isLoading ? (
+                  <div className="flex flex-col items-center justify-center h-40 gap-3">
+                    <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+                    <p className="text-sm text-gray-500">데이터를 불러오는 중...</p>
+                  </div>
+                ) : (
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={activeTab}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                      className="space-y-3"
+                    >
+                      {activeTab === 'sent' ? (
+                        sentCapsules.length === 0 ? (
+                          <EmptyState 
+                            icon={<Send className="w-8 h-8" />} 
+                            title="보낸 캡슐이 없습니다"
+                            desc="소중한 사람에게 마음을 전해보세요" 
+                          />
+                        ) : (
+                          sentCapsules.map(capsule => (
+                            <div key={capsule.id} className="bg-[#1C1C1E] border border-white/5 rounded-2xl p-5 relative overflow-hidden group">
+                              <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-[#2C2C2E] flex items-center justify-center border border-white/5 text-orange-500 font-bold text-sm">
+                                    TO
+                                  </div>
+                                  <div>
+                                    <p className="text-white font-bold text-[15px]">{capsule.receiver_name}</p>
+                                    <p className="text-xs text-gray-500">{new Date(capsule.created_at).toLocaleDateString()}</p>
+                                  </div>
+                                </div>
+                                {canEdit(capsule) && (
+                                  <button
+                                    onClick={() => navigate(`/time-capsule/edit/${capsule.id}`)}
+                                    className="px-3 py-1.5 bg-[#2C2C2E] hover:bg-[#3A3A3C] border border-white/5 text-xs text-white font-medium rounded-lg transition-colors"
+                                  >
+                                    수정하기
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="bg-[#252529] rounded-xl p-3 mb-3 border border-white/5">
+                                {capsule.is_edited ? (
+                                  <p className="text-xs text-orange-400/80 italic text-center py-1">
+                                    <span className="inline-block w-1.5 h-1.5 bg-orange-500 rounded-full mr-2"/>
+                                    수정됨 (내용 비공개)
+                                  </p>
+                                ) : !capsule.is_unlocked && new Date(capsule.unlock_at) > new Date() ? (
+                                  <p className="text-sm text-gray-300 line-clamp-2 leading-relaxed px-1">"{capsule.message}"</p>
+                                ) : (
+                                  <p className="text-xs text-gray-500 italic text-center py-1">이미 개봉된 캡슐입니다</p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between pt-1">
+                                <div className="flex items-center gap-1.5 text-xs font-medium text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-md">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  <span>{getTimeRemaining(capsule.unlock_at)}</span>
+                                </div>
+                                {capsule.is_edited && (
+                                  <span className="text-[10px] text-gray-600 bg-white/5 px-2 py-1 rounded">수정됨 1/1</span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )
+                      ) : (
+                        receivedCapsules.length === 0 ? (
+                          <EmptyState 
+                            icon={<Archive className="w-8 h-8" />} 
+                            title="받은 캡슐이 없습니다"
+                            desc="친구가 보낸 캡슐이 여기에 표시됩니다" 
+                          />
+                        ) : (
+                          receivedCapsules.map(capsule => {
+                            const isLocked = !canView(capsule);
+                            return (
+                              <button
+                                key={capsule.id}
+                                onClick={() => {
+                                  if (!isLocked) navigate(`/time-capsule/view/${capsule.id}`);
+                                  else toast.error('아직 열 수 없습니다! 🔒');
+                                }}
+                                className={`w-full text-left rounded-2xl p-5 border relative overflow-hidden transition-all group ${
+                                  isLocked 
+                                    ? 'bg-[#1C1C1E] border-white/5 opacity-80' 
+                                    : 'bg-[#1C1C1E] border-orange-500/30 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-900/10'
+                                }`}
+                              >
+                                {isLocked && (
+                                  <div className="absolute -right-4 -top-4 w-16 h-16 bg-[#2C2C2E] rotate-45 flex items-end justify-center pb-1">
+                                    <Lock className="w-4 h-4 text-gray-500 -rotate-45" />
+                                  </div>
+                                )}
+                                
+                                <div className="flex items-center justify-between mb-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border text-sm font-bold ${
+                                      isLocked 
+                                        ? 'bg-[#252529] border-white/5 text-gray-500' 
+                                        : 'bg-orange-500/10 border-orange-500/20 text-orange-500'
+                                    }`}>
+                                      FR
+                                    </div>
+                                    <div>
+                                      <p className={`font-bold text-[15px] ${isLocked ? 'text-gray-400' : 'text-white'}`}>
+                                        {capsule.sender_name}
+                                      </p>
+                                      <p className="text-xs text-gray-600">
+                                        {new Date(capsule.created_at).toLocaleDateString()}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {isLocked ? (
+                                  <div className="bg-[#252529] rounded-xl p-4 flex flex-col items-center justify-center gap-2 border border-white/5">
+                                    <Lock className="w-5 h-5 text-gray-600" />
+                                    <p className="text-xs text-gray-500 font-medium">
+                                      {getTimeRemaining(capsule.unlock_at)} 후 공개
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/5 rounded-xl p-4 flex items-center justify-between border border-orange-500/20">
+                                    <div className="flex items-center gap-2">
+                                      <Unlock className="w-4 h-4 text-orange-500" />
+                                      <span className="text-sm font-bold text-orange-400">잠금 해제됨</span>
+                                    </div>
+                                    <div className="text-xs text-orange-300 flex items-center font-medium group-hover:translate-x-1 transition-transform">
+                                      확인하기 <ChevronRight className="w-3 h-3 ml-0.5" />
+                                    </div>
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })
+                        )
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
+                )}
+              </div>
+            </div>
           )}
-        </AnimatePresence>
-      </main>
+        </section>
+
+        <div className="w-full h-[1px] bg-[#2C2C2E] mx-auto my-2" />
+
+        {/* === 기타 기능 섹션 === */}
+        <section className="p-6 pt-2 space-y-4">
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="p-2 rounded-xl bg-purple-500/10">
+              <Sparkles className="w-5 h-5 text-purple-500" />
+            </div>
+            <h2 className="text-xl font-bold text-white">AI 연구소</h2>
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigate('/main/contents/report')}
+            className="w-full bg-[#1C1C1E] rounded-3xl p-5 border border-white/5 flex items-center justify-between group hover:bg-[#252529] transition-all"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center border border-purple-500/20">
+                <FileText className="w-6 h-6 text-purple-400" />
+              </div>
+              <div className="text-left">
+                <p className="text-white font-bold text-base group-hover:text-purple-300 transition-colors">AI 친구 리포트</p>
+                <p className="text-gray-500 text-xs mt-0.5">관계 분석 및 맞춤형 조언</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-600 group-hover:text-white transition-colors" />
+          </motion.button>
+
+          {/* 비활성 카드 그리드 */}
+          <div className="grid grid-cols-2 gap-3 opacity-60">
+            <DisabledContentCard
+              icon={<MessageSquare className="w-5 h-5" />}
+              title="채팅 도우미"
+              desc="답장 추천"
+            />
+            <DisabledContentCard
+              icon={<Calculator className="w-5 h-5" />}
+              title="매칭 점수"
+              desc="궁합 분석"
+            />
+            <DisabledContentCard
+              icon={<Heart className="w-5 h-5" />}
+              title="감정 분석"
+              desc="마음 읽기"
+            />
+            <DisabledContentCard
+              icon={<Briefcase className="w-5 h-5" />}
+              title="비즈니스"
+              desc="네트워킹"
+            />
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- Helper Components (Styled) ----------------
+
+function EmptyState({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-[#1C1C1E] rounded-2xl border border-white/5 border-dashed">
+      <div className="w-16 h-16 bg-[#252529] rounded-full flex items-center justify-center text-gray-600 mb-4">
+        {icon}
+      </div>
+      <p className="text-white font-bold text-base mb-1">{title}</p>
+      <p className="text-xs text-gray-500">{desc}</p>
+    </div>
+  );
+}
+
+function DisabledContentCard({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
+  return (
+    <div className="bg-[#1C1C1E] rounded-2xl p-4 border border-white/5 flex flex-col items-start gap-3 relative overflow-hidden">
+      <div className="w-10 h-10 bg-[#252529] rounded-xl flex items-center justify-center text-gray-500">
+        {icon}
+      </div>
+      <div>
+        <p className="text-gray-300 font-bold text-sm">{title}</p>
+        <p className="text-gray-600 text-[10px] mt-0.5">{desc}</p>
+      </div>
+      <span className="absolute top-3 right-3 text-[9px] bg-[#2C2C2E] text-gray-500 px-1.5 py-0.5 rounded border border-white/5">준비중</span>
     </div>
   );
 }
