@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -11,109 +11,120 @@ type Provider = 'google' | 'apple';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   
   const { triggerNaverLogin } = useNaverLogin();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isOAuthProcessing, setIsOAuthProcessing] = useState(false);
 
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
 
-  // ✅ OAuth 콜백 처리 (Apple/Google)
+  // ✅ Supabase Auth State 변화 감지
   useEffect(() => {
-    const handleOAuthCallback = async () => {
-      // URL에 해시 프래그먼트가 있는지 확인 (OAuth 리다이렉트)
-      if (!location.hash && !window.location.hash) {
-        return;
-      }
-
-      try {
-        // 세션 가져오기
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('🔔 Auth event:', event);
         
-        if (sessionError) {
-          console.error('Session Error:', sessionError);
-          return;
-        }
+        if (event === 'SIGNED_IN' && session?.user) {
+          const user = session.user;
+          const provider = user.app_metadata?.provider || 
+                          user.app_metadata?.providers?.[0] || 
+                          'email';
 
-        if (!session?.user) {
-          return;
-        }
+          console.log('✅ User signed in:', user);
+          console.log('✅ Provider:', provider);
 
-        const user = session.user;
-        const provider = user.app_metadata?.provider || 
-                        user.app_metadata?.providers?.[0] || 
-                        'email';
-        
-        // Apple 또는 Google 로그인인 경우에만 처리
-        if (provider === 'apple' || provider === 'google') {
-          const userId = user.id;
-          const userEmail = user.email;
-          const userName = user.user_metadata?.full_name || 
-                          user.user_metadata?.name || 
-                          user.user_metadata?.email?.split('@')[0] ||
-                          userEmail?.split('@')[0] || 
-                          '사용자';
-          const userAvatar = user.user_metadata?.avatar_url || 
-                            user.user_metadata?.picture || 
-                            null;
+          // Apple 또는 Google 로그인인 경우
+          if (provider === 'apple' || provider === 'google') {
+            setIsOAuthProcessing(true);
 
-          // users 테이블 동기화
-          const { data: existingUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', userId)
-            .maybeSingle();
+            try {
+              const userId = user.id;
+              const userEmail = user.email;
+              
+              let userName = '사용자';
+              if (user.user_metadata?.full_name) {
+                userName = user.user_metadata.full_name;
+              } else if (user.user_metadata?.name) {
+                userName = user.user_metadata.name;
+              } else if (userEmail) {
+                userName = userEmail.split('@')[0];
+              }
 
-          if (!existingUser) {
-            // 신규 사용자
-            await supabase.from('users').insert({
-              id: userId,
-              email: userEmail,
-              name: userName,
-              avatar: userAvatar,
-              phone: null,
-              status_message: '그레인을 시작했어요!',
-            });
-          } else {
-            // 기존 사용자 업데이트
-            await supabase.from('users').update({
-              name: userName,
-              avatar: userAvatar,
-              updated_at: new Date().toISOString(),
-            }).eq('id', userId);
-          }
+              const userAvatar = user.user_metadata?.avatar_url || 
+                                user.user_metadata?.picture || 
+                                null;
 
-          // user_metadata 업데이트
-          await supabase.auth.updateUser({
-            data: {
-              provider: provider,
-              full_name: userName,
+              console.log('💾 Syncing user to database...');
+
+              // users 테이블 확인
+              const { data: existingUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('id', userId)
+                .maybeSingle();
+
+              if (!existingUser) {
+                // 신규 사용자
+                await supabase.from('users').insert({
+                  id: userId,
+                  email: userEmail,
+                  name: userName,
+                  avatar: userAvatar,
+                  phone: null,
+                  status_message: '그레인을 시작했어요!',
+                });
+                console.log('✅ New user created');
+              } else {
+                // 기존 사용자
+                await supabase.from('users').update({
+                  name: userName,
+                  avatar: userAvatar,
+                  updated_at: new Date().toISOString(),
+                }).eq('id', userId);
+                console.log('✅ User updated');
+              }
+
+              // user_metadata 업데이트
+              await supabase.auth.updateUser({
+                data: {
+                  provider: provider,
+                  full_name: userName,
+                }
+              });
+
+              toast.success(`${userName}님 환영합니다!`);
+              
+              // 메인 페이지로 이동
+              setTimeout(() => {
+                navigate('/main/friends', { replace: true });
+              }, 500);
+            } catch (error) {
+              console.error('💥 User sync error:', error);
+              toast.error('프로필 동기화 중 오류가 발생했습니다.');
+              setIsOAuthProcessing(false);
             }
-          });
-
-          toast.success(`${userName}님 환영합니다!`);
-          
-          // URL 해시 제거
-          window.history.replaceState({}, document.title, '/auth/login');
-          
-          // 메인 페이지로 이동
-          setTimeout(() => {
-            navigate('/main/friends', { replace: true });
-          }, 500);
+          }
         }
-      } catch (error) {
-        console.error('OAuth Callback Error:', error);
-        toast.error('로그인 처리 중 오류가 발생했습니다.');
-      }
-    };
 
-    handleOAuthCallback();
-  }, [location, navigate]);
+        if (event === 'SIGNED_OUT') {
+          console.log('🚪 User signed out');
+        }
+
+        if (event === 'TOKEN_REFRESHED') {
+          console.log('🔄 Token refreshed');
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,23 +259,38 @@ export default function LoginPage() {
 
   const handleSocialLogin = async (provider: Provider) => {
     try {
-      // 현재 URL을 명확하게 지정
-      const redirectUrl = `${window.location.origin}/auth/login`;
+      console.log('🚀 Starting OAuth for:', provider);
       
+      // Supabase 콜백 URL 사용 (중요!)
       const { error } = await supabase.auth.signInWithOAuth({
         provider: provider,
         options: {
-          redirectTo: redirectUrl,
-          skipBrowserRedirect: false,
+          redirectTo: `${window.location.origin}/auth/login`,
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ OAuth Error:', error);
+        throw error;
+      }
+
+      console.log('✅ OAuth initiated successfully');
     } catch (error: any) {
-      console.error('Social Login Error:', error);
-      toast.error(`${provider} 로그인 연결에 실패했습니다.`);
+      console.error('💥 Social Login Error:', error);
+      toast.error(`${provider} 로그인에 실패했습니다.`);
     }
   };
+
+  // OAuth 처리 중 로딩 화면
+  if (isOAuthProcessing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-dark-bg text-white">
+        <Loader2 className="w-12 h-12 animate-spin text-brand-DEFAULT mb-4" />
+        <p className="text-lg font-medium">로그인 처리 중...</p>
+        <p className="text-sm text-[#8E8E93] mt-2">잠시만 기다려주세요</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center relative">
