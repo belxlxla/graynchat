@@ -1,438 +1,379 @@
-import { useState, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ChevronLeft, Mail, Lock, User, Loader2, 
-  Check, ChevronRight, Eye, EyeOff, X, Phone
+  ChevronLeft, ChevronRight, 
+  Camera, User, Phone, Globe, LogOut, 
+  Trash2, Image as ImageIcon, X, Search, CheckCircle2, Circle
 } from 'lucide-react';
+import Cropper from 'react-easy-crop';
+import type { Point, Area } from 'react-easy-crop';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
+import { useAuth } from '../../auth/contexts/AuthContext';
 
-export default function SignUpPage() {
+// --- [Types] ---
+interface UserProfile {
+  name: string;
+  avatar: string | null;
+  bg: string | null;
+  provider: string;
+  email: string;
+  phone: string;
+}
+
+interface Country {
+  code: string;
+  name: string;
+  flag: string;
+}
+
+// --- [Helpers for Cropping] ---
+async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
+  const image = await new Promise<HTMLImageElement>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.src = imageSrc;
+  });
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(URL.createObjectURL(blob!)), 'image/jpeg'));
+}
+
+const COUNTRIES: Country[] = [
+  { code: 'KR', name: '대한민국', flag: '🇰🇷' },
+  { code: 'US', name: '미국', flag: '🇺🇸' },
+  { code: 'JP', name: '일본', flag: '🇯🇵' },
+  { code: 'CN', name: '중국', flag: '🇨🇳' },
+  { code: 'GB', name: '영국', flag: '🇬🇧' },
+  { code: 'DE', name: '독일', flag: '🇩🇪' },
+  { code: 'FR', name: '프랑스', flag: '🇫🇷' },
+  { code: 'IT', name: '이탈리아', flag: '🇮🇹' },
+  { code: 'ES', name: '스페인', flag: '🇪🇸' },
+  { code: 'RU', name: '러시아', flag: '🇷🇺' },
+  { code: 'CA', name: '캐나다', flag: '🇨🇦' },
+  { code: 'AU', name: '호주', flag: '🇦🇺' },
+  { code: 'BR', name: '브라질', flag: '🇧🇷' },
+  { code: 'IN', name: '인도', flag: '🇮🇳' },
+  { code: 'VN', name: '베트남', flag: '🇻🇳' },
+  { code: 'TH', name: '태국', flag: '🇹🇭' },
+  { code: 'PH', name: '필리핀', flag: '🇵🇭' },
+  { code: 'SG', name: '싱가포르', flag: '🇸🇬' },
+  { code: 'MY', name: '말레이시아', flag: '🇲🇾' },
+  { code: 'ID', name: '인도네시아', flag: '🇮🇩' },
+  { code: 'MX', name: '멕시코', flag: '🇲🇽' },
+  { code: 'NL', name: '네덜란드', flag: '🇳🇱' },
+  { code: 'SE', name: '스웨덴', flag: '🇸🇪' },
+  { code: 'CH', name: '스위스', flag: '🇨🇭' },
+  { code: 'AE', name: '아랍에미리트', flag: '🇦🇪' },
+  { code: 'SA', name: '사우디아라비아', flag: '🇸🇦' },
+  { code: 'TR', name: '터키', flag: '🇹🇷' },
+  { code: 'HK', name: '홍콩', flag: '🇭🇰' },
+  { code: 'TW', name: '대만', flag: '🇹🇼' },
+].sort((a, b) => a.name.localeCompare(b.name));
+
+export default function AccountInfoPage() {
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isAppleLoading, setIsAppleLoading] = useState(false);
-
-  const [accountData, setAccountData] = useState({
-    name: '',
+  const { user } = useAuth(); 
+  
+  const [profile, setProfile] = useState<UserProfile>({
+    name: '사용자',
+    avatar: null,
+    bg: null,
+    provider: 'email',
     email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
+    phone: '번호 없음'
   });
+  
+  const [blockedCountries, setBlockedCountries] = useState<string[]>([]);
+  const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null); 
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [passwordError, setPasswordError] = useState('');
-  const [confirmPasswordError, setConfirmPasswordError] = useState('');
+  // ✨ 크롭 관련 상태
+  const [isCropOpen, setIsCropOpen] = useState(false);
+  const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
+  const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-  const [agreedTerms, setAgreedTerms] = useState({
-    service: false,
-    location: false,
-    privacy: false,
-    sensitive: false,
-    operation: false,
-    youth: false,
-    marketing: false,
-  });
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bgInputRef = useRef<HTMLInputElement>(null);
 
-  const policyLinks: Record<string, string> = {
-    service: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
-    location: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
-    privacy: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
-    sensitive: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
-    operation: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
-    youth: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
-    marketing: 'https://www.notion.so/GRAYN-2f7f8581f9c880cab6afced062c24748?source=copy_link',
-  };
-
-  const validatePassword = (password: string): string => {
-    if (password.length === 0) return '';
-    if (password.length < 8) return '비밀번호는 8자리 이상이어야 합니다.';
-    if (!/[A-Z]/.test(password)) return '대문자를 최소 1개 포함해야 합니다.';
-    if (!/[a-z]/.test(password)) return '소문자를 최소 1개 포함해야 합니다.';
-    if (!/[0-9]/.test(password)) return '숫자를 최소 1개 포함해야 합니다.';
-    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return '특수문자를 최소 1개 포함해야 합니다.';
-    return '';
-  };
-
-  const handleAccountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setAccountData({ ...accountData, [name]: value });
-
-    if (name === 'password') {
-      const error = validatePassword(value);
-      setPasswordError(error);
-      if (accountData.confirmPassword && value !== accountData.confirmPassword) {
-        setConfirmPasswordError('비밀번호가 일치하지 않습니다.');
-      } else {
-        setConfirmPasswordError('');
-      }
+  const formatPhoneNumber = (phoneNumber: string) => {
+    if (!phoneNumber || phoneNumber === '번호 없음') return phoneNumber;
+    const cleaned = ('' + phoneNumber).replace(/\D/g, '');
+    if (cleaned.startsWith('010') && cleaned.length === 11) {
+      return `+82 10-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
     }
-
-    if (name === 'confirmPassword') {
-      if (value !== accountData.password) {
-        setConfirmPasswordError('비밀번호가 일치하지 않습니다.');
-      } else {
-        setConfirmPasswordError('');
-      }
+    if (cleaned.startsWith('8210') && cleaned.length === 12) {
+      return `+82 10-${cleaned.slice(4, 8)}-${cleaned.slice(8)}`;
     }
+    return phoneNumber;
   };
 
-  const handleAllAgree = () => {
-    const isAllChecked = Object.values(agreedTerms).every(val => val);
-    setAgreedTerms({
-      service: !isAllChecked,
-      location: !isAllChecked,
-      privacy: !isAllChecked,
-      sensitive: !isAllChecked,
-      operation: !isAllChecked,
-      youth: !isAllChecked,
-      marketing: !isAllChecked,
-    });
-  };
-
-  const handleTermToggle = (key: keyof typeof agreedTerms) => {
-    setAgreedTerms(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const handleOpenPolicy = (key: string) => {
-    const url = policyLinks[key];
-    if (url) window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const isRequiredAgreed = useMemo(() => {
-    return agreedTerms.service && agreedTerms.location && agreedTerms.privacy && 
-           agreedTerms.sensitive && agreedTerms.operation && agreedTerms.youth;
-  }, [agreedTerms]);
-
-  const isPasswordValid = useMemo(() => {
-    return !passwordError && accountData.password.length > 0;
-  }, [passwordError, accountData.password]);
-
-  const isConfirmPasswordValid = useMemo(() => {
-    return !confirmPasswordError && accountData.confirmPassword.length > 0 && 
-           accountData.password === accountData.confirmPassword;
-  }, [confirmPasswordError, accountData.confirmPassword, accountData.password]);
-
-  // 애플 로그인
-  const handleAppleLogin = async () => {
-    setIsAppleLoading(true);
+  const fetchUserData = useCallback(async () => {
+    if (!user) return;
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'apple',
-        options: {
-          redirectTo: window.location.origin, 
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
+      const { data: dbData, error: dbError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (dbError) throw dbError;
+      setProfile({
+        name: dbData?.name || user.user_metadata?.full_name || '사용자',
+        avatar: dbData?.avatar || null,
+        bg: dbData?.bg_image || null,
+        provider: user.app_metadata?.provider || 'email',
+        email: user.email || '이메일 없음',
+        phone: formatPhoneNumber(dbData?.phone || '번호 없음')
       });
+      setBlockedCountries(dbData?.blocked_countries || []);
+    } catch (err) { console.error('Data load error:', err); }
+  }, [user]);
 
+  useEffect(() => { fetchUserData(); }, [fetchUserData]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTempImageSrc(reader.result as string);
+        setCurrentImageType(type);
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
+        setIsCropOpen(true);
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    }
+  };
+
+  const handleCropSave = async () => {
+    if (!tempImageSrc || !croppedAreaPixels || !user) return;
+    const loadingToast = toast.loading('사진 업로드 중...');
+
+    try {
+      const croppedImageUrl = await getCroppedImg(tempImageSrc, croppedAreaPixels);
+      const res = await fetch(croppedImageUrl);
+      const blob = await res.blob();
+      
+      const filePath = `${user.id}/${currentImageType}_${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, blob, { upsert: true });
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
+      const dbField = currentImageType === 'avatar' ? 'avatar' : 'bg_image';
+      
+      await supabase.from('users').update({ [dbField]: publicUrl }).eq('id', user.id);
+      
+      setProfile(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
+      toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
+      setIsCropOpen(false);
+      setEditTarget(null);
+    } catch (err) {
+      toast.error('업로드 실패', { id: loadingToast });
+    }
+  };
+
+  const handleResetImage = async (type: 'avatar' | 'bg') => {
+    if (!user) return;
+    const loadingToast = toast.loading('이미지 초기화 중...');
+    try {
+      const dbField = type === 'avatar' ? 'avatar' : 'bg_image';
+      await supabase.from('users').update({ [dbField]: null }).eq('id', user.id);
+      setProfile(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: null }));
+      toast.success('기본 이미지로 변경되었습니다.', { id: loadingToast });
+    } catch (err) { toast.error('초기화 실패', { id: loadingToast }); }
+    finally { setEditTarget(null); }
+  };
+
+  const handleSaveBlockedCountries = async (list: string[]) => {
+    if (!user) return;
+    const loadingToast = toast.loading('보안 설정 적용 중...');
+    try {
+      const { error } = await supabase.from('users').update({ blocked_countries: list }).eq('id', user.id);
       if (error) throw error;
-    } catch (error: any) {
-      console.error('Apple Login Error:', error);
-      toast.error('Apple 로그인에 실패했습니다.');
-      setIsAppleLoading(false);
-    }
+      setBlockedCountries(list);
+      toast.success('국가별 접근 제한 설정이 완료되었습니다.', { id: loadingToast });
+    } catch (err) { toast.error('설정 저장 실패', { id: loadingToast }); }
   };
-
-  // 일반 회원가입
-  const handleCreateAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!accountData.name.trim()) return toast.error('이름을 입력해주세요.');
-    if (!accountData.email.trim()) return toast.error('이메일을 입력해주세요.');
-    if (!accountData.phone.trim()) return toast.error('전화번호를 입력해주세요.'); // 전화번호 체크
-    if (!isRequiredAgreed) return toast.error('필수 약관에 동의해 주세요.');
-
-    setIsLoading(true);
-    
-    try {
-      // 1. Auth 회원가입 요청 (Metadata에 전화번호 저장)
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: accountData.email.trim(),
-        password: accountData.password,
-        options: { 
-          data: { 
-            full_name: accountData.name.trim(),
-            phone: accountData.phone.trim(), // 메타데이터 저장
-            marketing_agreed: agreedTerms.marketing 
-          }
-        }
-      });
-
-      if (signUpError) throw signUpError;
-      
-      // 2. public.users 테이블 업데이트 (Upsert 사용)
-      if (authData.user) {
-        const { error: updateError } = await supabase
-          .from('users')
-          .upsert({
-            id: authData.user.id,
-            email: accountData.email.trim(),
-            phone: accountData.phone.trim(), // DB 저장
-            is_terms_agreed: true,
-            is_marketing_agreed: agreedTerms.marketing,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'id' }); // 충돌 시 업데이트
-
-        if (updateError) {
-          console.error('User Update Error (Non-fatal):', updateError);
-        }
-
-        // 3. 임시 세션 데이터 저장
-        sessionStorage.setItem('signup_email', accountData.email.trim());
-        sessionStorage.setItem('signup_password', accountData.password);
-        sessionStorage.setItem('signup_user_id', authData.user.id);
-
-        toast.success('계정이 생성되었습니다.');
-        navigate('/auth/phone', { replace: true });
-      }
-
-    } catch (error: any) {
-      console.error('Signup Error:', error);
-      let message = error.message || '회원가입 중 오류가 발생했습니다.';
-      if (message.includes('Database error')) message = '서버 설정 오류입니다. (DB Trigger 확인 필요)';
-      if (message.includes('User already registered')) message = '이미 가입된 이메일입니다.';
-      
-      toast.error(message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const termList = [
-    { key: 'service', label: '이용약관', required: true },
-    { key: 'location', label: '위치기반서비스 이용약관', required: true },
-    { key: 'privacy', label: '개인정보처리방침', required: true },
-    { key: 'sensitive', label: '민감정보 수집 및 이용 동의', required: true },
-    { key: 'operation', label: '운영정책', required: true },
-    { key: 'youth', label: '청소년보호정책', required: true },
-    { key: 'marketing', label: '맞춤형 광고 안내', required: false },
-  ];
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6">
-      <header className="h-14 flex items-center shrink-0 mb-4">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-white transition-colors">
+    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
+      <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
+        <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
           <ChevronLeft className="w-7 h-7" />
         </button>
-        <h1 className="text-xl font-bold ml-1">회원가입</h1>
+        <h1 className="text-lg font-bold ml-1">계정 정보</h1>
       </header>
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-10">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-brand-DEFAULT mb-2">계정 만들기</h2>
-            <p className="text-[#8E8E93] text-sm">서비스 이용을 위한 계정을 생성합니다.</p>
-          </div>
 
-          {/* 애플 로그인 버튼 */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={handleAppleLogin}
-              disabled={isAppleLoading}
-              className="w-full flex items-center justify-center gap-2 bg-white text-black font-bold py-3.5 rounded-2xl hover:bg-gray-100 transition-colors shadow-lg active:scale-[0.98]"
-            >
-              {isAppleLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.63-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74s2.57-.99 4.31-.82c.51.03 2.26.2 3.32 1.73-3.03 1.76-2.39 5.51.64 6.77-.52 1.55-1.25 3.09-2.35 4.55zM12.03 7.25c-.25-2.19 1.62-3.99 3.63-4.25.32 2.45-2.38 4.23-3.63 4.25z"/>
-                  </svg>
-                  Apple로 계속하기
-                </>
-              )}
-            </button>
-            
-            <div className="flex items-center gap-3 my-6">
-              <div className="h-[1px] bg-[#3A3A3C] flex-1" />
-              <span className="text-xs text-[#636366]">또는 이메일로 가입</span>
-              <div className="h-[1px] bg-[#3A3A3C] flex-1" />
+      <div className="flex-1 overflow-y-auto custom-scrollbar pb-10">
+        <div className="relative mb-16">
+          <div onClick={() => setEditTarget('bg')} className="h-48 w-full bg-[#2C2C2E] relative cursor-pointer group overflow-hidden">
+            {profile.bg ? <img src={profile.bg} alt="bg" className="w-full h-full object-cover opacity-80 group-hover:opacity-60 transition-opacity" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93] gap-2"><ImageIcon className="w-6 h-6" /><span className="text-sm">배경 사진 설정</span></div>}
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="w-8 h-8 text-white drop-shadow-md" /></div>
+          </div>
+          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
+            <div onClick={() => setEditTarget('avatar')} className="w-24 h-24 rounded-full border-4 border-dark-bg bg-[#3A3A3C] overflow-hidden cursor-pointer group relative shadow-xl">
+              {profile.avatar ? <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover group-hover:opacity-70 transition-opacity" /> : <User className="w-10 h-10 text-[#8E8E93] m-auto mt-6" />}
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="w-6 h-6 text-white drop-shadow-md" /></div>
             </div>
           </div>
+        </div>
 
-          <form className="space-y-5" onSubmit={handleCreateAccount}>
-            <div className="space-y-4">
-              {/* 이름 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
-                <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
-                  <User className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="name" 
-                    type="text" 
-                    value={accountData.name} 
-                    onChange={handleAccountChange} 
-                    placeholder="실명으로 입력해 주세요" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
+        <div className="text-center mb-8 px-5">
+          <h2 className="text-xl font-bold text-white mb-1">{profile.name}</h2>
+          <p className="text-xs text-[#8E8E93]">{profile.email}</p>
+        </div>
+
+        <div className="px-5 space-y-6">
+          <Section label="기본 정보">
+            <InfoItem label="전화번호" value={profile.phone} icon={<Phone className="w-5 h-5" />} />
+            <InfoItem label="이름" value={profile.name} icon={<User className="w-5 h-5" />} />
+            <InfoItem label="로그인 방식" value={profile.provider.toUpperCase()} icon={<Globe className="w-5 h-5" />} />
+          </Section>
+
+          <Section label="보안 설정">
+            <button onClick={() => setIsCountryModalOpen(true)} className="w-full flex items-center justify-between px-5 py-4 bg-[#2C2C2E] rounded-2xl hover:bg-[#3A3A3C] transition-colors group">
+              <div className="flex items-center gap-3">
+                <Globe className="w-5 h-5 text-[#8E8E93]" />
+                <div className="text-left">
+                  <p className="text-[15px] text-white">국가별 접근 및 노출 제한</p>
+                  <p className={`text-xs mt-0.5 ${blockedCountries.length > 0 ? 'text-brand-DEFAULT font-bold' : 'text-[#8E8E93]'}`}>
+                    {blockedCountries.length > 0 ? `${blockedCountries.length}개국 차단 중` : '설정된 국가 없음'}
+                  </p>
                 </div>
               </div>
-
-              {/* [추가] 전화번호 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#8E8E93] ml-1">전화번호</label>
-                <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
-                  <Phone className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="phone" 
-                    type="tel" 
-                    value={accountData.phone} 
-                    onChange={(e) => setAccountData({ ...accountData, phone: e.target.value.replace(/[^0-9]/g, '') })} 
-                    placeholder="01012345678" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
-                <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
-                  <Mail className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="email" 
-                    type="email" 
-                    value={accountData.email} 
-                    onChange={handleAccountChange} 
-                    placeholder="example@grayn.com" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
-                <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${
-                  passwordError && accountData.password ? 'border-red-500' : 
-                  isPasswordValid ? 'border-green-500' : 
-                  'border-[#3A3A3C] focus-within:border-brand-DEFAULT'
-                }`}>
-                  <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="password" 
-                    type={showPassword ? 'text' : 'password'} 
-                    value={accountData.password} 
-                    onChange={handleAccountChange} 
-                    placeholder="8자리 이상, 대소문자/숫자/특수문자 포함" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
-                  <div className="flex items-center gap-2 ml-2">
-                    {accountData.password && (
-                      <button
-                        type="button"
-                        onClick={() => setAccountData({ ...accountData, password: '', confirmPassword: '' })}
-                        className="text-[#636366] hover:text-white transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="text-[#636366] hover:text-white transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호 확인</label>
-                <div className={`flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border transition-colors ${
-                  confirmPasswordError && accountData.confirmPassword ? 'border-red-500' : 
-                  isConfirmPasswordValid ? 'border-green-500' : 
-                  'border-[#3A3A3C] focus-within:border-brand-DEFAULT'
-                }`}>
-                  <Lock className="w-5 h-5 text-[#636366] mr-3" />
-                  <input 
-                    name="confirmPassword" 
-                    type={showConfirmPassword ? 'text' : 'password'} 
-                    value={accountData.confirmPassword} 
-                    onChange={handleAccountChange} 
-                    placeholder="비밀번호 재입력" 
-                    className="bg-transparent text-white text-sm w-full focus:outline-none" 
-                  />
-                  <div className="flex items-center gap-2 ml-2">
-                    {accountData.confirmPassword && (
-                      <button
-                        type="button"
-                        onClick={() => setAccountData({ ...accountData, confirmPassword: '' })}
-                        className="text-[#636366] hover:text-white transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="text-[#636366] hover:text-white transition-colors"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 space-y-4">
-              <div 
-                className="flex items-center justify-between p-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C] cursor-pointer" 
-                onClick={handleAllAgree}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-                    Object.values(agreedTerms).every(v => v) ? 'bg-brand-DEFAULT' : 'bg-[#3A3A3C]'
-                  }`}>
-                    <Check className={`w-4 h-4 ${
-                      Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'
-                    }`} />
-                  </div>
-                  <span className="font-bold text-sm text-white">약관 전체동의</span>
-                </div>
-              </div>
-              <div className="space-y-3 px-1">
-                {termList.map((term) => (
-                  <div key={term.key} className="flex items-center justify-between group">
-                    <div 
-                      className="flex items-center gap-3 cursor-pointer" 
-                      onClick={() => handleTermToggle(term.key as keyof typeof agreedTerms)}
-                    >
-                      <Check className={`w-5 h-5 transition-colors ${
-                        agreedTerms[term.key as keyof typeof agreedTerms] ? 'text-brand-DEFAULT' : 'text-[#3A3A3C]'
-                      }`} />
-                      <span className="text-sm text-[#8E8E93] group-hover:text-white transition-colors">
-                        {term.label} <span className={term.required ? 'text-brand-DEFAULT' : 'text-[#636366]'}>
-                          ({term.required ? '필수' : '선택'})
-                        </span>
-                      </span>
-                    </div>
-                    <button type="button" onClick={() => handleOpenPolicy(term.key)} className="p-1 text-[#636366] hover:text-white transition-colors">
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <button 
-              type="submit" 
-              disabled={isLoading || !isRequiredAgreed || !isPasswordValid || !isConfirmPasswordValid || !accountData.phone} 
-              className={`w-full py-4 font-bold rounded-2xl mt-4 transition-all shadow-lg flex items-center justify-center gap-2 ${
-                isRequiredAgreed && isPasswordValid && isConfirmPasswordValid && accountData.phone
-                  ? 'bg-brand-DEFAULT text-white hover:bg-brand-hover' 
-                  : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed border border-[#3A3A3C]'
-              }`}
-            >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : '다음 (본인인증)'}
+              <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
             </button>
-          </form>
-        </motion.div>
+          </Section>
+
+          <div className="flex flex-col items-center gap-4 mt-6">
+            <button onClick={() => setIsLogoutModalOpen(true)} className="w-full py-4 text-[#EC5022] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2">
+              <LogOut className="w-4 h-4" />로그아웃
+            </button>
+            <button onClick={() => navigate('/settings/account/withdraw')} className="text-[12px] text-[#48484A] underline underline-offset-2 hover:text-[#8E8E93] transition-colors">회원 탈퇴하기</button>
+          </div>
+        </div>
       </div>
+
+      <input type="file" ref={bgInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'bg')} />
+      <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar')} />
+
+      <AnimatePresence>
+        {editTarget && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setEditTarget(null)}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="relative z-10 w-full max-w-[480px] bg-[#1C1C1E] rounded-t-3xl overflow-hidden p-6 pb-safe" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-center text-white font-bold text-lg mb-6">{editTarget === 'avatar' ? '프로필 사진 설정' : '배경 사진 설정'}</h3>
+              <div className="space-y-3">
+                <button onClick={() => (editTarget === 'avatar' ? avatarInputRef : bgInputRef).current?.click()} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-white font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><ImageIcon className="w-5 h-5" /> 앨범에서 선택</button>
+                <button onClick={() => handleResetImage(editTarget)} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-[#EC5022] font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><Trash2 className="w-5 h-5" /> 기본값으로 변경</button>
+              </div>
+              <button onClick={() => setEditTarget(null)} className="w-full mt-4 py-3 text-[#8E8E93] text-sm">취소</button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isCropOpen && tempImageSrc && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black flex flex-col">
+            <div className="h-16 flex items-center justify-between px-5 bg-black/80 backdrop-blur-md z-10 sticky top-0">
+              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2 text-white"><X className="w-7 h-7" /></button>
+              <span className="font-bold text-lg text-white">이미지 편집</span>
+              <button onClick={handleCropSave} className="px-5 py-2 bg-brand-DEFAULT rounded-full font-black text-sm text-white shadow-lg active:scale-95 transition-all">완료</button>
+            </div>
+            <div className="relative flex-1 bg-black">
+              <Cropper 
+                image={tempImageSrc} 
+                crop={crop} 
+                zoom={zoom} 
+                aspect={currentImageType === 'avatar' ? 1 : 16/9} 
+                onCropChange={setCrop} 
+                onCropComplete={(_, p) => setCroppedAreaPixels(p)} 
+                onZoomChange={setZoom} 
+                cropShape={currentImageType === 'avatar' ? 'round' : 'rect'}
+                showGrid={false}
+              />
+            </div>
+            <div className="h-24 bg-black/80 backdrop-blur-md flex items-center justify-center px-10 gap-4">
+               <span className="text-xs text-[#8E8E93]">ZOOM</span>
+               <input 
+                 type="range" 
+                 min={1} 
+                 max={3} 
+                 step={0.1} 
+                 value={zoom} 
+                 onChange={(e) => setZoom(Number(e.target.value))} 
+                 className="flex-1 accent-brand-DEFAULT"
+               />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <CountrySelectModal isOpen={isCountryModalOpen} onClose={() => setIsCountryModalOpen(false)} blockedList={blockedCountries} onSave={handleSaveBlockedCountries} />
+      <LogoutModal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)} onConfirm={() => supabase.auth.signOut().then(() => navigate('/'))} />
+    </div>
+  );
+}
+
+// --- Sub Components ---
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div><h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-2 tracking-wider uppercase">{label}</h3><div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C] divide-y divide-[#3A3A3C] shadow-sm">{children}</div></div>
+  );
+}
+
+function InfoItem({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between px-5 py-4"><div className="flex items-center gap-3"><div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center">{icon}</div><span className="text-[15px] text-white">{label}</span></div><span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{value}</span></div>
+  );
+}
+
+function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: any) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<string[]>(blockedList);
+  useEffect(() => { if (isOpen) setSelected(blockedList); }, [isOpen, blockedList]);
+  const filtered = COUNTRIES.filter(c => c.name.includes(search));
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={onClose}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-[400px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+        <div className="h-14 flex items-center justify-between px-5 bg-[#2C2C2E] shrink-0"><h3 className="text-white font-bold text-lg">접근 제한 국가 선택</h3><button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button></div>
+        <div className="p-4 bg-[#1C1C1E] border-b border-[#2C2C2E]"><div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2.5"><Search className="w-4 h-4 text-[#8E8E93] mr-2" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="검색" className="bg-transparent text-white text-sm w-full focus:outline-none" /></div></div>
+        <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+          {filtered.map(country => (
+            <button key={country.code} onClick={() => setSelected(prev => prev.includes(country.code) ? prev.filter(c => c !== country.code) : [...prev, country.code])} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-[#2C2C2E]">
+              <div className="flex items-center gap-3"><span className="text-xl">{country.flag}</span><div className="flex flex-col items-start"><span className="text-white font-medium">{country.name}</span><span className="text-[10px] text-[#636366]">{country.code}</span></div></div>
+              {selected.includes(country.code) ? <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
+            </button>
+          ))}
+        </div>
+        <div className="p-4 bg-[#1C1C1E] border-t border-[#2C2C2E] flex items-center gap-3"><div className="flex-1 text-xs text-[#8E8E93]"><span className="text-white font-bold">{selected.length}</span>개국 선택됨</div><button onClick={() => { onSave(selected); onClose(); }} className="px-6 h-11 bg-brand-DEFAULT text-white font-bold rounded-xl">적용하기</button></div>
+      </motion.div>
+    </div>
+  );
+}
+
+function LogoutModal({ isOpen, onClose, onConfirm }: any) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
+        <div className="p-8"><div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#EC5022]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
+        <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#EC5022] font-bold">로그아웃</button></div>
+      </motion.div>
     </div>
   );
 }
