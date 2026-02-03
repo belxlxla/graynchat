@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FileText, MessageSquare, Sparkles, 
-  ChevronRight, Hourglass, Send, Clock, Archive, Lock, Unlock,
+  // FileText, 
+  MessageSquare, Sparkles, 
+  ChevronRight, 
+  // Hourglass, 
+  Send, Clock, Archive, Lock, Unlock,
   Loader2,
   CalendarCheck, FileBarChart, ListTodo
 } from 'lucide-react';
