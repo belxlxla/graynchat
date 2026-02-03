@@ -221,7 +221,6 @@ export default function FriendsListPage() {
 
       const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
 
-      // ✅ 1. 먼저 기존 채팅방 확인
       const { data: existingRoom } = await supabase
         .from('chat_rooms')
         .select('id')
@@ -229,14 +228,12 @@ export default function FriendsListPage() {
         .maybeSingle();
 
       if (existingRoom) {
-        // 이미 채팅방이 있으면 바로 이동
         toast.dismiss(loadingToast);
         setSelectedFriend(null);
         navigate(`/chat/room/${sharedRoomId}`);
         return;
       }
 
-      // ✅ 2. 채팅방이 없으면 새로 생성
       const { error: roomError } = await supabase
         .from('chat_rooms')
         .insert([{ 
@@ -249,13 +246,11 @@ export default function FriendsListPage() {
         }]);
 
       if (roomError) {
-        // 중복 키 에러면 이미 생성된 것이므로 무시하고 진행
         if (roomError.code !== '23505') {
           throw roomError;
         }
       }
 
-      // ✅ 3. room_members에 나와 상대방 추가
       const { error: membersError } = await supabase
         .from('room_members')
         .upsert([
@@ -949,6 +944,7 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
   );
 }
 
+// ✅ 개선된 친구 추가 모달
 function AddFriendModal({ isOpen, onClose, onFriendAdded }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -957,10 +953,12 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [showResults, setShowResults] = useState(false);
 
-  const handleAddDirectly = async () => { 
-    if (!name.trim() || !phone.trim()) {
-      toast.error('이름과 전화번호를 입력해주세요.');
+  const handleSearch = async () => { 
+    if (!phone.trim()) {
+      toast.error('전화번호를 입력해주세요.');
       return;
     }
     
@@ -969,33 +967,70 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
 
     try { 
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+      if (!session?.user?.id) {
+        toast.dismiss(loadingToast);
+        return;
+      }
 
       const cleanPhone = phone.replace(/[^0-9]/g, '');
 
-      const { data: targetUser, error: searchError } = await supabase
+      // ✅ 전화번호로만 검색 (이름은 필터링용)
+      let query = supabase
         .from('users')
         .select('id, name, avatar, status_message, phone')
-        .eq('name', name.trim())
-        .eq('phone', cleanPhone)
-        .order('last_friends_sync', { ascending: false }) 
-        .limit(1)
-        .maybeSingle();
+        .eq('phone', cleanPhone);
+
+      // 이름이 입력되었으면 추가 필터
+      if (name.trim()) {
+        query = query.ilike('name', `%${name.trim()}%`);
+      }
+
+      const { data: users, error: searchError } = await query;
 
       if (searchError) throw searchError;
 
-      if (!targetUser) {
+      if (!users || users.length === 0) {
         toast.dismiss(loadingToast);
-        toast.error('가입된 사용자를 찾을 수 없습니다.');
+        toast.error('해당 전화번호로 가입된 사용자를 찾을 수 없습니다.');
+        setShowResults(false);
         return;
       }
 
-      if (targetUser.id === session.user.id) {
+      // 본인 제외
+      const filtered = users.filter(u => u.id !== session.user.id);
+
+      if (filtered.length === 0) {
         toast.dismiss(loadingToast);
         toast.error('본인은 친구로 추가할 수 없습니다.');
+        setShowResults(false);
         return;
       }
 
+      toast.dismiss(loadingToast);
+      setSearchResults(filtered);
+      setShowResults(true);
+
+    } catch (error: any) { 
+      console.error("Search Error:", error);
+      toast.dismiss(loadingToast);
+      toast.error('검색에 실패했습니다.');
+      setShowResults(false);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleAddFriend = async (targetUser: any) => {
+    const loadingToast = toast.loading('친구 추가 중...');
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        toast.dismiss(loadingToast);
+        return;
+      }
+
+      // 이미 친구인지 확인
       const { data: alreadyFriend } = await supabase
         .from('friends')
         .select('id')
@@ -1033,8 +1068,6 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
       console.error("Friend Add Error:", error);
       toast.dismiss(loadingToast);
       toast.error('친구 추가에 실패했습니다.');
-    } finally {
-      setIsSearching(false);
     }
   };
 
@@ -1042,6 +1075,8 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
     if (isOpen) { 
       setName(''); 
       setPhone(''); 
+      setShowResults(false);
+      setSearchResults([]);
     } 
   }, [isOpen]);
   
@@ -1049,32 +1084,80 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
   
   return (
     <ModalBackdrop onClick={onClose}>
-      <div className="w-full max-w-[360px] bg-[#1C1C1E] rounded-3xl p-6 border border-[#2C2C2E] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-[360px] bg-[#1C1C1E] rounded-3xl p-6 border border-[#2C2C2E] shadow-2xl max-h-[600px] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-white font-bold text-lg mb-4">친구 추가</h3>
-        <p className="text-xs text-[#8E8E93] mb-4 leading-relaxed">
-          이름과 전화번호가 가입 정보와 일치해야<br/>친구를 찾을 수 있습니다.
-        </p>
-        <input 
-          type="text" 
-          value={name} 
-          onChange={(e) => setName(e.target.value)} 
-          placeholder="이름 입력" 
-          className="w-full bg-[#2C2C2E] rounded-xl px-4 py-3 text-white mb-3 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT" 
-        />
-        <input 
-          type="tel" 
-          value={phone} 
-          onChange={(e) => setPhone(e.target.value)} 
-          placeholder="휴대폰 번호 (- 없이 입력)" 
-          className="w-full bg-[#2C2C2E] rounded-xl px-4 py-3 text-white mb-6 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT" 
-        />
-        <button 
-          onClick={handleAddDirectly} 
-          disabled={isSearching || !name.trim() || !phone.trim()} 
-          className="w-full h-12 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover disabled:opacity-50 transition-all"
-        >
-          {isSearching ? '검색 중...' : '추가하기'}
-        </button>
+        
+        {!showResults ? (
+          <>
+            <p className="text-xs text-[#8E8E93] mb-4 leading-relaxed">
+              가입 시 등록한 전화번호로 친구를 찾습니다.<br/>
+              이름은 선택사항입니다.
+            </p>
+            <input 
+              type="text" 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
+              placeholder="이름 (선택)" 
+              className="w-full bg-[#2C2C2E] rounded-xl px-4 py-3 text-white mb-3 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT" 
+            />
+            <input 
+              type="tel" 
+              value={phone} 
+              onChange={(e) => setPhone(e.target.value)} 
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="휴대폰 번호 (필수, - 없이 입력)" 
+              className="w-full bg-[#2C2C2E] rounded-xl px-4 py-3 text-white mb-6 focus:outline-none focus:ring-1 focus:ring-brand-DEFAULT" 
+            />
+            <button 
+              onClick={handleSearch} 
+              disabled={isSearching || !phone.trim()} 
+              className="w-full h-12 bg-brand-DEFAULT text-white font-bold rounded-xl hover:bg-brand-hover disabled:opacity-50 transition-all"
+            >
+              {isSearching ? '검색 중...' : '검색하기'}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-[#8E8E93] mb-4">
+              {searchResults.length}명의 사용자를 찾았습니다.
+            </p>
+            <div className="flex-1 overflow-y-auto space-y-2 mb-4 custom-scrollbar">
+              {searchResults.map(user => (
+                <div 
+                  key={user.id}
+                  className="flex items-center gap-3 p-3 bg-[#2C2C2E] rounded-xl hover:bg-[#3A3A3C] transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-[#3A3A3C] overflow-hidden">
+                    {user.avatar ? (
+                      <img src={user.avatar} className="w-full h-full object-cover" alt="" />
+                    ) : (
+                      <UserIcon className="w-6 h-6 m-auto mt-3 text-[#8E8E93] opacity-50" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-white font-medium">{user.name}</p>
+                    <p className="text-xs text-[#8E8E93]">{user.phone}</p>
+                  </div>
+                  <button
+                    onClick={() => handleAddFriend(user)}
+                    className="px-4 py-2 bg-brand-DEFAULT text-white text-sm font-bold rounded-lg hover:bg-brand-hover transition-colors"
+                  >
+                    추가
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                setShowResults(false);
+                setSearchResults([]);
+              }}
+              className="w-full h-12 bg-[#2C2C2E] text-white font-bold rounded-xl hover:bg-[#3A3A3C] transition-all"
+            >
+              다시 검색
+            </button>
+          </>
+        )}
       </div>
     </ModalBackdrop>
   );
@@ -1146,7 +1229,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
 
         roomId = [session.user.id, friendId].sort().join("_");
 
-        // ✅ 기존 채팅방 확인
         const { data: existingRoom } = await supabase
           .from('chat_rooms')
           .select('id')
@@ -1161,7 +1243,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
           return;
         }
 
-        // ✅ 새 채팅방 생성
         const { error: roomError } = await supabase
           .from('chat_rooms')
           .insert([{ 
@@ -1177,7 +1258,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
           throw roomError;
         }
 
-        // ✅ room_members에 추가
         const { error: membersError } = await supabase
           .from('room_members')
           .upsert([
