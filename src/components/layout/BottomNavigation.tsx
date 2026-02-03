@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, MoreHorizontal, Sparkles } from 'lucide-react'; // Rocket, X 제거, Sparkles 추가
+import { MessageCircle, MoreHorizontal, Sparkles } from 'lucide-react'; // 구문 오류 수정
 import { supabase } from '../../shared/lib/supabaseClient';
 import { useAuth } from '../../features/auth/contexts/AuthContext';
 import GraynLogo from '../../assets/grayn_logo.svg';
@@ -66,8 +66,8 @@ export default function BottomNavigation() {
     };
   }, [user]);
 
-  // 클릭 핸들러 단순화: 모달 조건문 제거하고 바로 이동
-  const handleNavClick = (id: string, path: string) => {
+  // [수정] id 파라미터 제거 (사용하지 않음으로 인한 빌드 에러 해결)
+  const handleNavClick = (path: string) => {
     navigate(path);
   };
 
@@ -80,7 +80,8 @@ export default function BottomNavigation() {
           return (
             <button
               key={item.id}
-              onClick={() => handleNavClick(item.id, item.path)}
+              // [수정] handleNavClick 호출 시 id 제거
+              onClick={() => handleNavClick(item.path)}
               className="relative w-16 h-full flex items-center justify-center"
             >
               <div className={`transition-all duration-300 ${isActive ? 'scale-110 opacity-100' : 'opacity-40 hover:opacity-60'}`}>
@@ -145,8 +146,6 @@ export default function BottomNavigation() {
           );
         })}
       </nav>
-      
-      {/* 모달(준비중 팝업) 코드는 제거되었습니다. 이제 /main/contents 페이지로 바로 이동합니다. */}
     </>
   );
 }
