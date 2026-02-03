@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, MoreHorizontal, Layers, Sparkles } from 'lucide-react'; // Rocket, X 제거, Sparkles 추가
+import { MessageCircle, MoreHorizontal, Sparkles } from 'lucide-react'; // Rocket, X 제거, Sparkles 추가
 import { supabase } from '../../shared/lib/supabaseClient';
 import { useAuth } from '../../features/auth/contexts/AuthContext';
 import GraynLogo from '../../assets/grayn_logo.svg';

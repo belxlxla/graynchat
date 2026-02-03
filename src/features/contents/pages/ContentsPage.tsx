@@ -12,10 +12,10 @@ export default function ContentsPage() {
   const [activeTab, setActiveTab] = useState<'lab' | 'membership'>('lab');
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
 
-  // [수정] ease 배열을 문자열 "easeOut"으로 변경하여 타입 에러 해결
+  // [수정] ease: "easeOut" 뒤에 as const를 붙여 리터럴 타입으로 고정 (TypeScript 에러 해결)
   const fadeVariants = {
     hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
     exit: { opacity: 0, transition: { duration: 0.2 } }
   };
 
