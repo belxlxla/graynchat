@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ArrowLeft, MessageCircle, 
-  Heart, TrendingUp, Download,
+  ArrowLeft,
+  Heart, Download,
   Search, User as UserIcon, Briefcase, Home, ChevronRight, AlertCircle,
   Thermometer, Activity, Sparkles, Brain, ThumbsUp, Star
 } from 'lucide-react';
