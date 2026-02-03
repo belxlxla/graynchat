@@ -11,8 +11,8 @@ import { supabase } from '../../../shared/lib/supabaseClient';
 export default function SignUpPage() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [isAppleLoading, setIsAppleLoading] = useState(false);
 
+  // [수정] phone 필드 초기값 보장
   const [accountData, setAccountData] = useState({
     name: '',
     email: '',
@@ -115,29 +115,6 @@ export default function SignUpPage() {
            accountData.password === accountData.confirmPassword;
   }, [confirmPasswordError, accountData.confirmPassword, accountData.password]);
 
-  // 애플 로그인
-  const handleAppleLogin = async () => {
-    setIsAppleLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'apple',
-        options: {
-          redirectTo: window.location.origin, 
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      });
-
-      if (error) throw error;
-    } catch (error: any) {
-      console.error('Apple Login Error:', error);
-      toast.error('Apple 로그인에 실패했습니다.');
-      setIsAppleLoading(false);
-    }
-  };
-
   // 일반 회원가입
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,6 +149,7 @@ export default function SignUpPage() {
           .upsert({
             id: authData.user.id,
             email: accountData.email.trim(),
+            name: accountData.name.trim(),
             phone: accountData.phone.trim(), // DB 저장
             is_terms_agreed: true,
             is_marketing_agreed: agreedTerms.marketing,
@@ -226,33 +204,6 @@ export default function SignUpPage() {
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-brand-DEFAULT mb-2">계정 만들기</h2>
             <p className="text-[#8E8E93] text-sm">서비스 이용을 위한 계정을 생성합니다.</p>
-          </div>
-
-          {/* 애플 로그인 버튼 */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={handleAppleLogin}
-              disabled={isAppleLoading}
-              className="w-full flex items-center justify-center gap-2 bg-white text-black font-bold py-3.5 rounded-2xl hover:bg-gray-100 transition-colors shadow-lg active:scale-[0.98]"
-            >
-              {isAppleLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.63-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.74s2.57-.99 4.31-.82c.51.03 2.26.2 3.32 1.73-3.03 1.76-2.39 5.51.64 6.77-.52 1.55-1.25 3.09-2.35 4.55zM12.03 7.25c-.25-2.19 1.62-3.99 3.63-4.25.32 2.45-2.38 4.23-3.63 4.25z"/>
-                  </svg>
-                  Apple로 계속하기
-                </>
-              )}
-            </button>
-            
-            <div className="flex items-center gap-3 my-6">
-              <div className="h-[1px] bg-[#3A3A3C] flex-1" />
-              <span className="text-xs text-[#636366]">또는 이메일로 가입</span>
-              <div className="h-[1px] bg-[#3A3A3C] flex-1" />
-            </div>
           </div>
 
           <form className="space-y-5" onSubmit={handleCreateAccount}>
