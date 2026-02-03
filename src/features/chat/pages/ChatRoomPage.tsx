@@ -5,7 +5,7 @@ import {
   ChevronLeft, Send, MoreHorizontal, ShieldAlert, 
   Search, ChevronUp, ChevronDown, Plus, ImageIcon, 
   Camera, FileText, Smile, X, Download, ChevronRight,
-  User as UserIcon, Ban, Sparkles, Rocket
+  User as UserIcon, Ban, Sparkles, Rocket, Users
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
