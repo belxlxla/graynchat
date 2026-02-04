@@ -270,7 +270,7 @@ export default function LoginPage() {
       </div>
     );
   }
-
+ 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center relative">
       <div id="naverIdLogin" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}/>
