@@ -19,21 +19,20 @@ jobs:
           script: |
             cd ~/graynserver
             
-            # [1] 권한 정리 & 코드 받기
-            sudo chown -R ubuntu:ubuntu .
-            git checkout .
-            git pull
+            # [1] 확실하게 코드 받기 (강제 동기화)
+            # 서버는 '작업 공간'이 아니므로, 깃허브와 100% 일치시키는 게 가장 안전합니다.
+            git fetch --all
+            git reset --hard origin/main
             
-            # [2] ★핵심 변경★
-            # 기존 서버를 끄지 않습니다! (down 삭제함)
-            # 켜진 상태에서 '새로운 이미지'를 먼저 만듭니다. (이때 사이트는 계속 살아있음)
+            # [2] 새 이미지 빌드 (무중단 시작)
+            # 서버가 켜진 상태에서 뒤에서 몰래 새 요리를 만듭니다.
             echo "Building new image..."
             sudo docker-compose build --no-cache
             
-            # [3] 교체하기 (Swap)
-            # 빌드가 다 끝나면, 1초 만에 옛날 컨테이너를 새것으로 갈아끼웁니다.
+            # [3] 강제 교체 (무중단 적용)
+            # --force-recreate: 변경 사항이 없어도 무조건 컨테이너를 새로 갈아끼웁니다.
             echo "Swapping containers..."
-            sudo docker-compose up -d
+            sudo docker-compose up -d --force-recreate
             
-            # [4] 청소 (찌꺼기 제거)
+            # [4] 청소
             sudo docker system prune -f
