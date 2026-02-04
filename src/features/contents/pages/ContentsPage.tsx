@@ -141,7 +141,7 @@ export default function ContentsPage() {
     <div className="h-full w-full flex flex-col bg-[#000000] text-white">
       {/* 헤더 */}
       <header className="h-14 px-5 flex items-center bg-[#000000] border-b border-[#1C1C1E] sticky top-0 z-10">
-        <h1 className="text-xl font-bold tracking-tight">콘텐츠 스토어</h1>
+        <h1 className="text-xl font-bold tracking-tight">그레인 콘텐츠</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-10 pb-24">
