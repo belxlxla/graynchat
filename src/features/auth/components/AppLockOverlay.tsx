@@ -126,11 +126,11 @@ export default function AppLockOverlay() {
               animate={{ opacity: 1, scale: 1 }} 
               className="relative"
             >
-              <div className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${isError ? 'bg-[#EC5022]/10 shadow-[0_0_30px_-5px_rgba(236,80,34,0.3)]' : 'bg-[#1C1C1E] border border-white/5 shadow-2xl'}`}>
+              <div className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 ${isError ? 'bg-[#FF203A]/10 shadow-[0_0_30px_-5px_rgba(255,32,58,0.3)]' : 'bg-[#1C1C1E] border border-white/5 shadow-2xl'}`}>
                 <ShieldAlert 
                   size={42} 
                   strokeWidth={1.5}
-                  className={`transition-colors duration-300 ${isError ? "text-[#EC5022]" : "text-brand-DEFAULT"}`} 
+                  className={`transition-colors duration-300 ${isError ? "text-[#FF203A]" : "text-brand-DEFAULT"}`} 
                 />
               </div>
             </motion.div>
