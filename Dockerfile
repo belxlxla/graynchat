@@ -1,18 +1,20 @@
-# 1. Node.js 설치된 리눅스 환경을 불러옴
-FROM node:18
-
-# 2. 서버 안에 'app' 폴더를 생성
+# 1. 빌드 단계 (공사)
+FROM node:18 AS builder
 WORKDIR /app
-
-# 3. 패키지 파일 복사 및 설치
-COPY package*.json ./
+COPY package.json package-lock.json ./
 RUN npm install
-
-# 4. 나머지 소스 코드 복사
 COPY . .
+# React 앱을 HTML/CSS/JS로 변환(빌드)합니다.
+RUN npm run build
 
-# 5. 3000번 포트 열기
+# 2. 실행 단계 (전시)
+FROM node:18-alpine
+WORKDIR /app
+# 3000번 포트로 웹사이트를 보여주는 도구(serve)를 설치합니다.
+RUN npm install -g serve
+# 빌드된 결과물만 가져옵니다.
+COPY --from=builder /app/dist ./dist
+
+# 3000번 포트에서 앱을 실행합니다.
 EXPOSE 3000
-
-# 6. 서버 실행 명령어
-CMD ["node", "App.tsx"]
+CMD ["serve", "-s", "dist", "-l", "3000"]
