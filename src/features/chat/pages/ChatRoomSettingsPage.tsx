@@ -5,10 +5,11 @@ import {
   ChevronLeft, Bell, Users, Image, FileText, Link as LinkIcon, 
   LogOut, ChevronRight, Download, ExternalLink,
   X, AlertTriangle, Search, CheckCircle2, Circle, ArrowLeft,
-  Play
+  Play, ImageIcon, UserPlus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
+import { useAuth } from '../../auth/contexts/AuthContext';
 
 interface MediaItem {
   id: number;
@@ -121,7 +122,6 @@ export default function ChatRoomSettingsPage() {
 
         memberCount = realCount || memberCount;
 
-        // ✅ 1:1 채팅방이면 users 테이블에서 상대방 정보 우선 가져오기
         if (chatId.includes('_') && !chatId.startsWith('group_')) {
           const friendId = chatId.split('_').find(id => id !== myId);
           if (friendId) {
@@ -140,13 +140,12 @@ export default function ChatRoomSettingsPage() {
 
         setRoomInfo({ title, count: memberCount, avatar, status: null });
 
-        // 4. 메시지에서 미디어/파일/링크 추출
         const { data: messages } = await supabase
           .from('messages')
           .select('id, content, created_at')
           .eq('room_id', chatId)
           .order('created_at', { ascending: false })
-          .limit(300);  // 너무 많으면 부하 → 적당히 제한
+          .limit(300);
 
         if (messages) {
           const medias: MediaItem[] = [];
@@ -184,7 +183,6 @@ export default function ChatRoomSettingsPage() {
           setLinkList(links);
         }
 
-        // 5. 친구 목록 (초대용)
         const { data: friends } = await supabase
           .from('friends')
           .select('*')
@@ -217,7 +215,6 @@ export default function ChatRoomSettingsPage() {
       const myId = session?.user.id;
       if (!myId) return;
 
-      // 방 자체 삭제 X → 나의 참여 레코드만 삭제
       const { error } = await supabase
         .from('room_members')
         .delete()
@@ -263,8 +260,7 @@ export default function ChatRoomSettingsPage() {
       toast.success(`${inserts.length}명을 초대했습니다.`);
       setIsInviteModalOpen(false);
 
-      // 참여자 수 갱신을 위해 데이터 다시 불러오기
-      window.location.reload(); // 간단히 새로고침 (실시간 반영 원하면 subscription 추가 가능)
+      window.location.reload(); 
 
     } catch (err) {
       console.error('초대 실패:', err);
@@ -298,10 +294,6 @@ export default function ChatRoomSettingsPage() {
     setInitialImageIndex(index);
     setViewerOpen(true);
   };
-
-  // ────────────────────────────────────────────────
-  // 나머지 UI 렌더링 부분은 그대로 유지
-  // ────────────────────────────────────────────────
 
   if (currentView === 'media') {
     return (
@@ -462,27 +454,47 @@ export default function ChatRoomSettingsPage() {
           </Section>
 
           <Section title="관리">
-            <div className="flex items-center justify-between px-5 py-4 bg-[#2C2C2E] rounded-2xl border border-[#3A3A3C]">
-              <div className="flex items-center gap-3">
-                <Bell className="w-5 h-5 text-[#8E8E93]" />
-                <span className="text-[15px] text-white">알림 설정</span>
-              </div>
+            <div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C]">
+              {/* [추가됨] 배경화면 설정 메뉴: 해당 채팅방 ID를 들고 이동 */}
               <button 
-                onClick={handleToggleNotifications}
-                className={`w-12 h-7 rounded-full p-1 transition-colors duration-200 ease-in-out ${isNotificationsOn ? 'bg-brand-DEFAULT' : 'bg-[#48484A]'}`}
+                onClick={() => navigate(`/settings/display/wallpaper?chatId=${chatId}`)} 
+                className="w-full flex items-center justify-between p-4 hover:bg-[#3A3A3C] transition-colors border-b border-[#3A3A3C]"
               >
-                <motion.div 
-                  className="w-5 h-5 bg-white rounded-full shadow-sm" 
-                  animate={{ x: isNotificationsOn ? 20 : 0 }} 
-                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                />
+                <div className="flex items-center gap-3">
+                  <ImageIcon className="w-5 h-5 text-[#8E8E93]" />
+                  <span className="text-[15px] text-white">배경화면 설정</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#636366]" />
+              </button>
+
+              <div className="flex items-center justify-between p-4 hover:bg-[#3A3A3C] transition-colors border-b border-[#3A3A3C]">
+                <div className="flex items-center gap-3">
+                  <Bell className="w-5 h-5 text-[#8E8E93]" />
+                  <span className="text-[15px] text-white">알림 설정</span>
+                </div>
+                <button 
+                  onClick={handleToggleNotifications}
+                  className={`w-12 h-7 rounded-full p-1 transition-colors duration-200 ease-in-out ${isNotificationsOn ? 'bg-brand-DEFAULT' : 'bg-[#48484A]'}`}
+                >
+                  <motion.div 
+                    className="w-5 h-5 bg-white rounded-full shadow-sm" 
+                    animate={{ x: isNotificationsOn ? 20 : 0 }} 
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  />
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setIsInviteModalOpen(true)}
+                className="w-full flex items-center justify-between p-4 hover:bg-[#3A3A3C] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-[#8E8E93]" />
+                  <span className="text-[15px] text-white">대화상대 초대</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-[#636366]" />
               </button>
             </div>
-            <NavMenuItem 
-              icon={<Users className="w-5 h-5" />} 
-              label="대화상대 초대" 
-              onClick={() => setIsInviteModalOpen(true)} 
-            />
           </Section>
 
           <div className="space-y-3 pt-4">
@@ -512,7 +524,7 @@ export default function ChatRoomSettingsPage() {
 }
 
 // ────────────────────────────────────────────────
-// 아래 컴포넌트들은 거의 변경 없음 (InviteMemberModal만 onInvite prop 추가)
+// Helper Components
 // ────────────────────────────────────────────────
 
 function SubPageView({ title, onBack, children }: { title: string, onBack: () => void, children: React.ReactNode }) {
@@ -699,7 +711,7 @@ function InviteMemberModal({
                     {friend.avatar ? (
                       <img src={friend.avatar} className="w-full h-full object-cover" alt="" />
                     ) : (
-                      <Users className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
+                      <UserPlus className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
                     )}
                   </div>
                   <div className="flex-1">

@@ -1,13 +1,48 @@
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ShieldAlert, FileText, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ShieldAlert, FileText, CheckCircle2, Send } from 'lucide-react';
 
 export default function HarmfulContentReportPage() {
   const navigate = useNavigate();
 
+  const handleOpenEmail = () => {
+    // 이메일 본문 템플릿
+    const emailBody = [
+      '='.repeat(50),
+      '그레인(GRAYN) 유해정보 신고',
+      '='.repeat(50),
+      '',
+      '[신고자 정보]',
+      '이름: ',
+      '이메일: ',
+      '',
+      '[신고 대상]',
+      '콘텐츠 유형: ',
+      '콘텐츠 위치/URL: ',
+      '',
+      '[신고 사유]',
+      '(음란물/성적 콘텐츠, 폭력적/혐오 콘텐츠, 불법 정보, 개인정보 침해, 명예훼손/모욕, 스팸/광고, 저작권 침해, 청소년 유해 정보, 기타 중 선택)',
+      '',
+      '[상세 설명]',
+      '',
+      '',
+      '',
+      '='.repeat(50),
+      `신고 접수 시각: ${new Date().toLocaleString('ko-KR')}`,
+      '='.repeat(50)
+    ].join('\n');
+
+    // mailto 링크 생성
+    const subject = encodeURIComponent('[그레인] 유해정보 신고');
+    const body = encodeURIComponent(emailBody);
+    const mailtoUrl = `mailto:bella@vanishst.com?subject=${subject}&body=${body}`;
+    
+    // 이메일 클라이언트 열기
+    window.open(mailtoUrl, '_blank');
+  };
+
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
       
-      {/* Header */}
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
         <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
           <ChevronLeft className="w-7 h-7" />
@@ -15,10 +50,8 @@ export default function HarmfulContentReportPage() {
         <h1 className="text-lg font-bold ml-1">유해 정보 신고하기</h1>
       </header>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-10">
         
-        {/* 1. Hero / Intro Section */}
         <div className="p-6 pt-10 text-center border-b border-[#2C2C2E]">
           <div className="w-16 h-16 bg-[#2C2C2E] rounded-full flex items-center justify-center mx-auto mb-6">
             <ShieldAlert className="w-8 h-8 text-[#FF203A]" />
@@ -34,15 +67,12 @@ export default function HarmfulContentReportPage() {
           </div>
         </div>
 
-        {/* 2. Methods & Procedures */}
         <div className="p-6 space-y-8">
           
-          {/* Section Header */}
           <div className="pb-2 border-b border-[#3A3A3C]">
             <h3 className="text-lg font-bold text-white">유해 정보 신고방법 및 처리절차</h3>
           </div>
 
-          {/* Subsection: 신고 방법 */}
           <section className="space-y-3">
             <div className="flex items-center gap-2 mb-2">
               <FileText className="w-5 h-5 text-brand-DEFAULT" />
@@ -64,7 +94,6 @@ export default function HarmfulContentReportPage() {
             </div>
           </section>
 
-          {/* Subsection: 처리 절차 */}
           <section className="space-y-3">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT" />
@@ -82,7 +111,17 @@ export default function HarmfulContentReportPage() {
 
         </div>
 
-        {/* Footer Info */}
+        {/* 신고하기 버튼 */}
+        <div className="px-6 pb-6">
+          <button
+            onClick={handleOpenEmail}
+            className="w-full h-14 bg-brand-DEFAULT hover:bg-brand-hover text-white font-bold rounded-2xl flex items-center justify-center gap-2 transition-all shadow-lg active:scale-[0.98]"
+          >
+            <Send className="w-5 h-5" />
+            유해 정보 신고하기
+          </button>
+        </div>
+
         <div className="px-6 pb-8">
           <p className="text-[11px] text-[#48484A] text-center leading-relaxed">
             허위 신고 시, 신고자에 대한 불이익이 발생할 수 있으니<br/>

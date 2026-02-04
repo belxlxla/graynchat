@@ -80,6 +80,8 @@ export default function ChatRoomPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showEmojiModal, setShowEmojiModal] = useState(false);
   
+  const [background, setBackground] = useState<string>('');
+
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
@@ -139,12 +141,26 @@ export default function ChatRoomPage() {
     try {
       const { data: room, error: roomError } = await supabase
         .from('chat_rooms')
-        .select('id, type, title, created_by, members_count, avatar')
+        .select('*')
         .eq('id', chatId)
         .maybeSingle();
 
       if (roomError) {
         console.error('Room fetch error:', roomError);
+      }
+
+      // ✅ room_members 테이블에서 내 배경화면 설정 가져오기
+      const { data: myMember } = await supabase
+        .from('room_members')
+        .select('wallpaper')
+        .eq('room_id', chatId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (myMember?.wallpaper) {
+        setBackground(myMember.wallpaper);
+      } else {
+        setBackground('');
       }
 
       const { data: members, error: membersError } = await supabase
@@ -320,6 +336,23 @@ export default function ChatRoomPage() {
 
           if (newMsg.sender_id !== user.id) {
             setTimeout(markAsRead, 300);
+          }
+        }
+      )
+      // ✅ room_members 테이블 변경 감지 (배경화면 실시간 반영)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'room_members',
+          filter: `room_id=eq.${chatId}`
+        },
+        (payload) => {
+          const updatedMember = payload.new as any;
+          // 내 설정만 반영
+          if (updatedMember.user_id === user.id && updatedMember.wallpaper !== undefined) {
+            setBackground(updatedMember.wallpaper || '');
           }
         }
       )
@@ -627,7 +660,7 @@ export default function ChatRoomPage() {
     const friendId = chatId.split('_').find(id => id !== user.id);
     if (!friendId) return;
 
-    if (!window.confirm('차단하시겠습니까? 차단하면 상대방이 보낸 메시지를 받을 수 없습니다.')) return;
+    if (!window.confirm('차단하시겠습니까? 차단하면 메시지를 받을 수 없습니다.')) return;
 
     try {
       const { data: friendUser } = await supabase
@@ -814,7 +847,20 @@ export default function ChatRoomPage() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#1C1C1E] text-white overflow-hidden relative">
+    <div 
+      className="flex flex-col h-[100dvh] text-white overflow-hidden relative"
+      style={{
+        backgroundColor: background && (background.startsWith('#') || background.startsWith('rgb')) ? background : '#1C1C1E',
+        backgroundImage: background && !background.startsWith('#') && !background.startsWith('rgb') ? `url(${background})` : undefined,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        transition: 'background 0.3s ease'
+      }}
+    >
+      {background && !background.startsWith('#') && !background.startsWith('rgb') && (
+        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      )}
+
       <AnimatePresence>
         {!isOnline && (
           <motion.div
@@ -829,7 +875,7 @@ export default function ChatRoomPage() {
         )}
       </AnimatePresence>
 
-      <header className="h-14 px-2 flex items-center justify-between bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-30">
+      <header className="h-14 px-2 flex items-center justify-between border-b border-[#2C2C2E]/50 shrink-0 z-30 bg-[#1C1C1E]/80 backdrop-blur-md relative">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/main/chats')} className="p-2">
             <ChevronLeft className="w-7 h-7" />
@@ -862,7 +908,7 @@ export default function ChatRoomPage() {
             initial={{ height: 0 }}
             animate={{ height: 'auto' }}
             exit={{ height: 0 }}
-            className="bg-[#2C2C2E] px-4 py-3 border-b border-[#3A3A3C] flex items-center gap-3 overflow-hidden"
+            className="bg-[#2C2C2E] px-4 py-3 border-b border-[#3A3A3C] flex items-center gap-3 overflow-hidden z-20 relative"
           >
             <div className="flex-1 bg-[#1C1C1E] rounded-xl flex items-center px-3 py-2 border border-[#3A3A3C]">
               <Search className="w-4 h-4 text-[#8E8E93] mr-2" />
@@ -945,7 +991,7 @@ export default function ChatRoomPage() {
           <div className="flex items-center">
             <Ban className="w-6 h-6 text-[#FF203A]" />
             <div className="ml-3">
-              <p className="text-sm font-bold text-[#FF203A]">차단한 사용자</p>
+              <p className="text-sm font-bold text-[#FF203A]">차단된 사용자</p>
             </div>
           </div>
           <button 
@@ -990,7 +1036,7 @@ export default function ChatRoomPage() {
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar relative z-10">
         {isLoading ? (
           <div className="text-center mt-10 text-[#8E8E93]">로딩 중...</div>
         ) : messages.length === 0 ? (
@@ -1043,7 +1089,7 @@ export default function ChatRoomPage() {
                   </div>
 
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] text-[#636366]">
+                    <span className="text-[10px] text-[#636366] mix-blend-difference">
                       {new Date(msg.created_at).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit'
@@ -1061,7 +1107,7 @@ export default function ChatRoomPage() {
         <div ref={scrollRef} />
       </div>
 
-      <div className="p-3 bg-[#1C1C1E] border-t border-[#2C2C2E] flex items-center gap-3 relative">
+      <div className="p-3 bg-[#1C1C1E] border-t border-[#2C2C2E] flex items-center gap-3 relative z-30">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           className="p-2 bg-[#2C2C2E] rounded-full transition-transform active:scale-90"

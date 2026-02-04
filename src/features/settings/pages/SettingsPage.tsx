@@ -171,6 +171,8 @@ export default function SettingsPage() {
       navigate('/settings/notification');
     } else if (id === 'display') {
       navigate('/settings/display');
+    } else if (id === 'theme') { // ✅ 테마 클릭 시 배경화면 설정 페이지로 이동
+      navigate('/settings/display/wallpaper');
     } else if (id === 'backup') {
       toast('백업 기능은 준비 중입니다.');
     } else if (id === 'notice') {
