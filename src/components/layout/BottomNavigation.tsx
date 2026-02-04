@@ -117,11 +117,11 @@ export default function BottomNavigation() {
                       ease: "easeOut",
                       times: [0, 0.6, 1]
                     }}
-                    className="absolute top-3 right-3 w-2 h-2 bg-[#EC5022] rounded-full border border-[#1C1C1E] shadow-lg"
+                    className="absolute top-3 right-3 w-2 h-2 bg-[#FF203A] rounded-full border border-[#1C1C1E] shadow-lg"
                   >
                     {/* 펄스 애니메이션 - 새 메시지 강조 */}
                     <motion.div
-                      className="absolute inset-0 bg-[#EC5022] rounded-full"
+                      className="absolute inset-0 bg-[#FF203A] rounded-full"
                       animate={{
                         scale: [1, 1.8, 1],
                         opacity: [0.6, 0, 0.6]

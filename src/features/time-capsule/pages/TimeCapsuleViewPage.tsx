@@ -96,7 +96,7 @@ export default function TimeCapsuleViewPage() {
   if (isLoading) {
     return (
       <div className="h-[100dvh] bg-[#1C1C1E] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -122,7 +122,7 @@ export default function TimeCapsuleViewPage() {
         >
           {/* 보낸 사람 정보 */}
           <div className="text-center mb-8">
-            <div className="w-20 h-20 rounded-full bg-[#3A3A3C] mx-auto mb-4 overflow-hidden border-4 border-orange-500/30">
+            <div className="w-20 h-20 rounded-full bg-[#3A3A3C] mx-auto mb-4 overflow-hidden border-4 border-red-500/30">
               {capsule.sender_avatar ? (
                 <img src={capsule.sender_avatar} className="w-full h-full object-cover" alt="" />
               ) : (
@@ -145,7 +145,7 @@ export default function TimeCapsuleViewPage() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.5 }}
-            className="bg-[#2C2C2E] rounded-3xl p-6 border border-orange-500/30 shadow-[0_0_40px_rgba(234,88,12,0.15)]"
+            className="bg-[#2C2C2E] rounded-3xl p-6 border border-red-500/30 shadow-[0_0_40px_rgba(234,88,12,0.15)]"
           >
             <p className="text-white text-base leading-relaxed whitespace-pre-wrap">
               {capsule.message}
@@ -160,7 +160,7 @@ export default function TimeCapsuleViewPage() {
             className="mt-6 text-center"
           >
             <p className="text-xs text-[#8E8E93] mb-2">잠금 해제</p>
-            <p className="text-sm text-orange-400 font-medium">
+            <p className="text-sm text-red-400 font-medium">
               {new Date(capsule.unlock_at).toLocaleString('ko-KR', {
                 year: 'numeric',
                 month: 'long',
@@ -177,13 +177,13 @@ export default function TimeCapsuleViewPage() {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.6, duration: 0.5 }}
-              className="mt-6 bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4"
+              className="mt-6 bg-red-500/10 border border-red-500/30 rounded-2xl p-4"
             >
               <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-orange-400 mb-1">자동 삭제 안내</p>
-                  <p className="text-xs text-orange-300/80 leading-relaxed">
+                  <p className="text-sm font-medium text-red-400 mb-1">자동 삭제 안내</p>
+                  <p className="text-xs text-red-300/80 leading-relaxed">
                     이 타임캡슐은 <strong>{deleteDate}</strong>에 자동으로 삭제됩니다.
                   </p>
                 </div>
@@ -198,7 +198,7 @@ export default function TimeCapsuleViewPage() {
             transition={{ delay: 0.8, type: "spring", stiffness: 200 }}
             className="mt-8 flex justify-center"
           >
-            <Heart className="w-8 h-8 text-orange-500 fill-orange-500" />
+            <Heart className="w-8 h-8 text-red-500 fill-red-500" />
           </motion.div>
         </motion.div>
       </div>

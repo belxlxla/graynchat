@@ -488,7 +488,7 @@ export default function ChatRoomSettingsPage() {
           <div className="space-y-3 pt-4">
             <button 
               onClick={() => setIsLeaveModalOpen(true)} 
-              className="w-full py-4 bg-[#2C2C2E] text-[#EC5022] font-medium rounded-2xl flex items-center justify-center gap-2 hover:bg-[#3A3A3C] transition-colors border border-[#3A3A3C]"
+              className="w-full py-4 bg-[#2C2C2E] text-[#FF203A] font-medium rounded-2xl flex items-center justify-center gap-2 hover:bg-[#3A3A3C] transition-colors border border-[#3A3A3C]"
             >
               <LogOut className="w-5 h-5" />채팅방 나가기
             </button>
@@ -591,8 +591,8 @@ function LeaveChatModal({ isOpen, onClose, onConfirm }: {
         className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center"
       >
         <div className="p-6">
-          <div className="w-12 h-12 bg-[#EC5022]/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-6 h-6 text-[#EC5022]" />
+          <div className="w-12 h-12 bg-[#FF203A]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6 text-[#FF203A]" />
           </div>
           <h3 className="text-white font-bold text-lg mb-2">채팅방 나가기</h3>
           <p className="text-[#8E8E93] text-sm leading-relaxed">
@@ -608,7 +608,7 @@ function LeaveChatModal({ isOpen, onClose, onConfirm }: {
           </button>
           <button 
             onClick={onConfirm} 
-            className="flex-1 text-[#EC5022] font-bold text-[16px] hover:bg-[#2C2C2E]"
+            className="flex-1 text-[#FF203A] font-bold text-[16px] hover:bg-[#2C2C2E]"
           >
             나가기
           </button>
@@ -683,7 +683,7 @@ function InviteMemberModal({
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
           {filtered.length === 0 ? (
-            <p className="text-center text-[#8E8E93] mt-10 text-sm">초대할 수 있는 친구가 없습니다.</p>
+            <p className="text-center text-[#8E8E93] mt-10 text-sm">아직 초대할 수 있는 친구가 없습니다.</p>
           ) : (
             filtered.map(friend => {
               const isSelected = selectedIds.includes(friend.id);

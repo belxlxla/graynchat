@@ -259,7 +259,7 @@ export default function PhoneAuthPage() {
                   <button key={c} onClick={() => setCarrier(c)} className={`h-12 rounded-xl text-xs font-medium border transition-all ${carrier === c ? 'bg-brand-DEFAULT border-brand-DEFAULT text-white' : 'bg-[#2C2C2E] border-transparent text-[#8E8E93]'}`}>{c}</button>
                 ))}
               </div>
-              <div className={`bg-[#2C2C2E] rounded-xl border ${phoneError ? 'border-[#EC5022]' : 'border-transparent'}`}>
+              <div className={`bg-[#2C2C2E] rounded-xl border ${phoneError ? 'border-[#FF203A]' : 'border-transparent'}`}>
                 <input type="tel" value={phoneNumber} onChange={handlePhoneChange} placeholder="010-0000-0000" maxLength={13} className="w-full h-14 bg-transparent px-4 text-lg outline-none" disabled={step === 'verify'} />
               </div>
               {step === 'input' && (
@@ -269,7 +269,7 @@ export default function PhoneAuthPage() {
             <AnimatePresence>
               {step === 'verify' && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-                  <div className={`relative bg-[#2C2C2E] rounded-xl border ${codeError ? 'border-[#EC5022]' : 'border-transparent'}`}>
+                  <div className={`relative bg-[#2C2C2E] rounded-xl border ${codeError ? 'border-[#FF203A]' : 'border-transparent'}`}>
                     <input type="number" value={verifyCode} onChange={e => setVerifyCode(e.target.value.slice(0, 6))} placeholder="000000" className="w-full h-14 bg-transparent px-4 text-lg outline-none pr-20" autoFocus />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-DEFAULT text-sm font-mono font-bold">{displayTime}</span>
                   </div>
@@ -285,10 +285,10 @@ export default function PhoneAuthPage() {
       {showQuitAlert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6 bg-black/70">
           <div className="bg-[#1C1C1E] w-full max-w-[320px] rounded-2xl p-6 text-center border border-[#2C2C2E]">
-            <h3 className="text-white text-lg font-bold mb-2">가입을 중단하시겠습니까?</h3>
+            <h3 className="text-white text-lg font-bold mb-2">회원가입을 그만할까요?</h3>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowQuitAlert(false)} className="flex-1 h-12 rounded-xl bg-[#2C2C2E] text-white">계속하기</button>
-              <button onClick={handleQuit} className="flex-1 h-12 rounded-xl bg-[#EC5022] font-bold text-white">중단</button>
+              <button onClick={handleQuit} className="flex-1 h-12 rounded-xl bg-[#FF203A] font-bold text-white">그만하기</button>
             </div>
           </div>
         </div>

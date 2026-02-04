@@ -21,7 +21,7 @@ export default function HarmfulContentReportPage() {
         {/* 1. Hero / Intro Section */}
         <div className="p-6 pt-10 text-center border-b border-[#2C2C2E]">
           <div className="w-16 h-16 bg-[#2C2C2E] rounded-full flex items-center justify-center mx-auto mb-6">
-            <ShieldAlert className="w-8 h-8 text-[#EC5022]" />
+            <ShieldAlert className="w-8 h-8 text-[#FF203A]" />
           </div>
           <h2 className="text-xl font-bold mb-4">
             안전하고 깨끗한<br/>그레인을 만듭니다
@@ -73,7 +73,7 @@ export default function HarmfulContentReportPage() {
             <div className="bg-[#2C2C2E] p-4 rounded-xl border border-[#3A3A3C]">
               <p className="text-[13px] text-[#D1D1D6] leading-relaxed">
                 유해정보로 신고된 게시물은 그레인 이용약관 및 운영원칙에 따라 
-                <span className="text-[#EC5022] font-bold"> 신속하게 조치를 취하고 있습니다.</span>
+                <span className="text-[#FF203A] font-bold"> 신속하게 조치를 취하고 있습니다.</span>
                 <br/>
                 검토 결과에 따라 게시물 삭제, 작성자 이용 정지 등의 조치가 이루어질 수 있습니다.
               </p>

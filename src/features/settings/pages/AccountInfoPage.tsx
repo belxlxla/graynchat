@@ -257,7 +257,7 @@ export default function AccountInfoPage() {
             <button onClick={handlePhoneClick} className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group">
               <div className="flex items-center gap-3">
                 <div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center"><Phone className="w-5 h-5" /></div>
-                <span className="text-[15px] text-white">전화번호</span>
+                <span className="text-[15px] text-white">휴대폰 번호</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{profile.phone}</span>
@@ -295,7 +295,7 @@ export default function AccountInfoPage() {
           </Section>
 
           <div className="flex flex-col items-center gap-4 mt-6">
-            <button onClick={() => setIsLogoutModalOpen(true)} className="w-full py-4 text-[#EC5022] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2">
+            <button onClick={() => setIsLogoutModalOpen(true)} className="w-full py-4 text-[#FF203A] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2">
               <LogOut className="w-4 h-4" />로그아웃
             </button>
             <button onClick={() => navigate('/settings/account/withdraw')} className="text-[12px] text-[#48484A] underline underline-offset-2 hover:text-[#8E8E93] transition-colors">회원 탈퇴하기</button>
@@ -314,7 +314,7 @@ export default function AccountInfoPage() {
               <h3 className="text-center text-white font-bold text-lg mb-6">{editTarget === 'avatar' ? '프로필 사진 설정' : '배경 사진 설정'}</h3>
               <div className="space-y-3">
                 <button onClick={() => (editTarget === 'avatar' ? avatarInputRef : bgInputRef).current?.click()} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-white font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><ImageIcon className="w-5 h-5" /> 앨범에서 선택</button>
-                <button onClick={() => handleResetImage(editTarget)} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-[#EC5022] font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><Trash2 className="w-5 h-5" /> 기본값으로 변경</button>
+                <button onClick={() => handleResetImage(editTarget)} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-[#FF203A] font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><Trash2 className="w-5 h-5" /> 기본값으로 변경</button>
               </div>
               <button onClick={() => setEditTarget(null)} className="w-full mt-4 py-3 text-[#8E8E93] text-sm">취소</button>
             </motion.div>
@@ -344,7 +344,7 @@ export default function AccountInfoPage() {
               />
             </div>
             <div className="h-24 bg-black/80 backdrop-blur-md flex items-center justify-center px-10 gap-4">
-               <span className="text-xs text-[#8E8E93]">ZOOM</span>
+               <span className="text-xs text-[#8E8E93]">확대</span>
                <input 
                  type="range" 
                  min={1} 
@@ -432,8 +432,14 @@ function LogoutModal({ isOpen, onClose, onConfirm }: any) {
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
-        <div className="p-8"><div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#EC5022]" /></div><h3 className="text-white font-bold text-xl mb-2">로그아웃</h3><p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
-        <div className="flex border-t border-[#2C2C2E] h-14"><button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button><button onClick={onConfirm} className="flex-1 text-[#EC5022] font-bold">로그아웃</button></div>
+        <div className="p-8"><div className="w-16 h-16 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#FF203A]" />
+        </div>
+        <h3 className="text-white font-bold text-xl mb-2">로그아웃</h3>
+        <p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
+        <div className="flex border-t border-[#2C2C2E] h-14">
+          <button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button>
+          <button onClick={onConfirm} className="flex-1 text-[#FF203A] font-bold">로그아웃</button>
+        </div>
       </motion.div>
     </div>
   );

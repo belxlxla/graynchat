@@ -202,7 +202,7 @@ export default function SignUpPage() {
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-10">
           <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-brand-DEFAULT mb-2">계정 만들기</h2>
+            <h2 className="text-2xl font-bold text-brand-DEFAULT mb-2">그레인 계정 만들기</h2>
             <p className="text-[#8E8E93] text-sm">서비스 이용을 위한 계정을 생성합니다.</p>
           </div>
 
@@ -210,7 +210,7 @@ export default function SignUpPage() {
             <div className="space-y-4">
               {/* 이름 */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#8E8E93] ml-1">이름</label>
+                <label className="text-xs font-bold text-[#8E8E93] ml-1">이름(실명)</label>
                 <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                   <User className="w-5 h-5 text-[#636366] mr-3" />
                   <input 
@@ -226,7 +226,7 @@ export default function SignUpPage() {
 
               {/* [추가] 전화번호 */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#8E8E93] ml-1">전화번호</label>
+                <label className="text-xs font-bold text-[#8E8E93] ml-1">휴대폰 번호</label>
                 <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
                   <Phone className="w-5 h-5 text-[#636366] mr-3" />
                   <input 
@@ -234,7 +234,7 @@ export default function SignUpPage() {
                     type="tel" 
                     value={accountData.phone} 
                     onChange={(e) => setAccountData({ ...accountData, phone: e.target.value.replace(/[^0-9]/g, '') })} 
-                    placeholder="01012345678" 
+                    placeholder="휴대폰 번호를 입력해주세요." 
                     className="bg-transparent text-white text-sm w-full focus:outline-none" 
                   />
                 </div>
@@ -343,7 +343,7 @@ export default function SignUpPage() {
                       Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'
                     }`} />
                   </div>
-                  <span className="font-bold text-sm text-white">약관 전체동의</span>
+                  <span className="font-bold text-sm text-white">약관에 전체 동의</span>
                 </div>
               </div>
               <div className="space-y-3 px-1">

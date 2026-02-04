@@ -160,7 +160,7 @@ export default function PrivacyManagementPage() {
             onClick={() => setShowDeleteModal(true)}
             className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] transition-colors text-left"
           >
-            <span className="text-[15px] text-[#EC5022] font-bold">모든 데이터 삭제</span>
+            <span className="text-[15px] text-[#FF203A] font-bold">모든 데이터 삭제</span>
           </button>
         </Section>
 
@@ -182,13 +182,13 @@ export default function PrivacyManagementPage() {
               className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] border border-[#3A3A3C] rounded-[40px] overflow-hidden shadow-2xl text-center"
             >
               <div className="p-8 pb-6">
-                <div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#EC5022]/20">
-                  <AlertTriangle className="w-8 h-8 text-[#EC5022]" />
+                <div className="w-16 h-16 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#FF203A]/20">
+                  <AlertTriangle className="w-8 h-8 text-[#FF203A]" />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-3 tracking-tight">모든 데이터를 파기할까요?</h3>
                 <p className="text-[13px] text-[#8E8E93] leading-relaxed">
                   삭제 시 <span className="text-white font-bold">대화 리스트, 친구 관계, 보안 설정</span> 등 회원님의 모든 활동 정보가 영구 삭제됩니다.<br/>
-                  <span className="text-[#EC5022] font-bold mt-2 block italic">이 동작은 되돌릴 수 없습니다.</span>
+                  <span className="text-[#FF203A] font-bold mt-2 block italic">이 동작은 되돌릴 수 없습니다.</span>
                 </p>
               </div>
               <div className="flex p-4 gap-3">
@@ -202,7 +202,7 @@ export default function PrivacyManagementPage() {
                 <button 
                   onClick={handlePurgeAllData}
                   disabled={isDeleting}
-                  className="flex-1 py-4 bg-[#EC5022] text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg shadow-[#EC5022]/20 flex items-center justify-center gap-2"
+                  className="flex-1 py-4 bg-[#FF203A] text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg shadow-[#FF203A]/20 flex items-center justify-center gap-2"
                 >
                   {isDeleting ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

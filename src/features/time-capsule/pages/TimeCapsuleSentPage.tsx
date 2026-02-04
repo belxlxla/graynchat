@@ -103,7 +103,7 @@ export default function TimeCapsuleSentPage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {isLoading ? (
           <div className="flex justify-center items-center h-full">
-            <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
           </div>
         ) : capsules.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[#8E8E93]">
@@ -137,7 +137,7 @@ export default function TimeCapsuleSentPage() {
                     onClick={() => navigate(`/time-capsule/edit/${capsule.id}`)}
                     className="p-2 bg-[#3A3A3C] rounded-lg hover:bg-[#48484A] transition-colors"
                   >
-                    <Edit2 className="w-4 h-4 text-orange-500" />
+                    <Edit2 className="w-4 h-4 text-red-500" />
                   </button>
                 )}
               </div>
@@ -147,7 +147,7 @@ export default function TimeCapsuleSentPage() {
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1 text-orange-400">
+                <div className="flex items-center gap-1 text-red-400">
                   <Clock className="w-3 h-3" />
                   <span>{getTimeRemaining(capsule.unlock_at)}</span>
                 </div>

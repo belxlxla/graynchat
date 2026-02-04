@@ -139,7 +139,7 @@ export default function AppLockOverlay() {
                 <h2 className="text-2xl font-bold tracking-tight text-white">
                   App Locked
                 </h2>
-                <p className={`text-sm transition-colors duration-300 ${isError ? "text-[#EC5022] font-medium" : "text-[#8E8E93]"}`}>
+                <p className={`text-sm transition-colors duration-300 ${isError ? "text-[#FF203A] font-medium" : "text-[#8E8E93]"}`}>
                   {isError ? "암호가 올바르지 않습니다" : `비밀번호를 입력해주세요 (${failCount}/10)`}
                 </p>
             </div>
@@ -157,7 +157,7 @@ export default function AppLockOverlay() {
                   animate={{ 
                     scale: i < pin.length ? 1 : 0.8,
                     backgroundColor: i < pin.length 
-                      ? (isError ? "#EC5022" : "#FFFFFF") 
+                      ? (isError ? "#FF203A" : "#FFFFFF") 
                       : "#2C2C2E",
                     opacity: i < pin.length ? 1 : 0.5
                   }} 
@@ -245,11 +245,11 @@ export default function AppLockOverlay() {
               className="relative bg-[#1C1C1E] border border-white/10 p-8 rounded-[32px] text-center w-full max-w-[320px] shadow-2xl overflow-hidden"
             >
               {/* 배경 효과 */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-40 bg-[#EC5022]/20 blur-[60px] rounded-full pointer-events-none" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-40 bg-[#FF203A]/20 blur-[60px] rounded-full pointer-events-none" />
               
               <div className="relative z-10">
-                <div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-5 border border-[#EC5022]/20">
-                  <AlertTriangle size={32} className="text-[#EC5022]" />
+                <div className="w-16 h-16 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-5 border border-[#FF203A]/20">
+                  <AlertTriangle size={32} className="text-[#FF203A]" />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-3">접속 차단됨</h3>
                 <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">

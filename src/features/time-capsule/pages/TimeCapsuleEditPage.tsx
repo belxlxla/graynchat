@@ -123,7 +123,7 @@ export default function TimeCapsuleEditPage() {
   if (isLoading) {
     return (
       <div className="h-[100dvh] bg-[#1C1C1E] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -141,11 +141,11 @@ export default function TimeCapsuleEditPage() {
       </header>
 
       <div className="flex-1 flex flex-col p-6 overflow-y-auto">
-        <div className="mb-6 p-4 bg-orange-500/10 border border-orange-500/30 rounded-2xl flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm text-orange-400 font-medium mb-1">1회 수정 기회</p>
-            <p className="text-xs text-orange-300/80">
+            <p className="text-sm text-red-400 font-medium mb-1">1회 수정 기회</p>
+            <p className="text-xs text-red-300/80">
               저장하면 더 이상 수정할 수 없습니다.<br/>
               신중하게 확인해주세요.
             </p>
@@ -159,7 +159,7 @@ export default function TimeCapsuleEditPage() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="메시지를 입력하세요..."
-              className="w-full h-40 bg-[#2C2C2E] rounded-2xl p-4 text-white placeholder-[#636366] resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full h-40 bg-[#2C2C2E] rounded-2xl p-4 text-white placeholder-[#636366] resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
               maxLength={1000}
             />
             <div className="mt-2 text-xs text-[#8E8E93] text-right">
@@ -174,7 +174,7 @@ export default function TimeCapsuleEditPage() {
               value={unlockDate}
               onChange={(e) => setUnlockDate(e.target.value)}
               min={minDate}
-              className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500"
             />
           </div>
 
@@ -184,13 +184,13 @@ export default function TimeCapsuleEditPage() {
               type="time"
               value={unlockTime}
               onChange={(e) => setUnlockTime(e.target.value)}
-              className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500"
             />
           </div>
 
           {unlockDate && (
-            <div className="p-4 bg-orange-500/10 border border-orange-500/30 rounded-2xl">
-              <p className="text-sm text-orange-400 text-center">
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl">
+              <p className="text-sm text-red-400 text-center">
                 <strong>{new Date(`${unlockDate}T${unlockTime}`).toLocaleString('ko-KR', {
                   year: 'numeric',
                   month: 'long',
@@ -206,7 +206,7 @@ export default function TimeCapsuleEditPage() {
         <button
           onClick={handleSave}
           disabled={isSaving || !message.trim() || !unlockDate}
-          className="mt-6 w-full py-4 bg-orange-500 text-white font-bold rounded-2xl disabled:opacity-50 hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+          className="mt-6 w-full py-4 bg-red-500 text-white font-bold rounded-2xl disabled:opacity-50 hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
         >
           {isSaving ? (
             <>

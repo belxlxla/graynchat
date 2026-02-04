@@ -60,8 +60,8 @@ export default function AccountSecurityPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-6">
-                <div className={`w-2 h-2 rounded-full ${securityScore >= 80 ? 'bg-brand-DEFAULT' : 'bg-[#EC5022]'}`} />
-                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${securityScore >= 80 ? 'text-brand-DEFAULT' : 'text-[#EC5022]'}`}>Security Diagnosis</span>
+                <div className={`w-2 h-2 rounded-full ${securityScore >= 80 ? 'bg-brand-DEFAULT' : 'bg-[#FF203A]'}`} />
+                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${securityScore >= 80 ? 'text-brand-DEFAULT' : 'text-[#FF203A]'}`}>Security Diagnosis</span>
               </div>
               
               <div className="flex items-center justify-between mb-8">
@@ -78,7 +78,7 @@ export default function AccountSecurityPage() {
                       cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="6" fill="transparent" 
                       strokeDasharray={175} 
                       animate={{ strokeDashoffset: 175 - (175 * securityScore) / 100 }}
-                      className={`${securityScore >= 80 ? 'text-brand-DEFAULT' : 'text-[#EC5022]'} transition-all duration-1000`} 
+                      className={`${securityScore >= 80 ? 'text-brand-DEFAULT' : 'text-[#FF203A]'} transition-all duration-1000`} 
                     />
                   </svg>
                   <span className="absolute text-sm font-black">{securityScore}</span>
@@ -104,7 +104,7 @@ export default function AccountSecurityPage() {
                 title="2단계 인증 설정"
                 desc="로그인 시 추가 보안 코드 확인"
                 value={is2FAEnabled ? "설정됨" : "미설정"}
-                valueColor={is2FAEnabled ? "text-brand-DEFAULT" : "text-[#EC5022]"}
+                valueColor={is2FAEnabled ? "text-brand-DEFAULT" : "text-[#FF203A]"}
                 onClick={() => navigate('/settings/security/2fa')}
               />
               <div className="h-[1px] bg-[#2C2C2E] mx-5" />

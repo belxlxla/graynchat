@@ -323,14 +323,14 @@ export default function ProfileSetupPage() {
           <div className="text-center mb-10">
             <h2 className="text-2xl font-black mb-2 tracking-tight">프로필 설정</h2>
             <p className="text-[#8E8E93] text-sm leading-relaxed">
-              회원님을 표현할 수 있는<br/>프로필을 완성해 주세요.
+              회원님을 표현할 수 있는<br/>멋진 프로필을 완성해 주세요.
             </p>
           </div>
 
           <div className="space-y-6">
             <div className="space-y-2">
               <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">
-                Nickname
+                닉네임
               </label>
               <input 
                 type="text" 
@@ -347,7 +347,7 @@ export default function ProfileSetupPage() {
 
             <div className="space-y-2">
               <label className="text-[11px] font-black text-[#636366] ml-1 tracking-widest uppercase">
-                상태 메시지
+                상태 메시지 (선택)
               </label>
               <input 
                 type="text" 

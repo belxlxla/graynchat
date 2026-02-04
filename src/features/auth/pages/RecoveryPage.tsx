@@ -97,7 +97,7 @@ export default function RecoveryPage() {
 
   const handleResetPassword = async () => {
     if (!foundEmail) return toast.error('사용자 이메일을 찾을 수 없습니다.');
-    if (newPassword.length < 6) return toast.error('비밀번호는 6자리 이상이어야 합니다.');
+    if (newPassword.length < 6) return toast.error('비밀번호는 8자리 이상이어야 합니다.');
     if (newPassword !== confirmPassword) return toast.error('비밀번호가 일치하지 않습니다.');
 
     const loadingToast = toast.loading('비밀번호를 안전하게 변경 중입니다...');
@@ -208,7 +208,7 @@ export default function RecoveryPage() {
                   <Lock className="w-5 h-5 text-[#636366] mr-3" /><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="비밀번호 재입력" className="bg-transparent text-white text-sm w-full focus:outline-none" />
                 </div>
               </div>
-              <button onClick={handleResetPassword} className="w-full h-14 bg-brand-DEFAULT text-white font-bold rounded-xl mt-4 hover:bg-brand-hover transition-colors shadow-lg flex items-center justify-center gap-2">비밀번호 즉시 변경 <ArrowRight className="w-5 h-5" /></button>
+              <button onClick={handleResetPassword} className="w-full h-14 bg-brand-DEFAULT text-white font-bold rounded-xl mt-4 hover:bg-brand-hover transition-colors shadow-lg flex items-center justify-center gap-2">비밀번호 변경 <ArrowRight className="w-5 h-5" /></button>
             </motion.div>
           )}
         </AnimatePresence>

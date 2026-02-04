@@ -627,7 +627,7 @@ export default function ChatRoomPage() {
     const friendId = chatId.split('_').find(id => id !== user.id);
     if (!friendId) return;
 
-    if (!window.confirm('차단하시겠습니까? 차단하면 메시지를 받을 수 없습니다.')) return;
+    if (!window.confirm('차단하시겠습니까? 차단하면 상대방이 보낸 메시지를 받을 수 없습니다.')) return;
 
     try {
       const { data: friendUser } = await supabase
@@ -758,7 +758,7 @@ export default function ChatRoomPage() {
             className="flex-1 flex items-center gap-3 p-2 cursor-pointer hover:bg-white/5 rounded-xl transition-colors"
           >
             <div className="w-10 h-10 rounded-xl bg-[#3A3A3C] flex items-center justify-center shrink-0 border border-white/5">
-              <FileText className="w-5 h-5 text-[#EC5022]" />
+              <FileText className="w-5 h-5 text-[#FF203A]" />
             </div>
             <div className="flex-1 min-w-0 mr-1">
               <p className="text-[14px] text-white truncate font-medium">{getFileName(msg.content)}</p>
@@ -821,7 +821,7 @@ export default function ChatRoomPage() {
             initial={{ y: -50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -50, opacity: 0 }}
-            className="absolute top-0 left-0 right-0 z-50 bg-[#EC5022] px-4 py-3 flex items-center justify-center gap-2"
+            className="absolute top-0 left-0 right-0 z-50 bg-[#FF203A] px-4 py-3 flex items-center justify-center gap-2"
           >
             <WifiOff className="w-5 h-5" />
             <span className="text-sm font-medium">네트워크 연결이 끊어졌습니다</span>
@@ -943,9 +943,9 @@ export default function ChatRoomPage() {
       {!isLoading && !isGroupChat && isBlocked && (
         <div className="bg-[#2C2C2E] p-4 flex items-center justify-between border-b border-[#3A3A3C] z-20">
           <div className="flex items-center">
-            <Ban className="w-6 h-6 text-[#EC5022]" />
+            <Ban className="w-6 h-6 text-[#FF203A]" />
             <div className="ml-3">
-              <p className="text-sm font-bold text-[#EC5022]">차단된 사용자</p>
+              <p className="text-sm font-bold text-[#FF203A]">차단한 사용자</p>
             </div>
           </div>
           <button 
@@ -1037,7 +1037,7 @@ export default function ChatRoomPage() {
                         }}
                         className="absolute -right-8 top-1/2 -translate-y-1/2"
                       >
-                        <AlertCircle className="w-5 h-5 text-[#EC5022]" />
+                        <AlertCircle className="w-5 h-5 text-[#FF203A]" />
                       </button>
                     )}
                   </div>
@@ -1184,8 +1184,8 @@ export default function ChatRoomPage() {
               className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]"
             >
               <div className="p-6 text-center">
-                <div className="w-12 h-12 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <AlertCircle className="w-6 h-6 text-[#EC5022]" />
+                <div className="w-12 h-12 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="w-6 h-6 text-[#FF203A]" />
                 </div>
                 <h3 className="text-white font-bold text-lg mb-2">전송 실패</h3>
                 <p className="text-xs text-[#8E8E93] leading-relaxed">

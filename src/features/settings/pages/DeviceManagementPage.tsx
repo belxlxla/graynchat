@@ -186,7 +186,7 @@ export default function DeviceManagementPage() {
                         </div>
                         <button 
                           onClick={() => handleLogoutRequest(device)}
-                          className="w-10 h-10 rounded-xl bg-[#1C1C1E] flex items-center justify-center text-[#8E8E93] hover:text-[#EC5022] transition-colors"
+                          className="w-10 h-10 rounded-xl bg-[#1C1C1E] flex items-center justify-center text-[#8E8E93] hover:text-[#FF203A] transition-colors"
                         >
                           <LogOut size={20} />
                         </button>
@@ -237,8 +237,8 @@ export default function DeviceManagementPage() {
               className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] border border-[#2C2C2E] rounded-[40px] overflow-hidden shadow-2xl text-center"
             >
               <div className="p-8 pb-6">
-                <div className="w-16 h-16 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#EC5022]/20">
-                  <AlertTriangle size={32} className="text-[#EC5022]" />
+                <div className="w-16 h-16 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#FF203A]/20">
+                  <AlertTriangle size={32} className="text-[#FF203A]" />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-3">로그아웃 하시겠습니까?</h3>
                 <p className="text-[13px] text-[#8E8E93] leading-relaxed">
@@ -256,7 +256,7 @@ export default function DeviceManagementPage() {
                 </button>
                 <button 
                   onClick={handleConfirmLogout}
-                  className="flex-1 py-4 bg-[#EC5022] text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg shadow-[#EC5022]/20"
+                  className="flex-1 py-4 bg-[#FF203A] text-white font-bold rounded-2xl active:scale-95 transition-all shadow-lg shadow-[#FF203A]/20"
                 >
                   로그아웃
                 </button>

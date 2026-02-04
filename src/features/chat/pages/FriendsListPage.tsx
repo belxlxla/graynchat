@@ -504,7 +504,7 @@ const filteredFriends = useMemo(() => {
           </div>
           <h2 className="text-2xl font-bold mb-4">연락처 동기화</h2>
           <p className="text-[#8E8E93] text-sm leading-relaxed mb-10">
-            Grayn을 사용하는 친구들을 찾기 위해<br/>연락처 접근 권한이 필요합니다.
+            그레인을 사용하는 친구들을 찾기 위해<br/>연락처 접근 권한이 필요합니다.
           </p>
           <button 
             onClick={handleAllowContacts}
@@ -519,7 +519,7 @@ const filteredFriends = useMemo(() => {
             }} 
             className="mt-4 text-[#8E8E93] text-sm"
           >
-            나중에 하기
+            나중에 할게요
           </button>
         </div>
       )}
@@ -839,7 +839,7 @@ function FriendItem({ friend, onClick, onBlock, onDelete }: {
             onDelete(); 
             controls.start({ x: 0 }); 
           }} 
-          className="flex-1 h-full bg-[#EC5022] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"
+          className="flex-1 h-full bg-[#FF203A] flex flex-col items-center justify-center text-white active:bg-red-600 transition-colors"
         >
           <Trash2 className="w-5 h-5 mb-1" />
           <span className="text-[10px] font-medium">삭제</span>
@@ -980,8 +980,8 @@ function DeleteFriendModal({ friend, onClose, onConfirm }: {
         className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]"
       >
         <div className="p-6 text-center">
-          <div className="w-12 h-12 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-6 h-6 text-[#EC5022]" />
+          <div className="w-12 h-12 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6 text-[#FF203A]" />
           </div>
           <h3 className="text-white font-bold text-lg mb-2">{friend.name}님을 삭제하시겠습니까?</h3>
           <p className="text-xs text-[#8E8E93] leading-relaxed">
@@ -997,7 +997,7 @@ function DeleteFriendModal({ friend, onClose, onConfirm }: {
           </button>
           <button 
             onClick={() => onConfirm()} 
-            className="flex-1 text-[#EC5022] font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors"
+            className="flex-1 text-[#FF203A] font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors"
           >
             삭제
           </button>

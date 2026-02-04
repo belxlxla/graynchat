@@ -552,7 +552,7 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
         </button>
         <button 
           onClick={onLeave} 
-          className="flex-1 bg-[#EC5022] flex flex-col items-center justify-center text-white"
+          className="flex-1 bg-[#FF203A] flex flex-col items-center justify-center text-white"
         >
           <Trash2 className="w-5 h-5 mb-1" />
           <span className="text-[10px]">나가기</span>
@@ -597,7 +597,7 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
           <div className="flex justify-between items-center">
             <p className="text-[13px] text-[#8E8E93] truncate max-w-[220px]">{data.lastMessage}</p>
             {data.unreadCount > 0 && (
-              <div className="bg-[#EC5022] min-w-[18px] h-[18px] px-1.5 rounded-full flex items-center justify-center">
+              <div className="bg-[#FF203A] min-w-[18px] h-[18px] px-1.5 rounded-full flex items-center justify-center">
                 <span className="text-[10px] font-bold text-white leading-none">
                   {data.unreadCount > 999 ? '+999' : data.unreadCount}
                 </span>
@@ -632,12 +632,12 @@ function LeaveChatModal({ chat, onClose, onConfirm }: {
         className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]"
       >
         <div className="p-6 text-center">
-          <div className="w-12 h-12 bg-[#EC5022]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertTriangle className="w-6 h-6 text-[#EC5022]" />
+          <div className="w-12 h-12 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6 text-[#FF203A]" />
           </div>
-          <h3 className="text-white font-bold text-lg mb-2">채팅방을 나가시겠습니까?</h3>
+          <h3 className="text-white font-bold text-lg mb-2">채팅방을 나갈까요?</h3>
           <p className="text-xs text-[#8E8E93] leading-relaxed">
-            대화 내용이 삭제되며<br/>목록에서 사라집니다.
+            대화 내용이 삭제되며<br/>채팅 목록에서 사라집니다.
           </p>
         </div>
         <div className="flex border-t border-[#3A3A3C] h-12">
@@ -649,7 +649,7 @@ function LeaveChatModal({ chat, onClose, onConfirm }: {
           </button>
           <button 
             onClick={onConfirm} 
-            className="flex-1 text-[#EC5022] font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors"
+            className="flex-1 text-[#FF203A] font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors"
           >
             나가기
           </button>

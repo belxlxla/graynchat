@@ -236,15 +236,15 @@ export default function TimeCapsuleCreatePage() {
                       <div className="flex-1 text-left">
                         <p className="text-white font-medium">{friend.name}</p>
                       </div>
-                      <div className="w-6 h-6 rounded-full border-2 border-orange-500 flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                      <div className="w-6 h-6 rounded-full border-2 border-red-500 flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
                       </div>
                     </motion.button>
                   ))}
                   
                   {isLoadingMore && (
                     <div className="flex justify-center py-4">
-                      <div className="w-6 h-6 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+                      <div className="w-6 h-6 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
                     </div>
                   )}
                 </>
@@ -257,11 +257,11 @@ export default function TimeCapsuleCreatePage() {
         return (
           <div className="flex-1 flex flex-col p-6 overflow-y-auto">
             <div className="mb-6 text-center">
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-500/20 to-orange-600/20 mx-auto mb-4 overflow-hidden border-2 border-orange-500/30 flex items-center justify-center">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-red-500/20 to-red-600/20 mx-auto mb-4 overflow-hidden border-2 border-red-500/30 flex items-center justify-center">
                 {selectedFriend?.avatar ? (
                   <img src={selectedFriend.avatar} className="w-full h-full object-cover" alt="" />
                 ) : (
-                  <UserIcon className="w-10 h-10 text-orange-500" />
+                  <UserIcon className="w-10 h-10 text-red-500" />
                 )}
               </div>
               <h3 className="text-xl font-bold text-white">{selectedFriend?.name}님에게</h3>
@@ -273,20 +273,20 @@ export default function TimeCapsuleCreatePage() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="소중한 메시지를 입력하세요..."
-                className="w-full h-full min-h-[200px] bg-[#2C2C2E] rounded-2xl p-4 text-white placeholder-[#636366] resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full h-full min-h-[200px] bg-[#2C2C2E] rounded-2xl p-4 text-white placeholder-[#636366] resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
                 maxLength={1000}
               />
             </div>
 
             <div className="flex items-center justify-between text-xs text-[#8E8E93] mb-4">
               <span>최대 1000자</span>
-              <span className={message.length > 900 ? 'text-orange-500' : ''}>{message.length} / 1000</span>
+              <span className={message.length > 900 ? 'text-red-500' : ''}>{message.length} / 1000</span>
             </div>
 
             <button
               onClick={() => setStep('set-time')}
               disabled={message.trim().length === 0}
-              className="w-full py-4 bg-orange-500 text-white font-bold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-600 transition-colors active:scale-[0.98]"
+              className="w-full py-4 bg-red-500 text-white font-bold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-red-600 transition-colors active:scale-[0.98]"
             >
               다음 단계
             </button>
@@ -297,8 +297,8 @@ export default function TimeCapsuleCreatePage() {
         return (
           <div className="flex-1 flex flex-col p-6 overflow-y-auto">
             <div className="mb-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-orange-500/20 mx-auto mb-4 flex items-center justify-center">
-                <Hourglass className="w-8 h-8 text-orange-500" />
+              <div className="w-16 h-16 rounded-full bg-red-500/20 mx-auto mb-4 flex items-center justify-center">
+                <Hourglass className="w-8 h-8 text-red-500" />
               </div>
               <h3 className="text-xl font-bold text-white">언제 열릴까요?</h3>
               <p className="text-sm text-[#8E8E93] mt-2">지정한 시간까지 절대 열리지 않습니다</p>
@@ -312,7 +312,7 @@ export default function TimeCapsuleCreatePage() {
                   value={unlockDate}
                   onChange={(e) => setUnlockDate(e.target.value)}
                   min={minDate}
-                  className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 border border-[#3A3A3C]"
+                  className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500 border border-[#3A3A3C]"
                 />
               </div>
 
@@ -322,16 +322,16 @@ export default function TimeCapsuleCreatePage() {
                   type="time"
                   value={unlockTime}
                   onChange={(e) => setUnlockTime(e.target.value)}
-                  className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-orange-500 border border-[#3A3A3C]"
+                  className="w-full bg-[#2C2C2E] text-white p-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-red-500 border border-[#3A3A3C]"
                 />
               </div>
             </div>
 
             {unlockDate && (
-              <div className="mb-6 p-4 bg-gradient-to-r from-orange-500/10 to-orange-600/10 border border-orange-500/30 rounded-2xl">
+              <div className="mb-6 p-4 bg-gradient-to-r from-red-500/10 to-red-600/10 border border-red-500/30 rounded-2xl">
                 <p className="text-sm text-center">
                   <span className="text-[#8E8E93]">잠금 해제: </span>
-                  <span className="text-orange-400 font-bold">
+                  <span className="text-red-400 font-bold">
                     {new Date(`${unlockDate}T${unlockTime}`).toLocaleString('ko-KR', {
                       year: 'numeric',
                       month: 'long',
@@ -347,7 +347,7 @@ export default function TimeCapsuleCreatePage() {
             <button
               onClick={() => setStep('confirm')}
               disabled={!unlockDate}
-              className="mt-auto w-full py-4 bg-orange-500 text-white font-bold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-600 transition-colors active:scale-[0.98]"
+              className="mt-auto w-full py-4 bg-red-500 text-white font-bold rounded-2xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-red-600 transition-colors active:scale-[0.98]"
             >
               확인
             </button>
@@ -358,8 +358,8 @@ export default function TimeCapsuleCreatePage() {
         return (
           <div className="flex-1 flex flex-col p-6 overflow-y-auto">
             <div className="mb-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-orange-500/20 mx-auto mb-4 flex items-center justify-center">
-                <AlertCircle className="w-8 h-8 text-orange-500" />
+              <div className="w-16 h-16 rounded-full bg-red-500/20 mx-auto mb-4 flex items-center justify-center">
+                <AlertCircle className="w-8 h-8 text-red-500" />
               </div>
               <h3 className="text-xl font-bold text-white mb-2">마지막 확인</h3>
               <p className="text-sm text-[#8E8E93] leading-relaxed">
@@ -396,7 +396,7 @@ export default function TimeCapsuleCreatePage() {
 
               <div>
                 <p className="text-xs text-[#8E8E93] mb-2 font-medium">잠금 해제</p>
-                <p className="text-orange-400 font-semibold">
+                <p className="text-red-400 font-semibold">
                   {new Date(`${unlockDate}T${unlockTime}`).toLocaleString('ko-KR', {
                     year: 'numeric',
                     month: 'long',
@@ -411,7 +411,7 @@ export default function TimeCapsuleCreatePage() {
             <button
               onClick={handleSend}
               disabled={isSending}
-              className="w-full py-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold rounded-2xl disabled:opacity-50 hover:from-orange-600 hover:to-orange-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 active:scale-[0.98]"
+              className="w-full py-4 bg-gradient-to-r from-red-500 to-red-600 text-white font-bold rounded-2xl disabled:opacity-50 hover:from-red-600 hover:to-red-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 active:scale-[0.98]"
             >
               {isSending ? (
                 <>
@@ -470,7 +470,7 @@ export default function TimeCapsuleCreatePage() {
           
           {/* 진행 라인 */}
           <div 
-            className="absolute top-3 left-0 h-[2px] bg-gradient-to-r from-orange-500 to-orange-600 transition-all duration-300 ease-out"
+            className="absolute top-3 left-0 h-[2px] bg-gradient-to-r from-red-500 to-red-600 transition-all duration-300 ease-out"
             style={{ width: `${(currentStepIndex / (stepOrder.length - 1)) * 100}%` }}
           />
           
@@ -485,9 +485,9 @@ export default function TimeCapsuleCreatePage() {
                 <div key={idx} className="flex flex-col items-center" style={{ width: '25%' }}>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mb-2 transition-all duration-300 ${
                     isCompleted 
-                      ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' 
+                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' 
                       : isCurrent 
-                      ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/50 ring-4 ring-orange-500/20' 
+                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/50 ring-4 ring-red-500/20' 
                       : 'bg-[#3A3A3C] text-[#8E8E93]'
                   }`}>
                     {isCompleted ? (

@@ -65,7 +65,7 @@ export default function Splash({ onFinish }: SplashProps) {
         <img 
           src={logoSvg} 
           alt="GRAYN" 
-          className="w-24 h-24 relative z-10 drop-shadow-[0_0_15px_rgba(255,81,58,0.5)]" 
+          className="w-24 h-24 relative z-10 drop-shadow-[0_0_15px_rgba(255,32,58,0.5)]" 
         />
       </motion.div>
       

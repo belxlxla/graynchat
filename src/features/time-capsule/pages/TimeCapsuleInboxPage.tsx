@@ -124,7 +124,7 @@ export default function TimeCapsuleInboxPage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {isLoading ? (
           <div className="flex justify-center items-center h-full">
-            <div className="w-8 h-8 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
           </div>
         ) : capsules.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[#8E8E93]">
@@ -144,7 +144,7 @@ export default function TimeCapsuleInboxPage() {
                 onClick={() => handleOpenCapsule(capsule)}
                 className={`w-full bg-[#2C2C2E] rounded-2xl p-4 border transition-all ${
                   unlocked 
-                    ? 'border-orange-500/50 hover:border-orange-500 hover:bg-[#3A3A3C]' 
+                    ? 'border-red-500/50 hover:border-red-500 hover:bg-[#3A3A3C]' 
                     : 'border-[#3A3A3C]'
                 }`}
               >
@@ -163,15 +163,15 @@ export default function TimeCapsuleInboxPage() {
                     </p>
                   </div>
                   {unlocked ? (
-                    <Unlock className="w-5 h-5 text-orange-500" />
+                    <Unlock className="w-5 h-5 text-red-500" />
                   ) : (
                     <Lock className="w-5 h-5 text-[#8E8E93]" />
                   )}
                 </div>
 
                 {unlocked ? (
-                  <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 text-center">
-                    <p className="text-sm font-medium text-orange-400">잠금 해제됨! 탭하여 확인</p>
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-center">
+                    <p className="text-sm font-medium text-red-400">잠금 해제됨! 탭하여 확인</p>
                   </div>
                 ) : (
                   <div className="bg-[#1C1C1E] rounded-xl p-3 text-center">

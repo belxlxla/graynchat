@@ -149,7 +149,7 @@ export default function ReportResultPage() {
           stat3Label: "설렘 포인트", stat3Value: finalScore,
           detailedAnalysis: `두 사람의 대화에서는 서로를 향한 관심이 ${finalScore >= 70 ? '매우 강하게' : '은근하게'} 드러나고 있습니다.`,
           advice: finalScore >= 80 ? "지금 이 분위기 그대로 데이트를 신청해보세요!" : "가벼운 질문으로 대화의 물꼬를 더 터보세요.",
-          topKeywords: ['보고싶어', '사랑해', '뭐해?', '밥', '영화', '주말']
+          topKeywords: ['보고싶어', '사랑해', '뭐해?', '밥', '영화', '주말', '좋아', '데이트', '선물', 'ㅋㅋㅋ', 'ㅎㅎㅎ', '❤️', '💕']
         };
       } else if (relationId === 'friend') {
         resultData = {
@@ -160,7 +160,7 @@ export default function ReportResultPage() {
           stat3Label: "개그 코드", stat3Value: Math.floor(Math.random() * 50) + 50,
           detailedAnalysis: `대화의 핑퐁이 ${finalScore >= 70 ? '환상적입니다.' : '나쁘지 않습니다.'} 서로 부담 없이 연락할 수 있는 편안한 관계입니다.`,
           advice: "이번 주말에 가볍게 맥주 한 잔 어떠세요?",
-          topKeywords: ['ㅋㅋㅋ', '미친', '진짜', 'ㅇㅈ', '술', '노래방']
+          topKeywords: ['ㅋㅋㅋ', '미친', '진짜', 'ㅇㅈ', '술', '노래방','맛집','대박','헐','ㅋㅋㅋ','ㅎㅎㅎ','비밀','ㅋㅋ','대화','친구','우정','의리','티키타카','농담','장난','놀자','나와']
         };
       } else if (relationId === 'business') {
         resultData = {
@@ -171,7 +171,7 @@ export default function ReportResultPage() {
           stat3Label: "소통 명확성", stat3Value: 90,
           detailedAnalysis: `군더더기 없는 깔끔한 소통이 특징입니다. ${finalScore >= 70 ? '업무 스타일이 잘 맞아 시너지가 기대됩니다.' : '서로의 업무 스타일에 적응해가는 단계입니다.'}`,
           advice: "업무 외적인 스몰토크로 라포를 형성해보세요.",
-          topKeywords: ['확인', '감사합니다', '넵', '파일', '일정', '회의']
+          topKeywords: ['확인', '감사합니다', '넵', '파일', '일정', '회의','보고','회의록','프로젝트','협업','검토','진행','업무','연락','협의','제안','피드백','지원','성과','목표','팀워크','알겠습니다','넵','좋습니다']
         };
       } else {
         resultData = {
@@ -182,7 +182,7 @@ export default function ReportResultPage() {
           stat3Label: "효도 지수", stat3Value: Math.floor(finalScore * 0.8),
           detailedAnalysis: `표현은 서툴러도 서로를 아끼는 마음이 느껴집니다. ${finalScore < 50 ? '최근 대화가 다소 부족해 보입니다.' : '서로의 안부를 자주 묻는 따뜻한 관계입니다.'}`,
           advice: "오늘 따뜻한 안부 전화 한 통 드려보세요.",
-          topKeywords: ['밥', '일찍', '조심', '건강', '용돈', '엄마/아빠']
+          topKeywords: ['밥', '일찍', '조심', '건강', '용돈', '엄마/아빠','여행','생일','엄마','아빠','사랑','가족','보고싶어','조심히','잘지내','전화','걱정','건강','밥','용돈','선물','기념일','행복','추억']
         };
       }
 

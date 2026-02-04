@@ -96,16 +96,16 @@ export default function WallpaperSettingsPage() {
               </div>
             </div>
 
-            {/* Me (나) - 수정됨: bg-[#EC5022] (가시성 확보) */}
+            {/* Me (나) - 수정됨: bg-[#FF203A] (가시성 확보) */}
             <div className="flex items-end gap-2 justify-end">
-              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-[#EC5022] text-white shadow-sm">
+              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-[#FF203A] text-white shadow-sm">
                 네, 마음에 드는 사진으로 설정해보세요.
               </div>
             </div>
             
             {/* Me (나) - 연속 메시지 */}
             <div className="flex items-end gap-2 justify-end">
-              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-[#EC5022] text-white shadow-sm">
+              <div className="max-w-[70%] px-3.5 py-2 rounded-2xl rounded-br-none text-[14px] leading-snug bg-[#FF203A] text-white shadow-sm">
                 훨씬 보기 좋네요 👍
               </div>
             </div>

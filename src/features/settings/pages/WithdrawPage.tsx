@@ -52,8 +52,8 @@ export default function WithdrawPage() {
 
       <div className="flex-1 overflow-y-auto px-6 py-8 custom-scrollbar">
         <div className="mb-10">
-          <div className="w-16 h-16 bg-[#EC5022]/10 rounded-2xl flex items-center justify-center mb-6 border border-[#EC5022]/20">
-            <AlertTriangle className="w-8 h-8 text-[#EC5022]" />
+          <div className="w-16 h-16 bg-[#FF203A]/10 rounded-2xl flex items-center justify-center mb-6 border border-[#FF203A]/20">
+            <AlertTriangle className="w-8 h-8 text-[#FF203A]" />
           </div>
           <h2 className="text-2xl font-black tracking-tight mb-3">떠나신다니 아쉬워요.</h2>
           <p className="text-[#8E8E93] text-[14px] leading-relaxed">
@@ -93,14 +93,14 @@ export default function WithdrawPage() {
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
                 placeholder="문구를 입력하세요"
-                className="w-full bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl px-4 py-3.5 text-center text-white focus:outline-none focus:border-[#EC5022] transition-all"
+                className="w-full bg-[#2C2C2E] border border-[#3A3A3C] rounded-xl px-4 py-3.5 text-center text-white focus:outline-none focus:border-[#FF203A] transition-all"
               />
             </div>
             <button 
               onClick={handleWithdraw}
               disabled={!isFinalValid || isProcessing}
               className={`w-full py-5 rounded-2xl font-black text-lg transition-all ${
-                isFinalValid ? 'bg-[#EC5022] text-white shadow-lg shadow-[#EC5022]/20 active:scale-95' : 'bg-[#2C2C2E] text-[#48484A] cursor-not-allowed'
+                isFinalValid ? 'bg-[#FF203A] text-white shadow-lg shadow-[#FF203A]/20 active:scale-95' : 'bg-[#2C2C2E] text-[#48484A] cursor-not-allowed'
               }`}
             >
               {isProcessing ? '처리 중...' : '그레인 계정 삭제'}

@@ -149,7 +149,7 @@ export default function LoginPage() {
           if (otpError) throw otpError;
           toast.success('이메일로 인증 코드가 발송되었습니다.');
         } else {
-          toast('SMS 인증 코드를 입력해주세요.', { icon: 'ℹ️' });
+          toast('인증 코드를 입력해주세요.', { icon: 'ℹ️' });
           await supabase.auth.signInWithOtp({ email: targetEmail }).catch(() => {});
         }
 
@@ -283,7 +283,7 @@ export default function LoginPage() {
           GRAYN에 오신 것을 환영합니다
         </motion.h1>
         <motion.p initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="text-[#8E8E93] text-sm mt-2">
-          그레인으로 친구들을 만나보세요.
+          그레인으로 똑똑한 커뮤니케이션 하기.
         </motion.p>
       </div>
 
@@ -349,7 +349,7 @@ export default function LoginPage() {
               {rememberEmail && <ArrowRight className="w-3 h-3 text-white rotate-[-45deg]" />}
             </div>
             <span className="text-sm text-[#8E8E93] group-hover:text-white transition-colors">
-              이메일 저장
+              아이디 저장
             </span>
           </button>
         </div>
@@ -365,7 +365,7 @@ export default function LoginPage() {
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex items-center gap-3 my-8 w-full max-w-sm mx-auto">
         <div className="h-[1px] bg-[#3A3A3C] flex-1"/>
-        <span className="text-xs text-[#636366]">또는 소셜 계정으로 시작</span>
+        <span className="text-xs text-[#636366]">또는 간편로그인으로 시작하기</span>
         <div className="h-[1px] bg-[#3A3A3C] flex-1"/>
       </motion.div>
 
@@ -395,7 +395,7 @@ export default function LoginPage() {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }} className="mt-8 text-center">
         <p className="text-[#8E8E93] text-sm">
           아직 계정이 없으신가요?{' '}
-          <button onClick={() => navigate('/auth/signup')} className="text-white font-bold hover:underline ml-1">회원가입</button>
+          <button onClick={() => navigate('/auth/signup')} className="text-white font-bold hover:underline ml-1">그레인 회원가입</button>
         </p>
         <button onClick={() => navigate('/auth/recovery')} className="text-[#636366] text-xs mt-4 hover:text-[#8E8E93] transition-colors">
           로그인에 문제가 있나요?

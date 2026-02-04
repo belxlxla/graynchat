@@ -270,10 +270,10 @@ export default function ScreenLockPage() {
           </div>
 
           {/* 주의 문구 */}
-          <div className="px-2 py-4 bg-[#EC5022]/5 rounded-2xl border border-[#EC5022]/10">
+          <div className="px-2 py-4 bg-[#FF203A]/5 rounded-2xl border border-[#FF203A]/10">
             <div className="flex gap-3">
-              <AlertTriangle size={18} className="text-[#EC5022] shrink-0" />
-              <p className="text-[12px] text-[#EC5022]/90 leading-relaxed">
+              <AlertTriangle size={18} className="text-[#FF203A] shrink-0" />
+              <p className="text-[12px] text-[#FF203A]/90 leading-relaxed">
                 <span className="font-bold">주의:</span> 암호를 분실한 경우 계정 보호를 위해 앱을 재설치해야 하며, 이 과정에서 모든 대화 내용이 초기화됩니다.
               </p>
             </div>
@@ -381,13 +381,13 @@ function ConfirmModal({ onClose, onConfirm, title, content, confirmText = "확�
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E]">
         <div className="p-6 text-center">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${type === 'danger' ? 'bg-[#EC5022]/10' : 'bg-brand-DEFAULT/10'}`}><AlertTriangle className={`w-6 h-6 ${type === 'danger' ? 'text-[#EC5022]' : 'text-brand-DEFAULT'}`} /></div>
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${type === 'danger' ? 'bg-[#FF203A]/10' : 'bg-brand-DEFAULT/10'}`}><AlertTriangle className={`w-6 h-6 ${type === 'danger' ? 'text-[#FF203A]' : 'text-brand-DEFAULT'}`} /></div>
           <h3 className="text-white font-bold text-lg mb-2">{title}</h3>
           <p className="text-xs text-[#8E8E93] leading-relaxed whitespace-pre-wrap">{content}</p>
         </div>
         <div className="flex border-t border-[#3A3A3C] h-12">
           <button onClick={onClose} className="flex-1 text-[#8E8E93] font-medium text-[15px] hover:bg-[#2C2C2E] border-r border-[#3A3A3C]">취소</button>
-          <button onClick={onConfirm} className={`flex-1 font-bold text-[15px] hover:bg-[#2C2C2E] ${type === 'danger' ? 'text-[#EC5022]' : 'text-brand-DEFAULT'}`}>{confirmText}</button>
+          <button onClick={onConfirm} className={`flex-1 font-bold text-[15px] hover:bg-[#2C2C2E] ${type === 'danger' ? 'text-[#FF203A]' : 'text-brand-DEFAULT'}`}>{confirmText}</button>
         </div>
       </motion.div>
     </div>
@@ -594,7 +594,7 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
                 onClick={isEnabled ? handleRemoveBiometric : handleRegisterBiometric}
                 disabled={isProcessing}
                 className={`flex-1 font-bold text-[15px] hover:bg-[#2C2C2E] transition-colors disabled:opacity-50 ${
-                  isEnabled ? 'text-[#EC5022]' : 'text-brand-DEFAULT'
+                  isEnabled ? 'text-[#FF203A]' : 'text-brand-DEFAULT'
                 }`}
               >
                 {isEnabled ? '삭제' : '등록하기'}
