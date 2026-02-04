@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X } from 'lucide-react';
+import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import GraynLogo from '../../../assets/grayn_logo.svg';
@@ -22,20 +22,33 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
 
+  // ✅ 비밀번호 표시/숨김 상태
+  const [showPassword, setShowPassword] = useState(false);
+
+  // ✅ 이메일 저장 기능
+  const [rememberEmail, setRememberEmail] = useState(false);
+
+  // ✅ 저장된 이메일 불러오기
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('grayn_saved_email');
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberEmail(true);
+    }
+  }, []);
+
   // ✅ OAuth 콜백 및 데이터 동기화 처리
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
           const user = session.user;
-          // provider 확인 (메타데이터 우선)
           const provider = user.app_metadata?.provider || 
                           user.app_metadata?.providers?.[0] || 
                           'email';
 
           console.log('✅ Sign in detected:', provider);
 
-          // 소셜 로그인인 경우 동기화 진행
           if (provider !== 'email') {
             setIsOAuthProcessing(true);
 
@@ -43,24 +56,19 @@ export default function LoginPage() {
               const userId = user.id;
               const userEmail = user.email;
               
-              // 이름 추출 (메타데이터 우선)
               let userName = user.user_metadata?.full_name || 
                              user.user_metadata?.name || 
                              userEmail?.split('@')[0] || '사용자';
 
-              // 아바타 추출
               const userAvatar = user.user_metadata?.avatar_url || 
                                 user.user_metadata?.picture || 
                                 null;
 
-              // 전화번호 추출 (메타데이터 우선)
               const userPhone = user.user_metadata?.phone || 
                                user.user_metadata?.mobile || 
                                user.phone || 
                                null;
 
-              // [핵심] users 테이블 동기화 (Upsert)
-              // 기존 데이터가 있으면 update, 없으면 insert
               const { error: upsertError } = await supabase
                 .from('users')
                 .upsert({
@@ -68,7 +76,6 @@ export default function LoginPage() {
                   email: userEmail,
                   name: userName,
                   avatar: userAvatar,
-                  // 전화번호가 있는 경우에만 업데이트 (기존 번호 유지를 위해)
                   ...(userPhone && { phone: userPhone }),
                   updated_at: new Date().toISOString(),
                 }, { 
@@ -78,7 +85,6 @@ export default function LoginPage() {
 
               if (upsertError) throw upsertError;
 
-              // Auth 메타데이터도 최신화
               await supabase.auth.updateUser({
                 data: {
                   provider: provider,
@@ -91,7 +97,6 @@ export default function LoginPage() {
               navigate('/main/friends', { replace: true });
             } catch (error) {
               console.error('Sync error:', error);
-              // 에러가 나도 로그인은 성공했으므로 이동은 시킴
               navigate('/main/friends', { replace: true });
             } finally {
               setIsOAuthProcessing(false);
@@ -114,6 +119,13 @@ export default function LoginPage() {
       return toast.error('이메일과 비밀번호를 입력해주세요.');
     }
 
+    // ✅ 이메일 저장/삭제
+    if (rememberEmail) {
+      localStorage.setItem('grayn_saved_email', targetEmail);
+    } else {
+      localStorage.removeItem('grayn_saved_email');
+    }
+
     setIsLoading(true);
     try {
       const { data: userSettings, error: rpcError } = await supabase.rpc(
@@ -122,7 +134,6 @@ export default function LoginPage() {
       );
 
       if (rpcError) {
-        // RPC 에러 시 일반 로그인 시도
         await performNormalLogin(targetEmail, targetPassword);
         return;
       }
@@ -281,7 +292,13 @@ export default function LoginPage() {
           <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
           <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
             <Mail className="w-5 h-5 text-[#636366] mr-3"/>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@grayn.com" className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]"/>
+            <input 
+              type="email" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              placeholder="example@grayn.com" 
+              className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]"
+            />
           </div>
         </div>
 
@@ -289,11 +306,59 @@ export default function LoginPage() {
           <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
           <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
             <Lock className="w-5 h-5 text-[#636366] mr-3"/>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호 입력" className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]"/>
+            <input 
+              type={showPassword ? 'text' : 'password'} 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              placeholder="비밀번호 입력" 
+              className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]"
+            />
+            <div className="flex items-center gap-2 ml-2">
+              {password && (
+                <button
+                  type="button"
+                  onClick={() => setPassword('')}
+                  className="text-[#636366] hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-[#636366] hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </div>
 
-        <button type="submit" disabled={isLoading} className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-6 hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2">
+        {/* ✅ 이메일 저장 체크박스 */}
+        <div className="flex items-center gap-2 px-1">
+          <button
+            type="button"
+            onClick={() => setRememberEmail(!rememberEmail)}
+            className="flex items-center gap-2 group"
+          >
+            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+              rememberEmail 
+                ? 'bg-brand-DEFAULT border-brand-DEFAULT' 
+                : 'border-[#636366] group-hover:border-[#8E8E93]'
+            }`}>
+              {rememberEmail && <ArrowRight className="w-3 h-3 text-white rotate-[-45deg]" />}
+            </div>
+            <span className="text-sm text-[#8E8E93] group-hover:text-white transition-colors">
+              이메일 저장
+            </span>
+          </button>
+        </div>
+
+        <button 
+          type="submit" 
+          disabled={isLoading} 
+          className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-6 hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2"
+        >
           {isLoading && !show2FAModal ? <Loader2 className="w-5 h-5 animate-spin"/> : '이메일로 로그인'}
         </button>
       </motion.form>
