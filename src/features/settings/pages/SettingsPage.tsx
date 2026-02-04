@@ -6,7 +6,8 @@ import {
   Snowflake, ChevronRight, RefreshCw, X,
   CloudLightning, CloudFog, CloudDrizzle, Moon,
   User, Lock, Users, Bell, Database, Monitor, Palette,
-  Megaphone, Headphones, Info, Wind, Droplets, Eye, Gauge
+  Megaphone, Headphones, Info, Wind, Droplets, //Eye, 
+  Gauge
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
