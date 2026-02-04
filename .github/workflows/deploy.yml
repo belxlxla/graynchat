@@ -19,18 +19,21 @@ jobs:
           script: |
             cd ~/graynserver
             
-            # [1] 주인 찾아주기 (파일 권한 오류 해결)
+            # [1] 권한 정리 & 코드 받기
             sudo chown -R ubuntu:ubuntu .
-            
-            # [2] 꼬인 거 풀기 (신사적인 초기화)
             git checkout .
-            
-            # [3] 최신 코드 당겨오기
             git pull
             
-            # [4] 도커 다시 굽기 (캐시 없이 확실하게)
-            sudo docker-compose down
-            sudo docker-compose up -d --build --no-cache
+            # [2] ★핵심 변경★
+            # 기존 서버를 끄지 않습니다! (down 삭제함)
+            # 켜진 상태에서 '새로운 이미지'를 먼저 만듭니다. (이때 사이트는 계속 살아있음)
+            echo "Building new image..."
+            sudo docker-compose build --no-cache
             
-            # [5] 청소
+            # [3] 교체하기 (Swap)
+            # 빌드가 다 끝나면, 1초 만에 옛날 컨테이너를 새것으로 갈아끼웁니다.
+            echo "Swapping containers..."
+            sudo docker-compose up -d
+            
+            # [4] 청소 (찌꺼기 제거)
             sudo docker system prune -f
