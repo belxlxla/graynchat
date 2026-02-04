@@ -131,6 +131,9 @@ export default function FriendsListPage() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // [추가] AI 점수 계산 중인지 여부
+  const [calculatingScore, setCalculatingScore] = useState(false);
+
   // ✅ 실제 연락처 동기화 핸들러
   const handleAllowContacts = useCallback(async () => {
     const loadingToast = toast.loading('연락처 권한을 요청하는 중...');
@@ -269,7 +272,7 @@ export default function FriendsListPage() {
           avatar: item.avatar,
           bg: item.bg,
           isFavorite: item.is_favorite || false,
-          friendlyScore: item.friendly_score || 0
+          friendlyScore: item.friendly_score || 50 // 기본값 50
         }));
         setFriends(formattedData);
       }
@@ -343,6 +346,75 @@ export default function FriendsListPage() {
       ));
     }
   }, [friends, selectedFriend]);
+
+  // [고도화] AI 점수 분석 및 반영 함수
+  const analyzeFriendlyScore = useCallback(async (friend: Friend) => {
+    if (!friend.friend_user_id) return;
+    
+    setCalculatingScore(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
+
+      // 1. 공통 채팅방 찾기
+      const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
+      
+      // 2. 메시지 데이터 조회 (최대 100개)
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('sender_id, created_at')
+        .eq('room_id', sharedRoomId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      // 3. 점수 계산 알고리즘
+      let score = 30; // 기본 점수
+      
+      if (messages && messages.length > 0) {
+        // A. 대화량 점수 (최대 40점)
+        const msgCount = messages.length;
+        score += Math.min(msgCount, 40);
+
+        // B. 최근 대화 점수 (최대 20점)
+        const lastMsgTime = new Date(messages[0].created_at).getTime();
+        const now = new Date().getTime();
+        const daysDiff = (now - lastMsgTime) / (1000 * 3600 * 24);
+        
+        if (daysDiff < 1) score += 20;
+        else if (daysDiff < 3) score += 15;
+        else if (daysDiff < 7) score += 10;
+        else score += 5;
+
+        // C. 티키타카 밸런스 점수 (최대 10점)
+        const myMsgCount = messages.filter(m => m.sender_id === session.user.id).length;
+        const friendMsgCount = msgCount - myMsgCount;
+        const balanceRatio = Math.abs(myMsgCount - friendMsgCount) / msgCount; // 0에 가까울수록 좋음
+        
+        if (balanceRatio < 0.2) score += 10;
+        else if (balanceRatio < 0.4) score += 5;
+      }
+
+      // 100점 만점 처리
+      const finalScore = Math.min(100, score);
+
+      // 상태 업데이트
+      setSelectedFriend(prev => prev ? { ...prev, friendlyScore: finalScore } : null);
+      
+      // DB 업데이트 (비동기, 굳이 기다리지 않음)
+      supabase.from('friends').update({ friendly_score: finalScore }).eq('id', friend.id).then();
+
+    } catch (error) {
+      console.error('Score Analysis Error:', error);
+    } finally {
+      setCalculatingScore(false);
+    }
+  }, []);
+
+  // 친구 선택 시 AI 분석 실행
+  const handleFriendClick = (friend: Friend) => {
+    setSelectedFriend(friend);
+    analyzeFriendlyScore(friend); // 분석 시작
+  };
 
   const handleEnterChat = useCallback(async (friend: Friend) => {
     const loadingToast = toast.loading("채팅방 연결 중...");
@@ -674,7 +746,7 @@ const filteredFriends = useMemo(() => {
                           <FriendItem 
                             key={f.id} 
                             friend={f} 
-                            onClick={() => setSelectedFriend(f)} 
+                            onClick={() => handleFriendClick(f)} // 수정된 핸들러 연결
                             onBlock={() => setBlockTarget(f)} 
                             onDelete={() => handleDeleteClick(f.id)} 
                           />
@@ -687,7 +759,7 @@ const filteredFriends = useMemo(() => {
                         <FriendItem 
                           key={f.id} 
                           friend={f} 
-                          onClick={() => setSelectedFriend(f)} 
+                          onClick={() => handleFriendClick(f)} // 수정된 핸들러 연결
                           onBlock={() => setBlockTarget(f)} 
                           onDelete={() => handleDeleteClick(f.id)} 
                         />
@@ -739,17 +811,25 @@ const filteredFriends = useMemo(() => {
               </div>
               <h3 className="text-xl font-bold text-white mb-1">{selectedFriend.name}</h3>
               {selectedFriend.status && <p className="text-[#8E8E93] text-sm mb-6">{selectedFriend.status}</p>}
+              
               <div className="mb-6 flex flex-col items-center gap-1">
                 <div className="text-[10px] text-brand-DEFAULT font-bold tracking-wider">AI SCORE</div>
                 <div className="flex items-center gap-2 bg-[#2C2C2E] px-3 py-1 rounded-full border border-[#3A3A3C]">
-                  <div className={`w-2 h-2 rounded-full ${
-                    selectedFriend.friendlyScore > 80 ? 'bg-green-500' : 
-                    selectedFriend.friendlyScore > 40 ? 'bg-yellow-500' : 
-                    'bg-red-500'
-                  }`} />
-                  <span className="text-xs font-mono font-bold">{selectedFriend.friendlyScore}</span>
+                  {calculatingScore ? (
+                    <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                  ) : (
+                    <div className={`w-2 h-2 rounded-full ${
+                      selectedFriend.friendlyScore > 80 ? 'bg-green-500' : 
+                      selectedFriend.friendlyScore > 40 ? 'bg-yellow-500' : 
+                      'bg-red-500'
+                    }`} />
+                  )}
+                  <span className="text-xs font-mono font-bold">
+                    {calculatingScore ? '분석 중...' : selectedFriend.friendlyScore}
+                  </span>
                 </div>
               </div>
+              
               <div className="flex gap-6 w-full justify-center">
                 <button 
                   onClick={() => handleEnterChat(selectedFriend)} 
@@ -1613,4 +1693,3 @@ className="absolute inset-0 bg-black/70 backdrop-blur-sm"
 </div>
 );
 }
-
