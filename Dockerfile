@@ -4,8 +4,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm install
 COPY . .
-# React 앱을 HTML/CSS/JS로 변환(빌드)합니다.
-RUN npm run build
+# package-lock.json이 있으면 맥북/리눅스 충돌이 날 수 있으니 지우고 설치
+RUN rm -rf package-lock.json
+RUN rm -rf node_modules
+RUN npm install
 
 # 2. 실행 단계 (전시)
 FROM node:18-alpine
