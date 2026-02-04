@@ -4,15 +4,68 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, Bell, MessageSquare, Volume2, 
   Moon, Sparkles, Clock, ChevronRight 
-  // ✨ 에러 수정: 사용하지 않는 'X' 아이콘 임포트 제거됨
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 
+// ✅ FCM 설정 (Firebase Cloud Messaging)
+const initializeFCM = async () => {
+  try {
+    // @ts-ignore
+    if (typeof firebase !== 'undefined' && firebase.messaging) {
+      // @ts-ignore
+      const messaging = firebase.messaging();
+      const token = await messaging.getToken({
+        vapidKey: 'YOUR_VAPID_KEY'
+      });
+      return token;
+    }
+  } catch (error) {
+    console.error('FCM initialization error:', error);
+  }
+  return null;
+};
+
+// ✅ 실제 푸시 알림 전송 함수
+const sendPushNotification = async (title: string, body: string, options?: NotificationOptions) => {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const notification = new Notification(title, {
+      body,
+      icon: '/grayn_logo.svg',
+      badge: '/grayn_logo.svg',
+      tag: 'grayn-message',
+      requireInteraction: false,
+      vibrate: [200, 100, 200],
+      ...options
+    });
+
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+
+    return notification;
+  }
+  return null;
+};
+
+// ✅ 방해금지 모드 체크
+const isDndActive = (dndEnabled: boolean, startTime: string, endTime: string): boolean => {
+  if (!dndEnabled) return false;
+
+  const now = new Date();
+  const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  
+  if (startTime < endTime) {
+    return currentTime >= startTime && currentTime <= endTime;
+  } else {
+    return currentTime >= startTime || currentTime <= endTime;
+  }
+};
+
 export default function NotificationSettingsPage() {
   const navigate = useNavigate();
 
-  // === States ===
   const [settings, setSettings] = useState({
     all: true,
     preview: true,
@@ -24,39 +77,136 @@ export default function NotificationSettingsPage() {
 
   const [dndTime, setDndTime] = useState({ start: '22:00', end: '08:00' });
   const [showDndPicker, setShowDndPicker] = useState(false);
-  // ✨ 에러 수정: 사용하지 않는 'permission' 변수를 생략하고 setter만 유지
-  const [, setPermission] = useState<NotificationPermission>('default');
+  const [permission, setPermission] = useState<NotificationPermission>('default');
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
 
-  // 1. 초기 데이터 로드 및 권한 확인
+  // ✅ 실시간 메시지 수신 리스너 (Supabase Realtime)
+  useEffect(() => {
+    const setupRealtimeListener = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { data: rooms } = await supabase
+        .from('room_members')
+        .select('room_id')
+        .eq('user_id', session.user.id);
+
+      if (!rooms || rooms.length === 0) return;
+
+      const roomIds = rooms.map(r => r.room_id);
+
+      const channel = supabase
+        .channel('messages')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `room_id=in.(${roomIds.join(',')})`
+          },
+          async (payload: any) => {
+            const newMessage = payload.new;
+
+            if (newMessage.sender_id === session.user.id) return;
+
+            if (isDndActive(settings.dnd, dndTime.start, dndTime.end)) {
+              console.log('DND mode active - notification blocked');
+              return;
+            }
+
+            if (!settings.all) return;
+
+            if (settings.mention && !newMessage.content.includes(`@${session.user.user_metadata?.name}`)) {
+              return;
+            }
+
+            const { data: sender } = await supabase
+              .from('users')
+              .select('name')
+              .eq('id', newMessage.sender_id)
+              .single();
+
+            const senderName = sender?.name || '사용자';
+
+            if (settings.sound) {
+              const audio = new Audio('/notification.mp3');
+              audio.volume = 0.5;
+              audio.play().catch(err => console.log('Audio play failed:', err));
+            }
+
+            if (settings.vibrate && 'vibrate' in navigator) {
+              navigator.vibrate([200, 100, 200]);
+            }
+
+            const notificationBody = settings.preview 
+              ? newMessage.content 
+              : '새로운 메시지가 도착했습니다.';
+
+            await sendPushNotification(
+              senderName,
+              notificationBody,
+              {
+                icon: '/grayn_logo.svg',
+                badge: '/grayn_logo.svg',
+                tag: `message-${newMessage.id}`,
+                data: {
+                  roomId: newMessage.room_id,
+                  messageId: newMessage.id
+                }
+              }
+            );
+          }
+        )
+        .subscribe();
+
+      return () => {
+        channel.unsubscribe();
+      };
+    };
+
+    setupRealtimeListener();
+  }, [settings, dndTime]);
+
+  // ✅ 초기 데이터 로드 및 권한 확인
   const fetchSettings = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
 
-    // 브라우저 알림 권한 상태 체크
     if ('Notification' in window) {
       setPermission(Notification.permission);
     }
 
     const { data, error } = await supabase
       .from('users')
-      .select('notify_all, notify_preview, notify_mention, notify_sound, notify_vibrate, dnd_enabled, dnd_start, dnd_end')
+      .select('notify_all, notify_preview, notify_mention, notify_sound, notify_vibrate, dnd_enabled, dnd_start, dnd_end, fcm_token')
       .eq('id', session.user.id)
-      .single();
+      .maybeSingle();
 
-    if (!error && data) {
+    if (error) {
+      console.error('Settings fetch error:', error);
+      return;
+    }
+
+    if (data) {
       setSettings({
-        all: data.notify_all,
-        preview: data.notify_preview,
-        mention: data.notify_mention,
-        sound: data.notify_sound,
-        vibrate: data.notify_vibrate,
-        dnd: data.dnd_enabled,
+        all: data.notify_all ?? true,
+        preview: data.notify_preview ?? true,
+        mention: data.notify_mention ?? true,
+        sound: data.notify_sound ?? true,
+        vibrate: data.notify_vibrate ?? true,
+        dnd: data.dnd_enabled ?? false,
       });
+      
       if (data.dnd_start && data.dnd_end) {
         setDndTime({ 
           start: data.dnd_start.slice(0, 5), 
           end: data.dnd_end.slice(0, 5) 
         });
+      }
+
+      if (data.fcm_token) {
+        setFcmToken(data.fcm_token);
       }
     }
   }, []);
@@ -65,22 +215,108 @@ export default function NotificationSettingsPage() {
     fetchSettings();
   }, [fetchSettings]);
 
-  // 2. 알림 권한 요청
+  // ✅ 최초 진입 시 OS별 알림 권한 요청
+  useEffect(() => {
+    const checkInitialPermission = async () => {
+      if ('Notification' in window) {
+        const currentPermission = Notification.permission;
+        
+        if (currentPermission === 'default') {
+          const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+          const isAndroid = /Android/i.test(navigator.userAgent);
+          
+          let message = '알림을 받으려면 권한을 허용해주세요.';
+          if (isIOS) {
+            message = 'iOS 알림을 받으려면 설정에서 권한을 허용해주세요.';
+          } else if (isAndroid) {
+            message = 'Android 알림을 받으려면 권한을 허용해주세요.';
+          }
+
+          const result = await new Promise<boolean>((resolve) => {
+            toast((t) => (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-medium text-white">{message}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      toast.dismiss(t.id);
+                      resolve(false);
+                    }}
+                    className="flex-1 px-4 py-2 bg-[#3A3A3C] text-white rounded-lg text-sm font-bold"
+                  >
+                    나중에
+                  </button>
+                  <button
+                    onClick={() => {
+                      toast.dismiss(t.id);
+                      resolve(true);
+                    }}
+                    className="flex-1 px-4 py-2 bg-brand-DEFAULT text-white rounded-lg text-sm font-bold"
+                  >
+                    허용
+                  </button>
+                </div>
+              </div>
+            ), {
+              duration: Infinity,
+              style: {
+                background: '#1C1C1E',
+                border: '1px solid #2C2C2E',
+                borderRadius: '16px',
+                padding: '16px',
+              }
+            });
+          });
+
+          if (result) {
+            await requestPermission();
+          }
+        }
+      }
+    };
+
+    checkInitialPermission();
+  }, []);
+
+  // ✅ 알림 권한 요청 및 FCM 토큰 저장
   const requestPermission = async () => {
     if ('Notification' in window && Notification.permission === 'default') {
       const result = await Notification.requestPermission();
       setPermission(result);
+      
       if (result === 'granted') {
         toast.success('알림 권한이 허용되었습니다.');
+        
+        const token = await initializeFCM();
+        if (token) {
+          setFcmToken(token);
+          
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            await supabase
+              .from('users')
+              .update({ fcm_token: token })
+              .eq('id', session.user.id);
+          }
+        }
+
+        setTimeout(() => {
+          sendPushNotification(
+            'GRAYN 알림이 설정되었습니다',
+            '이제 실시간으로 메시지를 받을 수 있습니다!',
+            { icon: '/grayn_logo.svg' }
+          );
+        }, 1000);
+      } else if (result === 'denied') {
+        toast.error('알림 권한이 거부되었습니다. 브라우저 설정에서 변경할 수 있습니다.');
       }
     }
   };
 
-  // 3. 설정 변경 핸들러 (수퍼베이스 실시간 동기화)
+  // ✅ 설정 변경 핸들러
   const handleToggle = async (key: keyof typeof settings) => {
     let newSettings = { ...settings, [key]: !settings[key] };
 
-    // 전체 알림 토글 시 하위 항목 일괄 변경
     if (key === 'all') {
       const targetState = !settings.all;
       newSettings = {
@@ -91,7 +327,9 @@ export default function NotificationSettingsPage() {
         vibrate: targetState,
         dnd: settings.dnd,
       };
-      if (targetState) await requestPermission();
+      if (targetState && Notification.permission !== 'granted') {
+        await requestPermission();
+      }
     }
 
     setSettings(newSettings);
@@ -112,11 +350,15 @@ export default function NotificationSettingsPage() {
       .eq('id', session.user.id);
 
     if (error) {
+      console.error('Settings update error:', error);
       toast.error('설정 저장에 실패했습니다.');
-      fetchSettings(); // 원복
+      fetchSettings();
+    } else {
+      toast.success('설정이 저장되었습니다.');
     }
   };
 
+  // ✅ 방해금지 시간 저장
   const saveDndTime = async (newTime: typeof dndTime) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
@@ -132,6 +374,8 @@ export default function NotificationSettingsPage() {
     if (!error) {
       setDndTime(newTime);
       toast.success('방해금지 시간이 설정되었습니다.');
+    } else {
+      toast.error('설정 저장에 실패했습니다.');
     }
   };
 
@@ -147,6 +391,26 @@ export default function NotificationSettingsPage() {
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-10 pt-4">
         <div className="px-5 space-y-8">
           
+          {permission !== 'granted' && (
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-[24px] p-5">
+              <div className="flex items-start gap-3">
+                <Bell className="w-5 h-5 text-yellow-500 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-bold text-yellow-500 mb-1">알림 권한 필요</h4>
+                  <p className="text-xs text-[#8E8E93] mb-3">
+                    실시간 메시지를 받으려면 알림 권한이 필요합니다.
+                  </p>
+                  <button
+                    onClick={requestPermission}
+                    className="px-4 py-2 bg-yellow-500 text-black font-bold rounded-xl text-sm hover:bg-yellow-400 transition-colors"
+                  >
+                    권한 허용하기
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-[#2C2C2E] rounded-[28px] p-6 border border-[#3A3A3C] shadow-2xl">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -195,7 +459,9 @@ export default function NotificationSettingsPage() {
               isOn={settings.vibrate}
               onToggle={() => {
                 handleToggle('vibrate');
-                if (!settings.vibrate && 'vibrate' in navigator) navigator.vibrate(200);
+                if (!settings.vibrate && 'vibrate' in navigator) {
+                  navigator.vibrate([200, 100, 200]);
+                }
               }}
               disabled={!settings.all}
             />
