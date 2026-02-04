@@ -33,6 +33,8 @@ import WallpaperSettingsPage from '../features/settings/pages/WallpaperSettingsP
 import CustomerServicePage from '../features/settings/pages/CustomerServicePage';
 import ReportCenterPage from '../features/settings/pages/ReportCenterPage';
 import IllegalContentReportPage from '../features/settings/pages/IllegalContentReportPage'; 
+import CopyrightReportPage from '../features/settings/pages/CopyrightReportPage';
+import HarmfulContentReportPage from '../features/settings/pages/HarmfulContentReportPage'; // ✅ 추가됨
 import MainLayout from '../components/layout/MainLayout';
 
 import ContentsPage from '../features/contents/pages/ContentsPage';
@@ -194,6 +196,8 @@ function AppContent() {
         <Route path="/settings/help" element={<CustomerServicePage />} />
         <Route path="/settings/help/report" element={<ReportCenterPage />} />
         <Route path="/settings/help/report/illegal" element={<IllegalContentReportPage />} /> 
+        <Route path="/settings/help/report/copyright" element={<CopyrightReportPage />} />
+        <Route path="/settings/help/report/harmful" element={<HarmfulContentReportPage />} /> {/* ✅ 추가됨 */}
         <Route path="/time-capsule/create" element={<TimeCapsuleCreatePage />} />
         <Route path="/time-capsule/sent" element={<TimeCapsuleSentPage />} />
         <Route path="/time-capsule/edit/:id" element={<TimeCapsuleEditPage />} />
