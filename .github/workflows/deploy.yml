@@ -3,7 +3,7 @@ name: Deploy to AWS
 on:
   push:
     branches:
-      - main  # main 브랜치에 푸시될 때만 실행
+      - main
 
 jobs:
   deploy:
@@ -16,21 +16,21 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_KEY }}
           port: 22
-        script: |
+          script: |
             cd ~/graynserver
             
-            # [1] 파일 주인 확인: 혹시 root가 만든 파일이 있으면 내꺼(ubuntu)로 명의 변경
-            # (이게 꼬여있으면 git pull이 권한 없음으로 튕깁니다)
+            # [1] 주인 찾아주기 (파일 권한 오류 해결)
             sudo chown -R ubuntu:ubuntu .
             
-            # [2] 정리 정돈: 실수로 변경된 파일이 있으면 조용히 원상복구
-            # (강제 삭제가 아니라, 원래대로 되돌리는 '신사적인' 초기화입니다)
+            # [2] 꼬인 거 풀기 (신사적인 초기화)
             git checkout .
             
-            # [3] 이제 안전하게 당겨오기
+            # [3] 최신 코드 당겨오기
             git pull
             
-            # [4] 도커 빌드 (여기는 그대로)
+            # [4] 도커 다시 굽기 (캐시 없이 확실하게)
             sudo docker-compose down
             sudo docker-compose up -d --build --no-cache
+            
+            # [5] 청소
             sudo docker system prune -f
