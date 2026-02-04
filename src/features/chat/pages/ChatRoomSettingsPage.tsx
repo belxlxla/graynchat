@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
-import { useAuth } from '../../auth/contexts/AuthContext';
 
 interface MediaItem {
   id: number;
@@ -455,7 +454,6 @@ export default function ChatRoomSettingsPage() {
 
           <Section title="관리">
             <div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C]">
-              {/* [추가됨] 배경화면 설정 메뉴: 해당 채팅방 ID를 들고 이동 */}
               <button 
                 onClick={() => navigate(`/settings/display/wallpaper?chatId=${chatId}`)} 
                 className="w-full flex items-center justify-between p-4 hover:bg-[#3A3A3C] transition-colors border-b border-[#3A3A3C]"
