@@ -475,14 +475,14 @@ export default function FriendsListPage() {
     setIsSettingsOpen(false);
   }, [navigate]);
 
-  const filteredFriends = useMemo(() => {
-    if (!searchQuery.trim()) return friends;
-    const query = searchQuery.toLowerCase();
-    return friends.filter(f => 
-      f.name.toLowerCase().includes(query) || 
-      f.phone.includes(query)
-    );
-  }, [friends, searchQuery]);
+const filteredFriends = useMemo(() => {
+  if (!searchQuery.trim()) return friends;
+  const query = searchQuery.toLowerCase();
+  return friends.filter(f => 
+    (f.name && f.name.toLowerCase().includes(query)) || 
+    (f.phone && f.phone.includes(query))
+  );
+}, [friends, searchQuery]);
 
   const { favorites, normals } = useMemo(() => {
     const favs = filteredFriends.filter(f => f.isFavorite);
