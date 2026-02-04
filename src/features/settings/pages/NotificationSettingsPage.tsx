@@ -35,9 +35,13 @@ const sendPushNotification = async (title: string, body: string, options?: Notif
       badge: '/grayn_logo.svg',
       tag: 'grayn-message',
       requireInteraction: false,
-      vibrate: [200, 100, 200],
       ...options
     });
+
+    // ✅ 진동은 별도로 처리
+    if ('vibrate' in navigator) {
+      navigator.vibrate([200, 100, 200]);
+    }
 
     notification.onclick = () => {
       window.focus();
@@ -78,7 +82,6 @@ export default function NotificationSettingsPage() {
   const [dndTime, setDndTime] = useState({ start: '22:00', end: '08:00' });
   const [showDndPicker, setShowDndPicker] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
-  const [fcmToken, setFcmToken] = useState<string | null>(null);
 
   // ✅ 실시간 메시지 수신 리스너 (Supabase Realtime)
   useEffect(() => {
@@ -205,8 +208,9 @@ export default function NotificationSettingsPage() {
         });
       }
 
+      // fcmToken 사용 (에러 방지)
       if (data.fcm_token) {
-        setFcmToken(data.fcm_token);
+        console.log('FCM Token loaded:', data.fcm_token);
       }
     }
   }, []);
@@ -289,8 +293,6 @@ export default function NotificationSettingsPage() {
         
         const token = await initializeFCM();
         if (token) {
-          setFcmToken(token);
-          
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
             await supabase
