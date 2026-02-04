@@ -1,0 +1,30 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main  # main 브랜치에 푸시될 때만 실행
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_KEY }}
+          port: 22
+          script: |
+            # 1. 프로젝트 폴더로 이동
+            cd ~/graynserver
+            
+            # 2. 최신 코드 당겨오기
+            git pull
+            
+            # 3. 다시 빌드하고 실행하기 (캐시 없이 깔끔하게)
+            sudo docker-compose up -d --build --no-cache
+            
+            # 4. 청소 (찌꺼기 제거)
+            sudo docker system prune -f

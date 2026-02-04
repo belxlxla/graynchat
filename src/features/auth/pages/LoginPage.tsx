@@ -283,7 +283,7 @@ export default function LoginPage() {
           GRAYN에 오신 것을 환영합니다
         </motion.h1>
         <motion.p initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="text-[#8E8E93] text-sm mt-2">
-          그레인으로 똑똑한 커뮤니케이션 하기.
+          그레인으로 똑똑하게 소통하세요.
         </motion.p>
       </div>
 
