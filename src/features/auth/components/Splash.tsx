@@ -1,89 +1,124 @@
-// src/features/auth/components/Splash.tsx
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
-import type { Variants } from 'framer-motion';
-import logoSvg from '../../../assets/grayn_logo.svg'; // 로고 경로 확인!
+import logoSvg from '../../../assets/grayn_logo.svg';
 
 interface SplashProps {
   onFinish: () => void;
 }
 
-// 컨테이너 애니메이션: 자식들을 순차적으로 보여주고, 마지막에 전체가 위로 사라짐
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.2, // 로고 -> 제목 -> 슬로건 순서로 0.2초 간격 등장
-      delayChildren: 0.3,
-    },
-  },
-  exit: {
-    y: '-100%', // 위로 샥 사라짐
-    opacity: 0,
-    transition: { 
-      duration: 0.5, 
-      ease: [0.4, 0, 0.2, 1] // 세련된 가속도 커브
-    }
-  }
-};
-
-// 아이템(로고, 텍스트) 애니메이션: 아래에서 위로 탄력있게 등장
-const itemVariants: Variants = {
-  hidden: { 
-    y: 40, 
-    opacity: 0,
-    scale: 0.9
-  },
-  visible: {
-    y: 0,
-    opacity: 1,
-    scale: 1,
-    transition: { 
-      type: "spring", // 탄력 있는 스프링 효과
-      stiffness: 100,
-      damping: 15
-    }
-  },
-};
-
 export default function Splash({ onFinish }: SplashProps) {
+  // ✅ 수정된 부분: 애니메이션 실행 시간 1초로 단축
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onFinish();
+    }, 1300);
+
+    return () => clearTimeout(timer);
+  }, [onFinish]);
+
   return (
     <motion.div
-      // 핵심 스타일: 전체 화면 덮기(fixed inset-0), Flex로 중앙 정렬, 배경색 지정(bg-dark-bg)
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-dark-bg"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      // 총 표시 시간 단축 (애니메이션 시간 포함 약 2초 후 종료)
-      onAnimationComplete={() => setTimeout(onFinish, 1500)} 
+      // ✅ 수정된 부분: 배경색 #212121 적용
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#212121] overflow-hidden"
+      // 화면이 사라질 때의 효과 (부모 컴포넌트에서 AnimatePresence 사용 시 작동)
+      exit={{ 
+        opacity: 0, 
+        scale: 1.1, 
+        filter: "blur(10px)",
+        transition: { duration: 0.5, ease: "easeInOut" } 
+      }}
     >
-      {/* 로고 영역 */}
-      <motion.div variants={itemVariants} className="relative mb-8">
-        {/* 로고 뒤의 은은한 빛 효과 */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 bg-brand-DEFAULT/30 blur-[80px] rounded-full" />
+      {/* 1. 로고 애니메이션: 블러 + 줌인 (시네마틱 포커스 효과) */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.5, filter: "blur(20px)" }}
+        animate={{ 
+          opacity: 1, 
+          scale: 1, 
+          filter: "blur(0px)" 
+        }}
+        transition={{
+          duration: 0.8,
+          ease: [0.16, 1, 0.3, 1], // Apple 스타일의 쫀득한 베지어 곡선
+        }}
+        className="relative mb-6"
+      >
+        {/* 로고 뒤의 후광 효과 (Pulse) */}
+        <motion.div 
+          animate={{ 
+            opacity: [0, 0.6, 0], 
+            scale: [0.8, 1.3, 1.6] 
+          }}
+          transition={{ 
+            duration: 1.5, 
+            times: [0, 0.4, 1],
+            ease: "easeOut" 
+          }}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-brand-DEFAULT/50 blur-[50px] rounded-full" 
+        />
+        
         <img 
           src={logoSvg} 
           alt="GRAYN" 
-          className="w-24 h-24 relative z-10 drop-shadow-[0_0_15px_rgba(255,32,58,0.5)]" 
+          className="w-28 h-28 relative z-10 drop-shadow-2xl" 
         />
       </motion.div>
       
-      {/* 앱 이름 */}
-      <motion.h1 
-        variants={itemVariants}
-        className="text-3xl font-bold text-brand-DEFAULT tracking-[0.25em] ml-2"
+      {/* 2. 텍스트 컨테이너: 순차 등장 */}
+      <motion.div
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: {
+            opacity: 1,
+            transition: {
+              staggerChildren: 0.15,
+              delayChildren: 0.3,
+            }
+          }
+        }}
+        className="flex flex-col items-center z-10"
       >
-        GRAYN
-      </motion.h1>
-      
-      {/* 슬로건 */}
-      <motion.p 
-        variants={itemVariants}
-        className="mt-4 text-dark-text-secondary text-sm tracking-wider font-medium"
-      >
-        CONNECT BEYOND THE GRAYN.
-      </motion.p>
+        {/* 타이틀: 아래에서 위로 솟아오르며 등장 */}
+        <motion.h1 
+          variants={{
+            hidden: { y: 20, opacity: 0, letterSpacing: "0.1em" },
+            visible: { 
+              y: 0, 
+              opacity: 1, 
+              letterSpacing: "0.25em", // 자간이 넓어지며 고급스럽게
+              transition: { type: "spring", stiffness: 100, damping: 20 }
+            }
+          }}
+          className="text-4xl font-black text-white ml-3"
+        >
+          GRAYN
+        </motion.h1>
+        
+        {/* 슬로건: 마스크 기법으로 텍스트가 스르륵 채워지는 효과 */}
+        <motion.div 
+          className="relative mt-3 overflow-hidden"
+          variants={{
+            hidden: { opacity: 0 },
+            visible: { opacity: 1, transition: { duration: 0.5 } }
+          }}
+        >
+          {/* 기본 텍스트 (어두운 색 - 베이스) */}
+          <p className="text-gray-700 text-xs tracking-[0.2em] font-semibold">
+            CONNECT BEYOND THE GRAYN.
+          </p>
+          
+          {/* 하이라이트 텍스트 (밝은 색 + 스캔 애니메이션) */}
+          <motion.p 
+            initial={{ clipPath: "inset(0 100% 0 0)" }} // 오른쪽에서 왼쪽으로 가려짐
+            animate={{ clipPath: "inset(0 0% 0 0)" }}   // 전체 보임
+            transition={{ duration: 0.3, ease: "circOut", delay: 0.5 }}
+            className="absolute top-0 left-0 text-brand-DEFAULT text-xs tracking-[0.2em] font-semibold"
+          >
+            CONNECT BEYOND THE GRAYN.
+          </motion.p>
+        </motion.div>
+      </motion.div>
     </motion.div>
   );
 }
