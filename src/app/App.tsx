@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'rea
 import { Toaster, toast } from 'react-hot-toast'; 
 import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
 
-// --- [기존 페이지 import 유지] ---
 import Splash from '../features/auth/components/Splash';
 import LoginPage from '../features/auth/pages/LoginPage';
 import SignUpPage from '../features/auth/pages/SignUpPage'; 
@@ -37,7 +36,6 @@ import IllegalContentReportPage from '../features/settings/pages/IllegalContentR
 import MainLayout from '../components/layout/MainLayout';
 
 import ContentsPage from '../features/contents/pages/ContentsPage';
-// [추가] 리포트 결과 페이지 import
 import ReportResultPage from '../features/contents/pages/ReportResultPage';
 
 import TimeCapsuleCreatePage from '../features/time-capsule/pages/TimeCapsuleCreatePage';
@@ -46,7 +44,6 @@ import TimeCapsuleEditPage from '../features/time-capsule/pages/TimeCapsuleEditP
 import TimeCapsuleInboxPage from '../features/time-capsule/pages/TimeCapsuleInboxPage';
 import TimeCapsuleViewPage from '../features/time-capsule/pages/TimeCapsuleViewPage';
 
-// --- [STEP 5 핵심: Capacitor 라이브러리 추가] ---
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 
@@ -62,76 +59,58 @@ function PublicRoute() {
   return !user ? <Outlet /> : <Navigate to="/main/friends" replace />;
 }
 
-// 실제로 라우팅과 로직을 담당하는 컴포넌트
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const { loading } = useAuth(); 
-  const navigate = useNavigate(); // 페이지 이동 훅
+  const navigate = useNavigate();
 
-  // -------------------------------------------------------------------------
-  // [푸시 알림 로직 시작] - 안드로이드 채널 & iOS 배지 로직 추가됨
-  // -------------------------------------------------------------------------
   useEffect(() => {
-    // 1. 웹 브라우저(PC/모바일웹)에서는 실행하지 않고, 앱일 때만 실행
     if (!Capacitor.isNativePlatform()) return;
 
     const initPushNotifications = async () => {
       
-      // [A] 안드로이드 전용: 알림 채널 생성 (소리/진동 필수 설정)
       if (Capacitor.getPlatform() === 'android') {
         await PushNotifications.createChannel({
-          id: 'halfstep_default_channel', // AndroidManifest.xml과 일치해야 함
-          name: '일반 알림', // 사용자 설정 화면에 보일 이름
+          id: 'halfstep_default_channel',
+          name: '일반 알림',
           description: '채팅 및 매칭 알림을 받습니다.',
-          importance: 4, // 4: 높음 (소리+진동), 5: 매우높음 (헤드업 알림)
+          importance: 4,
           visibility: 1,
           vibration: true,
         });
       }
 
-      // [B] iOS 전용: 앱 실행 시 아이콘 배지 숫자 초기화
       if (Capacitor.getPlatform() === 'ios') {
         await PushNotifications.removeAllDeliveredNotifications();
       }
 
-      // 2. 권한 확인 (granted: 허용됨, denied: 거절됨, prompt: 아직 안 물어봄)
       let permStatus = await PushNotifications.checkPermissions();
 
-      // 아직 안 물어봤으면 권한 요청 팝업 띄우기
       if (permStatus.receive === 'prompt') {
         permStatus = await PushNotifications.requestPermissions();
       }
 
-      // 권한이 없으면 중단
       if (permStatus.receive !== 'granted') {
         console.log('푸시 알림 권한이 거부되었습니다.');
         return;
       }
 
-      // 3. FCM 서버에 기기 등록 (이때 토큰 발급 요청이 날아감)
       await PushNotifications.register();
     };
 
-    // 로직 실행
     initPushNotifications();
 
-    // 4. [리스너 1] 토큰 발급 성공 시 실행되는 코드
     const registrationListener = PushNotifications.addListener('registration', token => {
       console.log('🔥 나의 FCM 토큰:', token.value);
-      // ★ 중요: 나중에 백엔드 개발 시, 여기서 user.id와 token.value를 서버로 보내 저장해야 함
-      // 예: if (user) api.saveToken(user.id, token.value);
     });
 
-    // 5. [리스너 2] 토큰 발급 실패 시
     const registrationErrorListener = PushNotifications.addListener('registrationError', error => {
       console.error('푸시 토큰 발급 실패:', error);
     });
 
-    // 6. [리스너 3] 앱을 '보고 있을 때(Foreground)' 알림이 오면 실행
     const notificationReceivedListener = PushNotifications.addListener('pushNotificationReceived', notification => {
       console.log('알림 수신:', notification);
       
-      // 상단 알림창 대신 앱 내 예쁜 토스트 메시지 띄우기
       toast(notification.title || '새 알림', {
         icon: '🔔',
         style: {
@@ -142,18 +121,15 @@ function AppContent() {
       });
     });
 
-    // 7. [리스너 4] 알림을 '클릭'해서 앱에 들어왔을 때 실행
     const notificationActionListener = PushNotifications.addListener('pushNotificationActionPerformed', notification => {
       console.log('알림 클릭해서 들어옴:', notification);
       
-      // 알림 데이터에 chatId가 있으면 해당 채팅방으로 바로 이동
       const data = notification.notification.data;
       if (data.chatId) {
         navigate(`/chat/room/${data.chatId}`);
       } 
     });
 
-    // 8. 클린업 (페이지 이동 시 리스너 삭제하여 메모리 누수 방지)
     return () => {
       registrationListener.then(listener => listener.remove());
       registrationErrorListener.then(listener => listener.remove());
@@ -161,9 +137,6 @@ function AppContent() {
       notificationActionListener.then(listener => listener.remove());
     };
   }, [navigate]); 
-  // -------------------------------------------------------------------------
-  // [푸시 알림 로직 끝]
-  // -------------------------------------------------------------------------
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('grayn_theme') || 'dark';
@@ -180,7 +153,6 @@ function AppContent() {
 
   return (
     <Routes>
-      {/* 기존 라우트 설정 유지 */}
       <Route element={<PublicRoute />}>
         <Route path="/auth/login" element={<LoginPage />} />
         <Route path="/auth/signup" element={<SignUpPage />} />
@@ -189,18 +161,17 @@ function AppContent() {
 
       <Route element={<PrivateRoute />}>
         <Route path="/auth/phone" element={<PhoneAuthPage />} />
+        <Route path="/auth/phone-verify" element={<PhoneAuthPage />} />
         <Route path="/auth/profile-setup" element={<ProfileSetupPage />} />
 
         <Route path="/main" element={<MainLayout />}>
           <Route index element={<Navigate to="friends" replace />} />
           <Route path="friends" element={<FriendsListPage />} />
           <Route path="chats" element={<ChatListPage />} />
-          {/* 콘텐츠 페이지 라우트 연결 */}
           <Route path="contents" element={<ContentsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* [추가] 리포트 결과 페이지 연결 (MainLayout 밖으로 빼서 탭바 가림) */}
         <Route path="/main/contents/report" element={<ReportResultPage />} />
 
         <Route path="/chat/room/:chatId" element={<ChatRoomPage />} />
@@ -224,10 +195,10 @@ function AppContent() {
         <Route path="/settings/help/report" element={<ReportCenterPage />} />
         <Route path="/settings/help/report/illegal" element={<IllegalContentReportPage />} /> 
         <Route path="/time-capsule/create" element={<TimeCapsuleCreatePage />} />
-<Route path="/time-capsule/sent" element={<TimeCapsuleSentPage />} />
-<Route path="/time-capsule/edit/:id" element={<TimeCapsuleEditPage />} />
-<Route path="/time-capsule/inbox" element={<TimeCapsuleInboxPage />} />
-<Route path="/time-capsule/view/:id" element={<TimeCapsuleViewPage />} />
+        <Route path="/time-capsule/sent" element={<TimeCapsuleSentPage />} />
+        <Route path="/time-capsule/edit/:id" element={<TimeCapsuleEditPage />} />
+        <Route path="/time-capsule/inbox" element={<TimeCapsuleInboxPage />} />
+        <Route path="/time-capsule/view/:id" element={<TimeCapsuleViewPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/main/friends" replace />} />

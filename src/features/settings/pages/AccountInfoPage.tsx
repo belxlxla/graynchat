@@ -12,7 +12,6 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
 
-// --- [Types] ---
 interface UserProfile {
   name: string;
   avatar: string | null;
@@ -28,7 +27,6 @@ interface Country {
   flag: string;
 }
 
-// --- [Helpers for Cropping] ---
 async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
   const image = await new Promise<HTMLImageElement>((resolve) => {
     const img = new Image();
@@ -93,8 +91,8 @@ export default function AccountInfoPage() {
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null); 
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [showVerifyConfirm, setShowVerifyConfirm] = useState<'phone' | 'name' | null>(null);
 
-  // ✨ 크롭 관련 상태
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
@@ -205,6 +203,27 @@ export default function AccountInfoPage() {
     } catch (err) { toast.error('설정 저장 실패', { id: loadingToast }); }
   };
 
+  const handlePhoneClick = () => {
+    setShowVerifyConfirm('phone');
+  };
+
+  const handleNameClick = () => {
+    setShowVerifyConfirm('name');
+  };
+
+  const handleConfirmVerify = () => {
+    if (!user) return;
+    const type = showVerifyConfirm;
+    setShowVerifyConfirm(null);
+    
+    sessionStorage.setItem('verify_return_type', type || '');
+    sessionStorage.setItem('verify_user_id', user.id);
+    sessionStorage.setItem('verify_current_name', profile.name);
+    sessionStorage.setItem('verify_current_phone', profile.phone);
+    
+    navigate('/auth/phone-verify');
+  };
+
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
@@ -235,8 +254,28 @@ export default function AccountInfoPage() {
 
         <div className="px-5 space-y-6">
           <Section label="기본 정보">
-            <InfoItem label="전화번호" value={profile.phone} icon={<Phone className="w-5 h-5" />} />
-            <InfoItem label="이름" value={profile.name} icon={<User className="w-5 h-5" />} />
+            <button onClick={handlePhoneClick} className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center"><Phone className="w-5 h-5" /></div>
+                <span className="text-[15px] text-white">전화번호</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{profile.phone}</span>
+                <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
+              </div>
+            </button>
+            <div className="h-[1px] bg-[#3A3A3C] mx-4" />
+            <button onClick={handleNameClick} className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center"><User className="w-5 h-5" /></div>
+                <span className="text-[15px] text-white">이름</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{profile.name}</span>
+                <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
+              </div>
+            </button>
+            <div className="h-[1px] bg-[#3A3A3C] mx-4" />
             <InfoItem label="로그인 방식" value={profile.provider.toUpperCase()} icon={<Globe className="w-5 h-5" />} />
           </Section>
 
@@ -320,13 +359,35 @@ export default function AccountInfoPage() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showVerifyConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowVerifyConfirm(null)} />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
+              <div className="p-8">
+                <div className="w-16 h-16 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                  {showVerifyConfirm === 'phone' ? <Phone className="w-8 h-8 text-brand-DEFAULT" /> : <User className="w-8 h-8 text-brand-DEFAULT" />}
+                </div>
+                <h3 className="text-white font-bold text-xl mb-2">본인 정보 변경</h3>
+                <p className="text-[#8E8E93] text-[15px] leading-relaxed">
+                  {showVerifyConfirm === 'phone' ? '전화번호' : '이름'}를 변경하려면 본인인증이 필요합니다.
+                </p>
+              </div>
+              <div className="flex border-t border-[#2C2C2E] h-14">
+                <button onClick={() => setShowVerifyConfirm(null)} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button>
+                <button onClick={handleConfirmVerify} className="flex-1 text-brand-DEFAULT font-bold">본인인증</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <CountrySelectModal isOpen={isCountryModalOpen} onClose={() => setIsCountryModalOpen(false)} blockedList={blockedCountries} onSave={handleSaveBlockedCountries} />
       <LogoutModal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)} onConfirm={() => supabase.auth.signOut().then(() => navigate('/'))} />
     </div>
   );
 }
 
-// --- Sub Components ---
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div><h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-2 tracking-wider uppercase">{label}</h3><div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C] divide-y divide-[#3A3A3C] shadow-sm">{children}</div></div>

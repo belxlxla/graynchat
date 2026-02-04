@@ -6,21 +6,31 @@ import {
   Snowflake, ChevronRight, RefreshCw, X,
   CloudLightning, CloudFog, CloudDrizzle, Moon,
   User, Lock, Users, Bell, Database, Monitor, Palette,
-  Megaphone, Headphones, Info
+  Megaphone, Headphones, Info, Wind, Droplets, Eye, Gauge
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { supabase } from '../../../shared/lib/supabaseClient'; // ✨ Supabase 클라이언트 추가
+import { supabase } from '../../../shared/lib/supabaseClient';
 
-// === [Constants] ===
 const CURRENT_VERSION = '1.0.0'; 
 const LATEST_VERSION = '1.0.0'; 
 
-// === [Types] ===
 interface WeatherData {
   temp: number;
   code: number;
   location: string;
   isDay: boolean;
+  feelsLike: number;
+  humidity: number;
+  windSpeed: number;
+  precipitation: number;
+  uvIndex: number;
+  visibility: number;
+  pressure: number;
+  hourly: Array<{
+    time: string;
+    temp: number;
+    code: number;
+  }>;
 }
 
 interface Banner {
@@ -37,7 +47,6 @@ interface MenuItem {
   value?: string;
 }
 
-// === [Mock Data] ===
 const MOCK_BANNERS: Banner[] = [
   { id: 1, imageUrl: 'https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?q=80&w=1000&auto=format&fit=crop', link: '#', title: '그레인 멤버십 혜택 모아보기' },
   { id: 2, imageUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?q=80&w=1000&auto=format&fit=crop', link: '#', title: '이번 달 인기 이모티콘 할인' },
@@ -47,7 +56,6 @@ const MOCK_BANNERS: Banner[] = [
 export default function SettingsPage() {
   const navigate = useNavigate();
 
-  // === States ===
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [locationDenied, setLocationDenied] = useState(false);
@@ -56,13 +64,9 @@ export default function SettingsPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ✨ 로그인 방식 연동 상태 (초기값 빈 문자열)
   const [accountProvider, setAccountProvider] = useState('확인 중...');
 
   const isLatestVersion = CURRENT_VERSION === LATEST_VERSION;
-
-  // === Effects ===
-  useEffect(() => { loadWeather(); }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -71,59 +75,89 @@ export default function SettingsPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // ✨ [연동 수정] 실제 로그인 세션 정보에서 제공자(Provider)를 추출합니다.
-  // ✨ [연동 수정] 실제 로그인 세션 정보에서 제공자(Provider)를 추출합니다.
-useEffect(() => {
-  const fetchUserProvider = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        const user = session.user;
-        let provider = 'email';
+  useEffect(() => {
+    const fetchUserProvider = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
         
-        // 1. user_metadata에서 provider 확인 (가장 우선)
-        if (user.user_metadata?.provider) {
-          provider = user.user_metadata.provider;
-        }
-        // 2. app_metadata에서 provider 확인
-        else if (user.app_metadata?.provider) {
-          provider = user.app_metadata.provider;
-        }
-        // 3. 이메일 패턴으로 판별
-        else if (user.email?.includes('@grayn.app')) {
-          provider = 'naver';
-        }
-        // 4. OAuth providers 확인
-        else if (user.app_metadata?.providers && Array.isArray(user.app_metadata.providers)) {
-          const providers = user.app_metadata.providers;
-          if (providers.includes('google')) provider = 'google';
-          else if (providers.includes('apple')) provider = 'apple';
-          else if (providers.includes('naver')) provider = 'naver';
-        }
-        
-        // 제공자별 한글 명칭 매핑
-        const providerMap: Record<string, string> = {
-          'naver': '네이버 로그인',
-          'google': '구글 로그인',
-          'apple': '애플 로그인',
-          'email': '이메일 로그인'
-        };
+        if (session?.user) {
+          const user = session.user;
+          let provider = 'email';
+          
+          if (user.user_metadata?.provider) {
+            provider = user.user_metadata.provider;
+          }
+          else if (user.app_metadata?.provider) {
+            provider = user.app_metadata.provider;
+          }
+          else if (user.email?.includes('@grayn.app')) {
+            provider = 'naver';
+          }
+          else if (user.app_metadata?.providers && Array.isArray(user.app_metadata.providers)) {
+            const providers = user.app_metadata.providers;
+            if (providers.includes('google')) provider = 'google';
+            else if (providers.includes('apple')) provider = 'apple';
+            else if (providers.includes('naver')) provider = 'naver';
+          }
+          
+          const providerMap: Record<string, string> = {
+            'naver': '네이버 로그인',
+            'google': '구글 로그인',
+            'apple': '애플 로그인',
+            'email': '이메일 로그인'
+          };
 
-        setAccountProvider(providerMap[provider] || '이메일 로그인');
-      } else {
+          setAccountProvider(providerMap[provider] || '이메일 로그인');
+        } else {
+          setAccountProvider('이메일 로그인');
+        }
+      } catch (error) {
+        console.error('Provider fetch error:', error);
         setAccountProvider('이메일 로그인');
       }
-    } catch (error) {
-      console.error('Provider fetch error:', error);
-      setAccountProvider('이메일 로그인');
+    };
+
+    fetchUserProvider();
+  }, []);
+
+  useEffect(() => {
+    const checkLocationPermission = async () => {
+      const locationPermission = localStorage.getItem('grayn_location_permission');
+      
+      if (locationPermission === 'granted') {
+        loadWeather();
+      } else if (locationPermission === 'denied') {
+        setLocationDenied(true);
+      } else {
+        requestLocationPermission();
+      }
+    };
+
+    checkLocationPermission();
+  }, []);
+
+  const requestLocationPermission = () => {
+    if (!navigator.geolocation) {
+      toast.error('위치 정보를 사용할 수 없습니다.');
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        localStorage.setItem('grayn_location_permission', 'granted');
+        setLocationDenied(false);
+        loadWeather();
+      },
+      (error) => {
+        console.error('위치 권한 거부:', error);
+        if (error.code === 1) {
+          localStorage.setItem('grayn_location_permission', 'denied');
+          setLocationDenied(true);
+          toast.error('위치 권한을 허용해주세요.');
+        }
+      }
+    );
   };
-
-  fetchUserProvider();
-}, []);
-
-  // === Functions ===
 
   const handleMenuClick = (id: string) => {
     if (id === 'account') {
@@ -162,8 +196,12 @@ useEffect(() => {
     }
   };
 
+  // ✅ Open-Meteo API 사용 (완전 무료, API 키 불필요)
   const loadWeather = () => {
-    if (!navigator.geolocation) return toast.error('위치 정보를 사용할 수 없습니다.');
+    if (!navigator.geolocation) {
+      toast.error('위치 정보를 사용할 수 없습니다.');
+      return;
+    }
 
     setLoadingWeather(true);
     
@@ -171,27 +209,59 @@ useEffect(() => {
       async (position) => {
         const { latitude, longitude } = position.coords;
         setLocationDenied(false);
+        
         try {
+          // ✅ Open-Meteo API - 완전 무료, API 키 불필요
           const weatherRes = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,surface_pressure,wind_speed_10m,uv_index,is_day&hourly=temperature_2m,weather_code&timezone=auto&forecast_days=1`
           );
-          const weatherJson = await weatherRes.json();
-          const current = weatherJson.current;
+          
+          if (!weatherRes.ok) {
+            throw new Error('날씨 API 요청 실패');
+          }
 
+          const weatherJson = await weatherRes.json();
+          
+          if (!weatherJson.current) {
+            throw new Error('날씨 데이터를 불러올 수 없습니다.');
+          }
+
+          const current = weatherJson.current;
+          const hourly = weatherJson.hourly;
+
+          // 시간별 예보 데이터 (다음 12시간)
+          const now = new Date();
+          const currentHour = now.getHours();
+          const hourlyData = hourly.time.slice(currentHour, currentHour + 12).map((time: string, index: number) => ({
+            time: new Date(time).getHours() + '시',
+            temp: Math.round(hourly.temperature_2m[currentHour + index]),
+            code: hourly.weather_code[currentHour + index]
+          }));
+
+          // 위치 이름 가져오기 (역지오코딩)
           const geoRes = await fetch(
             `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=ko`
           );
           const geoJson = await geoRes.json();
-          const locationName = geoJson.locality || geoJson.city || geoJson.principalSubdivision || '위치 확인 불가';
+          const locationName = geoJson.locality || geoJson.city || geoJson.principalSubdivision || '현재 위치';
 
           setWeather({
             temp: Math.round(current.temperature_2m),
             code: current.weather_code,
             isDay: current.is_day === 1,
-            location: locationName
+            location: locationName,
+            feelsLike: Math.round(current.apparent_temperature),
+            humidity: Math.round(current.relative_humidity_2m),
+            windSpeed: Math.round(current.wind_speed_10m * 3.6), // m/s to km/h
+            precipitation: Math.round(current.precipitation || 0),
+            uvIndex: Math.round(current.uv_index || 0),
+            visibility: 10, // Open-Meteo 무료 플랜에서는 시정 미제공
+            pressure: Math.round(current.surface_pressure),
+            hourly: hourlyData
           });
+
         } catch (e) {
-          console.error(e);
+          console.error('날씨 로드 에러:', e);
           toast.error('날씨 정보를 불러오는데 실패했습니다.');
         } finally {
           setLoadingWeather(false);
@@ -201,25 +271,100 @@ useEffect(() => {
         console.error("위치 오류:", error);
         setLoadingWeather(false);
         setLocationDenied(true);
-        if (error.code === 1) toast.error('위치 권한을 허용해주세요.');
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
     );
   };
 
+  // ✅ WMO Weather Code 매핑 (Open-Meteo 표준)
   const getWeatherDisplay = (code: number, isDay: boolean) => {
-    if (code === 0) return { icon: isDay ? <Sun className="w-10 h-10 text-orange-400 drop-shadow-lg" /> : <Moon className="w-10 h-10 text-yellow-200 drop-shadow-lg" />, text: '맑음', bg: isDay ? 'from-blue-400/20 to-blue-600/20' : 'from-slate-800 to-slate-900' };
-    if (code >= 1 && code <= 3) return { icon: <Cloud className="w-10 h-10 text-gray-300 drop-shadow-lg" />, text: code === 1 ? '대체로 맑음' : '흐림', bg: 'from-gray-400/20 to-gray-600/20' };
-    if (code >= 45 && code <= 48) return { icon: <CloudFog className="w-10 h-10 text-slate-400 drop-shadow-lg" />, text: '안개', bg: 'from-slate-500/20 to-slate-700/20' };
-    if (code >= 51 && code <= 67) return { icon: <CloudDrizzle className="w-10 h-10 text-blue-300 drop-shadow-lg" />, text: '비', bg: 'from-blue-500/30 to-blue-800/30' };
-    if (code >= 71 && code <= 77) return { icon: <Snowflake className="w-10 h-10 text-white drop-shadow-lg" />, text: '눈', bg: 'from-sky-300/20 to-sky-600/20' };
-    if (code >= 80 && code <= 82) return { icon: <CloudRain className="w-10 h-10 text-blue-400 drop-shadow-lg" />, text: '소나기', bg: 'from-indigo-400/20 to-indigo-800/20' };
-    if (code >= 95) return { icon: <CloudLightning className="w-10 h-10 text-yellow-400 drop-shadow-lg" />, text: '뇌우', bg: 'from-purple-500/20 to-purple-900/20' };
-    return { icon: <Sun className="w-10 h-10 text-orange-400" />, text: '맑음', bg: 'from-gray-700/20 to-gray-900/20' };
+    // Clear sky (0)
+    if (code === 0) {
+      return { 
+        icon: isDay ? <Sun className="w-10 h-10 text-yellow-400" /> : <Moon className="w-10 h-10 text-yellow-200" />, 
+        text: '맑음', 
+        bg: isDay 
+          ? 'from-blue-400/40 via-cyan-400/30 to-blue-500/40' 
+          : 'from-indigo-900/50 via-blue-900/50 to-gray-900/50',
+        emoji: isDay ? '☀️' : '🌙'
+      };
+    }
+    // Mainly clear, partly cloudy (1, 2, 3)
+    if (code >= 1 && code <= 3) {
+      const text = code === 1 ? '대체로 맑음' : code === 2 ? '구름 조금' : '구름 많음';
+      return { 
+        icon: <Cloud className="w-10 h-10 text-gray-300" />, 
+        text, 
+        bg: 'from-gray-500/30 via-gray-600/30 to-gray-700/30',
+        emoji: '☁️'
+      };
+    }
+    // Fog (45, 48)
+    if (code === 45 || code === 48) {
+      return { 
+        icon: <CloudFog className="w-10 h-10 text-gray-300" />, 
+        text: '안개', 
+        bg: 'from-gray-400/30 via-gray-500/30 to-gray-600/30',
+        emoji: '🌫️'
+      };
+    }
+    // Drizzle (51, 53, 55)
+    if (code >= 51 && code <= 55) {
+      return { 
+        icon: <CloudDrizzle className="w-10 h-10 text-blue-300" />, 
+        text: '이슬비', 
+        bg: 'from-blue-400/30 via-gray-600/30 to-gray-800/30',
+        emoji: '🌧️'
+      };
+    }
+    // Rain (61, 63, 65, 80, 81, 82)
+    if ((code >= 61 && code <= 65) || (code >= 80 && code <= 82)) {
+      const text = code >= 80 ? '소나기' : '비';
+      return { 
+        icon: <CloudRain className="w-10 h-10 text-blue-400" />, 
+        text, 
+        bg: 'from-blue-500/35 via-blue-700/35 to-gray-900/35',
+        emoji: '🌧️'
+      };
+    }
+    // Snow (71, 73, 75, 77, 85, 86)
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
+      return { 
+        icon: <Snowflake className="w-10 h-10 text-blue-100" />, 
+        text: '눈', 
+        bg: 'from-blue-200/25 via-blue-300/25 to-blue-400/25',
+        emoji: '❄️'
+      };
+    }
+    // Thunderstorm (95, 96, 99)
+    if (code >= 95) {
+      return { 
+        icon: <CloudLightning className="w-10 h-10 text-yellow-300" />, 
+        text: '뇌우', 
+        bg: 'from-purple-900/40 via-gray-800/40 to-gray-900/40',
+        emoji: '⛈️'
+      };
+    }
+
+    return { 
+      icon: <Sun className="w-10 h-10 text-yellow-400" />, 
+      text: '맑음', 
+      bg: 'from-blue-400/40 to-blue-600/40',
+      emoji: '☀️'
+    };
   };
 
-  // === Menu Data Definition ===
-  // ✨ filteredSettings 내에서 accountProvider 값을 value로 사용
+  const getHourlyWeatherIcon = (code: number) => {
+    if (code === 0) return '☀️';
+    if (code >= 1 && code <= 3) return '☁️';
+    if (code === 45 || code === 48) return '🌫️';
+    if (code >= 51 && code <= 55) return '🌧️';
+    if ((code >= 61 && code <= 65) || (code >= 80 && code <= 82)) return '🌧️';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return '❄️';
+    if (code >= 95) return '⛈️';
+    return '☀️';
+  };
+
   const settingsItems: MenuItem[] = [
     { id: 'account', label: '그레인 계정정보', icon: <User className="w-5 h-5 text-[#8E8E93]" />, value: accountProvider },
     { id: 'privacy', label: '개인/보안', icon: <Lock className="w-5 h-5 text-[#8E8E93]" /> },
@@ -248,7 +393,6 @@ useEffect(() => {
 
   return (
     <div className="w-full h-full flex flex-col bg-dark-bg text-white pb-4">
-      {/* === Header === */}
       <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 shrink-0">
         <h1 className="text-xl font-bold ml-1">더보기</h1>
         <div className="flex gap-1">
@@ -261,7 +405,6 @@ useEffect(() => {
         </div>
       </header>
 
-      {/* === Search Bar === */}
       <AnimatePresence>
         {isSearching && (
           <motion.div 
@@ -292,45 +435,94 @@ useEffect(() => {
 
       <div className="flex-1 overflow-y-auto custom-scrollbar pb-8">
         
-        {/* === 1. Weather Widget === */}
         {!searchQuery && (
           <div className="px-5 py-4">
-            <div className="relative w-full h-[90px] rounded-2xl overflow-hidden border border-white/10 shadow-lg">
+            <div className="relative w-full rounded-[28px] overflow-hidden shadow-2xl">
               {loadingWeather ? (
-                <div className="w-full h-full bg-[#2C2C2E] flex items-center justify-center gap-2 text-[#8E8E93] text-sm">
-                  <RefreshCw className="w-4 h-4 animate-spin" /> 날씨 정보를 불러오는 중...
+                <div className="w-full h-[360px] bg-gradient-to-br from-blue-500/20 to-purple-600/20 backdrop-blur-xl flex items-center justify-center gap-2 text-white text-sm">
+                  <RefreshCw className="w-5 h-5 animate-spin" /> 날씨 정보를 불러오는 중...
                 </div>
               ) : locationDenied ? (
-                <button onClick={loadWeather} className="w-full h-full bg-[#2C2C2E] flex flex-col items-center justify-center gap-1 hover:bg-[#3A3A3C] transition-colors">
-                  <div className="flex items-center gap-1 text-brand-DEFAULT font-bold text-sm">
-                    <MapPin className="w-4 h-4" /> 위치 정보 동의 필요
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('grayn_location_permission');
+                    requestLocationPermission();
+                  }} 
+                  className="w-full h-[360px] bg-gradient-to-br from-gray-700/30 to-gray-900/30 backdrop-blur-xl flex flex-col items-center justify-center gap-3 hover:from-gray-600/30 hover:to-gray-800/30 transition-all"
+                >
+                  <MapPin className="w-12 h-12 text-brand-DEFAULT" />
+                  <div className="text-center">
+                    <p className="text-white font-bold text-base mb-1">위치 정보 동의 필요</p>
+                    <p className="text-xs text-white/70">탭하여 현재 날씨 확인하기</p>
                   </div>
-                  <p className="text-xs text-[#8E8E93]">탭하여 현재 날씨 확인하기</p>
                 </button>
               ) : weather ? (
                 (() => {
                   const display = getWeatherDisplay(weather.code, weather.isDay);
                   return (
-                    <div className={`w-full h-full bg-gradient-to-br ${display.bg} backdrop-blur-md flex items-center justify-between px-6`}>
-                      <div className="z-10 flex flex-col justify-center">
-                        <p className="text-xs text-white/70 mb-0.5 flex items-center gap-1 font-medium">
-                          <MapPin className="w-3 h-3" /> {weather.location}
-                          <button onClick={loadWeather} className="ml-1 opacity-70 hover:opacity-100 p-1"><RefreshCw className="w-3 h-3" /></button>
-                        </p>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-3xl font-bold text-white tracking-tight">{weather.temp}°</span>
-                          <span className="text-sm font-medium text-white/80">{display.text}</span>
+                    <div className={`w-full min-h-[360px] bg-gradient-to-br ${display.bg} backdrop-blur-xl relative overflow-hidden`}>
+                      <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
+                      <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-black/10 rounded-full blur-2xl" />
+                      
+                      <div className="relative z-10 p-6">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-white/90" />
+                            <span className="text-white/90 text-sm font-medium">{weather.location}</span>
+                          </div>
+                          <button 
+                            onClick={loadWeather} 
+                            className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                          >
+                            <RefreshCw className="w-4 h-4 text-white/80" />
+                          </button>
+                        </div>
+
+                        <div className="flex items-start justify-between mb-8">
+                          <div>
+                            <div className="flex items-baseline gap-1 mb-2">
+                              <span className="text-7xl font-light text-white tracking-tight">{weather.temp}</span>
+                              <span className="text-5xl font-light text-white/90">°</span>
+                            </div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-2xl">{display.emoji}</span>
+                              <span className="text-xl text-white/90 font-medium">{display.text}</span>
+                            </div>
+                            <p className="text-white/70 text-sm">체감 {weather.feelsLike}°</p>
+                          </div>
+                          <div className="mt-4">
+                            {display.icon}
+                          </div>
+                        </div>
+
+                        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 mb-4">
+                          <p className="text-white/80 text-xs font-medium mb-3 uppercase tracking-wide">시간별 예보</p>
+                          <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-2">
+                            {weather.hourly.map((hour, index) => (
+                              <div key={index} className="flex flex-col items-center gap-2 min-w-[50px]">
+                                <span className="text-white/70 text-xs">{hour.time}</span>
+                                <span className="text-2xl">{getHourlyWeatherIcon(hour.code)}</span>
+                                <span className="text-white font-medium text-sm">{hour.temp}°</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3">
+                          <WeatherDetail icon={<Wind className="w-4 h-4" />} label="바람" value={`${weather.windSpeed} km/h`} />
+                          <WeatherDetail icon={<Droplets className="w-4 h-4" />} label="습도" value={`${weather.humidity}%`} />
+                          <WeatherDetail icon={<Gauge className="w-4 h-4" />} label="기압" value={`${weather.pressure} hPa`} />
                         </div>
                       </div>
-                      <div className="z-10 scale-110">{display.icon}</div>
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/4" />
                     </div>
                   );
                 })()
               ) : (
-                <div className="w-full h-full bg-[#2C2C2E] flex items-center justify-center text-sm text-[#8E8E93]">
-                  <button onClick={loadWeather} className="flex items-center gap-2 hover:text-white transition-colors">
-                    <RefreshCw className="w-4 h-4" /> 날씨 다시 불러오기
+                <div className="w-full h-[360px] bg-gradient-to-br from-gray-700/30 to-gray-900/30 backdrop-blur-xl flex items-center justify-center text-sm text-white/70">
+                  <button onClick={loadWeather} className="flex flex-col items-center gap-3 hover:text-white transition-colors">
+                    <RefreshCw className="w-6 h-6" />
+                    <span>날씨 불러오기</span>
                   </button>
                 </div>
               )}
@@ -338,7 +530,6 @@ useEffect(() => {
           </div>
         )}
 
-        {/* === 2. Ad Banner === */}
         {!searchQuery && (
           <div className="px-5 mb-8">
             <div className="w-full aspect-[2.8/1] rounded-2xl overflow-hidden relative bg-[#2C2C2E] shadow-md group cursor-pointer">
@@ -366,7 +557,6 @@ useEffect(() => {
           </div>
         )}
 
-        {/* === 3. Settings List === */}
         {filteredSettings.length > 0 && (
           <div className="px-5 space-y-4 mb-8">
             <SectionTitle title="설정" />
@@ -386,7 +576,6 @@ useEffect(() => {
           </div>
         )}
 
-        {/* === 4. Service List === */}
         {filteredServices.length > 0 && (
           <div className="px-5 space-y-4 pb-4">
             <SectionTitle title="서비스" />
@@ -421,7 +610,6 @@ useEffect(() => {
           </div>
         )}
 
-        {/* 검색 결과 없음 표시 */}
         {searchQuery && filteredSettings.length === 0 && filteredServices.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-[#8E8E93]">
             <Search className="w-12 h-12 opacity-20 mb-3" />
@@ -434,7 +622,15 @@ useEffect(() => {
   );
 }
 
-// === [Sub Components] ===
+function WeatherDetail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 flex flex-col items-center gap-1">
+      <div className="text-white/70">{icon}</div>
+      <span className="text-white/60 text-[10px] uppercase tracking-wide">{label}</span>
+      <span className="text-white font-semibold text-sm">{value}</span>
+    </div>
+  );
+}
 
 function SectionTitle({ title }: { title: string }) {
   return <h3 className="text-sm font-bold text-[#E5E5EA] ml-1 mb-1">{title}</h3>;
