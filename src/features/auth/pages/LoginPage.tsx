@@ -1,13 +1,83 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, ShieldCheck, ArrowRight, X, Eye, EyeOff, Bell, BellOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import GraynLogo from '../../../assets/grayn_logo.svg';
 import { useNaverLogin } from '../hooks/useNaverLogin';
 
 type Provider = 'google' | 'apple';
+
+// ✅ 실제 기기 알림 권한 요청 함수
+const requestNotificationPermission = async (): Promise<'granted' | 'denied' | 'default'> => {
+  try {
+    // ✅ 웹 브라우저 (PWA)
+    if ('Notification' in window) {
+      // 이미 권한이 부여되어 있는 경우
+      if (Notification.permission === 'granted') {
+        return 'granted';
+      }
+      
+      // 이미 거부된 경우
+      if (Notification.permission === 'denied') {
+        return 'denied';
+      }
+
+      // 권한 요청
+      const permission = await Notification.requestPermission();
+      return permission as 'granted' | 'denied' | 'default';
+    }
+    
+    // ✅ iOS (Capacitor)
+    // @ts-ignore
+    if (window.Capacitor?.isNativePlatform?.()) {
+      // @ts-ignore
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const result = await LocalNotifications.requestPermissions();
+      
+      if (result.display === 'granted') {
+        return 'granted';
+      } else if (result.display === 'denied') {
+        return 'denied';
+      }
+      return 'default';
+    }
+
+    // ✅ Android (Capacitor)
+    // @ts-ignore
+    if (window.Android?.requestNotifications) {
+      // @ts-ignore
+      const result = await window.Android.requestNotifications();
+      return result === 'granted' ? 'granted' : 'denied';
+    }
+
+    // 지원하지 않는 환경
+    console.warn('Notifications not supported in this environment');
+    return 'default';
+    
+  } catch (error) {
+    console.error('Notification permission error:', error);
+    return 'denied';
+  }
+};
+
+// ✅ FCM 토큰 가져오기 (나중에 푸시 알림용)
+const getFCMToken = async (): Promise<string | null> => {
+  try {
+    // @ts-ignore - Firebase Messaging은 추후 구현
+    if (window.firebase && window.firebase.messaging) {
+      // @ts-ignore
+      const messaging = window.firebase.messaging();
+      const token = await messaging.getToken();
+      return token;
+    }
+    return null;
+  } catch (error) {
+    console.error('FCM Token Error:', error);
+    return null;
+  }
+};
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -22,13 +92,13 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState('');
   const [mfaMethod, setMfaMethod] = useState<'email' | 'phone'>('email');
 
-  // ✅ 비밀번호 표시/숨김 상태
   const [showPassword, setShowPassword] = useState(false);
-
-  // ✅ 이메일 저장 기능
   const [rememberEmail, setRememberEmail] = useState(false);
 
-  // ✅ 저장된 이메일 불러오기
+  // ✅ 알림 권한 모달
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [isRequestingNotification, setIsRequestingNotification] = useState(false);
+
   useEffect(() => {
     const savedEmail = localStorage.getItem('grayn_saved_email');
     if (savedEmail) {
@@ -37,7 +107,7 @@ export default function LoginPage() {
     }
   }, []);
 
-  // ✅ OAuth 콜백 및 데이터 동기화 처리
+  // ✅ OAuth 콜백 및 알림 권한 처리
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -94,7 +164,10 @@ export default function LoginPage() {
               });
 
               toast.success(`${userName}님 환영합니다!`);
-              navigate('/main/friends', { replace: true });
+              
+              // ✅ OAuth 로그인 후에도 알림 권한 확인
+              await checkAndRequestNotificationPermission(userId);
+              
             } catch (error) {
               console.error('Sync error:', error);
               navigate('/main/friends', { replace: true });
@@ -109,6 +182,40 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // ✅ 알림 권한 확인 및 요청 함수
+  const checkAndRequestNotificationPermission = async (userId: string) => {
+    try {
+      // DB에서 사용자의 알림 권한 상태 확인
+      const { data: userData } = await supabase
+        .from('users')
+        .select('notification_permission')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const notificationPermission = userData?.notification_permission;
+
+      if (notificationPermission === 'granted') {
+        // 이미 허용됨 - 바로 이동
+        navigate('/main/friends', { replace: true });
+        return;
+      }
+
+      if (notificationPermission === 'denied') {
+        // 이전에 거부함 - 바로 이동 (다시 묻지 않음)
+        navigate('/main/friends', { replace: true });
+        return;
+      }
+
+      // ✅ 아직 물어보지 않았거나 pending 상태 - 모달 표시
+      setShowNotificationModal(true);
+
+    } catch (error) {
+      console.error('Notification permission check error:', error);
+      // 에러 발생 시에도 메인으로 이동
+      navigate('/main/friends', { replace: true });
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -119,7 +226,6 @@ export default function LoginPage() {
       return toast.error('이메일과 비밀번호를 입력해주세요.');
     }
 
-    // ✅ 이메일 저장/삭제
     if (rememberEmail) {
       localStorage.setItem('grayn_saved_email', targetEmail);
     } else {
@@ -188,7 +294,9 @@ export default function LoginPage() {
                       data.user.user_metadata?.full_name || 
                       '회원';
       toast.success(`${userName}님 환영합니다!`);
-      navigate('/main/friends');
+      
+      // ✅ 이메일 로그인 후 알림 권한 확인
+      await checkAndRequestNotificationPermission(data.user.id);
     }
   };
 
@@ -209,7 +317,9 @@ export default function LoginPage() {
         if (data.user) {
           setShow2FAModal(false);
           toast.success('인증되었습니다. (테스트 모드)');
-          navigate('/main/friends');
+          
+          // ✅ 2FA 후에도 알림 권한 확인
+          await checkAndRequestNotificationPermission(data.user.id);
         }
       } catch (error) {
         console.error('Bypass Login Error:', error);
@@ -232,7 +342,11 @@ export default function LoginPage() {
       if (data.session) {
         setShow2FAModal(false);
         toast.success('인증되었습니다.');
-        navigate('/main/friends');
+        
+        // ✅ 2FA 후에도 알림 권한 확인
+        if (data.user) {
+          await checkAndRequestNotificationPermission(data.user.id);
+        }
       }
     } catch (error: any) {
       console.error('2FA Verify Error:', error);
@@ -259,6 +373,93 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error('OAuth Error:', error);
       toast.error(`${provider} 로그인에 실패했습니다.`);
+    }
+  };
+
+  // ✅ 알림 허용 핸들러
+  const handleAllowNotifications = async () => {
+    if (isRequestingNotification) return;
+
+    setIsRequestingNotification(true);
+    const loadingToast = toast.loading('알림 권한을 요청하는 중...');
+
+    try {
+      const permission = await requestNotificationPermission();
+      
+      toast.dismiss(loadingToast);
+
+      if (permission === 'granted') {
+        // ✅ FCM 토큰 가져오기 (선택적)
+        const fcmToken = await getFCMToken();
+
+        // ✅ DB에 권한 상태 저장
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          await supabase
+            .from('users')
+            .update({ 
+              notification_permission: 'granted',
+              ...(fcmToken && { fcm_token: fcmToken })
+            })
+            .eq('id', session.user.id);
+        }
+
+        toast.success('알림이 활성화되었습니다! 🔔');
+        setShowNotificationModal(false);
+        navigate('/main/friends', { replace: true });
+
+      } else if (permission === 'denied') {
+        // ✅ 거부 시 DB에 저장
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user?.id) {
+          await supabase
+            .from('users')
+            .update({ notification_permission: 'denied' })
+            .eq('id', session.user.id);
+        }
+
+        toast.error('알림이 차단되었습니다. 설정에서 변경할 수 있습니다.');
+        setShowNotificationModal(false);
+        navigate('/main/friends', { replace: true });
+
+      } else {
+        // default 상태 (사용자가 선택 안 함)
+        toast('알림 설정을 나중에 할 수 있습니다.', { icon: 'ℹ️' });
+        setShowNotificationModal(false);
+        navigate('/main/friends', { replace: true });
+      }
+
+    } catch (error) {
+      console.error('Notification allow error:', error);
+      toast.dismiss(loadingToast);
+      toast.error('알림 권한 요청에 실패했습니다.');
+      
+      // 에러 발생 시에도 메인으로 이동
+      setShowNotificationModal(false);
+      navigate('/main/friends', { replace: true });
+    } finally {
+      setIsRequestingNotification(false);
+    }
+  };
+
+  // ✅ 알림 나중에 하기 핸들러
+  const handleSkipNotifications = async () => {
+    try {
+      // ✅ DB에 pending 상태로 저장 (나중에 다시 물어볼 수 있음)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await supabase
+          .from('users')
+          .update({ notification_permission: 'pending' })
+          .eq('id', session.user.id);
+      }
+
+      setShowNotificationModal(false);
+      navigate('/main/friends', { replace: true });
+    } catch (error) {
+      console.error('Skip notification error:', error);
+      setShowNotificationModal(false);
+      navigate('/main/friends', { replace: true });
     }
   };
 
@@ -334,7 +535,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* ✅ 이메일 저장 체크박스 */}
         <div className="flex items-center gap-2 px-1">
           <button
             type="button"
@@ -402,6 +602,7 @@ export default function LoginPage() {
         </button>
       </motion.div>
 
+      {/* ✅ 2FA 모달 */}
       <AnimatePresence>
         {show2FAModal && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6">
@@ -422,6 +623,81 @@ export default function LoginPage() {
               </div>
               <button onClick={handleVerify2FA} disabled={isLoading} className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin"/> : <><>인증하기</> <ArrowRight size={18}/></>}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ✅ 알림 권한 모달 */}
+      <AnimatePresence>
+        {showNotificationModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-black/95 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+              className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] border border-[#2C2C2E] rounded-[32px] p-8 text-center shadow-2xl"
+            >
+              <div className="w-20 h-20 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Bell className="w-10 h-10 text-brand-DEFAULT" />
+              </div>
+              
+              <h3 className="text-2xl font-bold text-white mb-3">알림 허용</h3>
+              <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">
+                새로운 메시지와 중요한 소식을<br/>
+                실시간으로 받아보세요.
+              </p>
+
+              <div className="space-y-3 mb-8">
+                <div className="flex items-center gap-3 text-left p-3 bg-[#2C2C2E] rounded-xl">
+                  <div className="w-10 h-10 bg-green-500/10 rounded-full flex items-center justify-center shrink-0">
+                    <Bell className="w-5 h-5 text-green-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">실시간 메시지 알림</p>
+                    <p className="text-xs text-[#8E8E93]">놓치지 않고 확인하세요</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 text-left p-3 bg-[#2C2C2E] rounded-xl">
+                  <div className="w-10 h-10 bg-blue-500/10 rounded-full flex items-center justify-center shrink-0">
+                    <BellOff className="w-5 h-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">방해 금지 모드 지원</p>
+                    <p className="text-xs text-[#8E8E93]">설정에서 언제든 조절 가능</p>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={handleAllowNotifications}
+                disabled={isRequestingNotification}
+                className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mb-3 hover:bg-brand-hover transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isRequestingNotification ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Bell className="w-5 h-5" />
+                    허용하기
+                  </>
+                )}
+              </button>
+
+              <button 
+                onClick={handleSkipNotifications}
+                disabled={isRequestingNotification}
+                className="w-full text-[#8E8E93] text-sm hover:text-white transition-colors disabled:opacity-50"
+              >
+                나중에 하기
               </button>
             </motion.div>
           </div>

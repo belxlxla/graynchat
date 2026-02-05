@@ -46,7 +46,6 @@ const requestContactsPermission = async (): Promise<boolean> => {
       const contacts = await navigator.contacts.select(props, opts);
       
       if (contacts && contacts.length > 0) {
-        // 연락처 정보를 localStorage에 저장
         const contactsData = contacts.map((contact: any) => ({
           name: contact.name?.[0] || '',
           phone: contact.tel?.[0] || ''
@@ -64,7 +63,6 @@ const requestContactsPermission = async (): Promise<boolean> => {
         // @ts-ignore
         window.webkit.messageHandlers.contacts.postMessage({ action: 'request' });
         
-        // iOS에서 메시지 응답 대기
         // @ts-ignore
         window.handleContactsResponse = (granted: boolean) => {
           resolve(granted);
@@ -80,7 +78,6 @@ const requestContactsPermission = async (): Promise<boolean> => {
       return result === 'granted';
     }
     
-    // ✅ 지원하지 않는 브라우저
     toast('이 브라우저는 연락처 동기화를 지원하지 않습니다.', { icon: '⚠️' });
     return false;
     
@@ -90,7 +87,6 @@ const requestContactsPermission = async (): Promise<boolean> => {
   }
 };
 
-// ✅ 동기화된 연락처 가져오기
 const getSyncedContacts = (): Array<{ name: string; phone: string }> => {
   try {
     const data = localStorage.getItem('grayn_synced_contacts');
@@ -102,11 +98,11 @@ const getSyncedContacts = (): Array<{ name: string; phone: string }> => {
 
 export default function FriendsListPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const [step, setStep] = useState<StepType>(() => {
-    const savedPermission = localStorage.getItem('grayn_contact_permission');
-    return savedPermission === 'granted' ? 'list' : 'permission';
-  });
+  // ✅ 사용자별 연락처 권한 상태 확인
+  const [step, setStep] = useState<StepType>('list'); // 기본값을 'list'로 변경
+  const [isCheckingPermission, setIsCheckingPermission] = useState(true);
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -131,11 +127,50 @@ export default function FriendsListPage() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // [추가] AI 점수 계산 중인지 여부
   const [calculatingScore, setCalculatingScore] = useState(false);
 
-  // ✅ 실제 연락처 동기화 핸들러
+  // ✅ 사용자별 연락처 권한 상태 확인
+  useEffect(() => {
+    const checkContactPermissionStatus = async () => {
+      if (!user?.id) {
+        setIsCheckingPermission(false);
+        return;
+      }
+
+      try {
+        // DB에서 사용자의 연락처 권한 상태 확인
+        const { data: userData } = await supabase
+          .from('users')
+          .select('contact_permission')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        const contactPermission = userData?.contact_permission;
+
+        if (contactPermission === 'granted') {
+          // 이미 허용됨
+          setStep('list');
+        } else if (contactPermission === 'denied') {
+          // 거부됨 - 바로 리스트로 (다시 묻지 않음)
+          setStep('list');
+        } else {
+          // 아직 물어보지 않음 - 권한 요청 화면
+          setStep('permission');
+        }
+      } catch (error) {
+        console.error('Permission check error:', error);
+        setStep('list');
+      } finally {
+        setIsCheckingPermission(false);
+      }
+    };
+
+    checkContactPermissionStatus();
+  }, [user?.id]);
+
   const handleAllowContacts = useCallback(async () => {
+    if (!user?.id) return;
+
     const loadingToast = toast.loading('연락처 권한을 요청하는 중...');
     
     const granted = await requestContactsPermission();
@@ -143,22 +178,44 @@ export default function FriendsListPage() {
     toast.dismiss(loadingToast);
     
     if (granted) {
-      localStorage.setItem('grayn_contact_permission', 'granted');
+      // ✅ DB에 권한 상태 저장
+      await supabase
+        .from('users')
+        .update({ contact_permission: 'granted' })
+        .eq('id', user.id);
+
       toast.success('연락처 동기화가 완료되었습니다!');
       setStep('complete');
       
-      // ✅ 동기화된 연락처로 친구 자동 추가 (선택사항)
       await syncContactsToFriends();
       
       setTimeout(() => {
         setStep('list');
       }, 1500);
     } else {
-      toast.error('연락처 권한이 거부되었습니다.');
-    }
-  }, []);
+      // ✅ 거부 상태 저장
+      await supabase
+        .from('users')
+        .update({ contact_permission: 'denied' })
+        .eq('id', user.id);
 
-  // ✅ 동기화된 연락처를 friends 테이블에 자동 추가
+      toast.error('연락처 권한이 거부되었습니다.');
+      setStep('list');
+    }
+  }, [user?.id]);
+
+  const handleSkipContacts = useCallback(async () => {
+    if (!user?.id) return;
+
+    // ✅ 나중에 하기 선택 시 상태 저장
+    await supabase
+      .from('users')
+      .update({ contact_permission: 'denied' })
+      .eq('id', user.id);
+
+    setStep('list');
+  }, [user?.id]);
+
   const syncContactsToFriends = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -170,7 +227,6 @@ export default function FriendsListPage() {
       const syncPromises = contacts.map(async (contact) => {
         if (!contact.phone) return;
 
-        // 그레인 사용자 중 해당 전화번호가 있는지 확인
         const { data: users } = await supabase
           .from('users')
           .select('id, name, avatar, phone, status_message')
@@ -179,7 +235,6 @@ export default function FriendsListPage() {
           .maybeSingle();
 
         if (users) {
-          // 이미 친구인지 확인
           const { data: existing } = await supabase
             .from('friends')
             .select('id')
@@ -188,7 +243,6 @@ export default function FriendsListPage() {
             .maybeSingle();
 
           if (!existing) {
-            // 친구 추가
             await supabase.from('friends').insert({
               user_id: session.user.id,
               friend_user_id: users.id,
@@ -205,7 +259,11 @@ export default function FriendsListPage() {
       });
 
       await Promise.all(syncPromises);
-      toast.success('연락처에서 그레인 사용자를 찾았습니다!');
+      
+      const addedCount = syncPromises.length;
+      if (addedCount > 0) {
+        toast.success(`연락처에서 ${addedCount}명의 그레인 사용자를 찾았습니다!`);
+      }
     } catch (error) {
       console.error('Sync contacts error:', error);
     }
@@ -272,7 +330,7 @@ export default function FriendsListPage() {
           avatar: item.avatar,
           bg: item.bg,
           isFavorite: item.is_favorite || false,
-          friendlyScore: item.friendly_score || 50 // 기본값 50
+          friendlyScore: item.friendly_score || 50
         }));
         setFriends(formattedData);
       }
@@ -286,10 +344,10 @@ export default function FriendsListPage() {
 
   useEffect(() => {
     fetchMyProfile();
-    if (step === 'list') {
+    if (step === 'list' && !isCheckingPermission) {
       fetchFriends();
     }
-  }, [step, fetchFriends, fetchMyProfile]);
+  }, [step, fetchFriends, fetchMyProfile, isCheckingPermission]);
   
   const handleSaveMyProfile = useCallback(async (newProfile: MyProfile) => { 
     try {
@@ -347,7 +405,6 @@ export default function FriendsListPage() {
     }
   }, [friends, selectedFriend]);
 
-  // [고도화] AI 점수 분석 및 반영 함수
   const analyzeFriendlyScore = useCallback(async (friend: Friend) => {
     if (!friend.friend_user_id) return;
     
@@ -356,10 +413,8 @@ export default function FriendsListPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
 
-      // 1. 공통 채팅방 찾기
       const sharedRoomId = [session.user.id, friend.friend_user_id].sort().join("_");
       
-      // 2. 메시지 데이터 조회 (최대 100개)
       const { data: messages } = await supabase
         .from('messages')
         .select('sender_id, created_at')
@@ -367,15 +422,12 @@ export default function FriendsListPage() {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      // 3. 점수 계산 알고리즘
-      let score = 30; // 기본 점수
+      let score = 30;
       
       if (messages && messages.length > 0) {
-        // A. 대화량 점수 (최대 40점)
         const msgCount = messages.length;
         score += Math.min(msgCount, 40);
 
-        // B. 최근 대화 점수 (최대 20점)
         const lastMsgTime = new Date(messages[0].created_at).getTime();
         const now = new Date().getTime();
         const daysDiff = (now - lastMsgTime) / (1000 * 3600 * 24);
@@ -385,22 +437,18 @@ export default function FriendsListPage() {
         else if (daysDiff < 7) score += 10;
         else score += 5;
 
-        // C. 티키타카 밸런스 점수 (최대 10점)
         const myMsgCount = messages.filter(m => m.sender_id === session.user.id).length;
         const friendMsgCount = msgCount - myMsgCount;
-        const balanceRatio = Math.abs(myMsgCount - friendMsgCount) / msgCount; // 0에 가까울수록 좋음
+        const balanceRatio = Math.abs(myMsgCount - friendMsgCount) / msgCount;
         
         if (balanceRatio < 0.2) score += 10;
         else if (balanceRatio < 0.4) score += 5;
       }
 
-      // 100점 만점 처리
       const finalScore = Math.min(100, score);
 
-      // 상태 업데이트
       setSelectedFriend(prev => prev ? { ...prev, friendlyScore: finalScore } : null);
       
-      // DB 업데이트 (비동기, 굳이 기다리지 않음)
       supabase.from('friends').update({ friendly_score: finalScore }).eq('id', friend.id).then();
 
     } catch (error) {
@@ -410,10 +458,9 @@ export default function FriendsListPage() {
     }
   }, []);
 
-  // 친구 선택 시 AI 분석 실행
   const handleFriendClick = (friend: Friend) => {
     setSelectedFriend(friend);
-    analyzeFriendlyScore(friend); // 분석 시작
+    analyzeFriendlyScore(friend);
   };
 
   const handleEnterChat = useCallback(async (friend: Friend) => {
@@ -547,14 +594,14 @@ export default function FriendsListPage() {
     setIsSettingsOpen(false);
   }, [navigate]);
 
-const filteredFriends = useMemo(() => {
-  if (!searchQuery.trim()) return friends;
-  const query = searchQuery.toLowerCase();
-  return friends.filter(f => 
-    (f.name && f.name.toLowerCase().includes(query)) || 
-    (f.phone && f.phone.includes(query))
-  );
-}, [friends, searchQuery]);
+  const filteredFriends = useMemo(() => {
+    if (!searchQuery.trim()) return friends;
+    const query = searchQuery.toLowerCase();
+    return friends.filter(f => 
+      (f.name && f.name.toLowerCase().includes(query)) || 
+      (f.phone && f.phone.includes(query))
+    );
+  }, [friends, searchQuery]);
 
   const { favorites, normals } = useMemo(() => {
     const favs = filteredFriends.filter(f => f.isFavorite);
@@ -565,6 +612,16 @@ const filteredFriends = useMemo(() => {
       normals: norms.sort(sortFn) 
     };
   }, [filteredFriends]);
+
+  // ✅ 권한 확인 중 로딩 화면
+  if (isCheckingPermission) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center bg-dark-bg text-white">
+        <RefreshCw className="w-8 h-8 animate-spin text-brand-DEFAULT mb-4" />
+        <p className="text-sm text-[#8E8E93]">로딩 중...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full flex flex-col bg-dark-bg text-white">
@@ -585,10 +642,7 @@ const filteredFriends = useMemo(() => {
             허용하기
           </button>
           <button 
-            onClick={() => {
-              localStorage.setItem('grayn_contact_permission', 'denied');
-              setStep('list');
-            }} 
+            onClick={handleSkipContacts} 
             className="mt-4 text-[#8E8E93] text-sm"
           >
             나중에 할게요
@@ -746,7 +800,7 @@ const filteredFriends = useMemo(() => {
                           <FriendItem 
                             key={f.id} 
                             friend={f} 
-                            onClick={() => handleFriendClick(f)} // 수정된 핸들러 연결
+                            onClick={() => handleFriendClick(f)}
                             onBlock={() => setBlockTarget(f)} 
                             onDelete={() => handleDeleteClick(f.id)} 
                           />
@@ -759,7 +813,7 @@ const filteredFriends = useMemo(() => {
                         <FriendItem 
                           key={f.id} 
                           friend={f} 
-                          onClick={() => handleFriendClick(f)} // 수정된 핸들러 연결
+                          onClick={() => handleFriendClick(f)}
                           onBlock={() => setBlockTarget(f)} 
                           onDelete={() => handleDeleteClick(f.id)} 
                         />
@@ -875,6 +929,9 @@ const filteredFriends = useMemo(() => {
     </div>
   );
 }
+
+// ✅ 나머지 컴포넌트들은 동일하므로 생략 (FriendItem, Modals 등)
+// 원본 코드의 해당 부분을 그대로 사용하세요
 
 function FriendItem({ friend, onClick, onBlock, onDelete }: { 
   friend: Friend; 
@@ -1606,90 +1663,90 @@ function CreateChatModal({ isOpen, onClose, friends }: {
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="bg-transparent text-white placeholder-[#636366] text-sm w-full focus:outline-none"
-/>
-{searchTerm && (
-<button onClick={() => setSearchTerm('')}>
-<X className="w-4 h-4 text-[#8E8E93]" />
-</button>
-)}
-</div>
-</div>
-
-<div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-          {filteredFriends.length > 0 ? (
-            filteredFriends.map(friend => { 
-              const isSelected = selectedIds.includes(friend.id); 
-              return (
-                <div 
-                  key={friend.id} 
-                  onClick={() => toggleSelection(friend.id)} 
-                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
-                    isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
-                    {friend.avatar ? (
-                      <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/>
-                    ) : (
-                      <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
-                      {friend.name}
-                    </p>
-                  </div>
-                  {isSelected ? (
-                    <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/20" />
-                  ) : (
-                    <Circle className="text-[#3A3A3C] w-5 h-5" />
-                  )}
-                </div>
-              ) 
-            })
-          ) : (
-            <div className="flex flex-col items-center justify-center h-32 text-[#636366]">
-              <p className="text-sm">검색 결과가 없습니다.</p>
+                />
+                {searchTerm && (
+                  <button onClick={() => setSearchTerm('')}>
+                    <X className="w-4 h-4 text-[#8E8E93]" />
+                  </button>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-        <div className="p-4 border-t border-[#2C2C2E] shrink-0">
-          <button 
-            onClick={handleCreate} 
-            disabled={selectedIds.length === 0} 
-            className={`w-full h-12 rounded-xl font-bold text-white transition-all ${
-              selectedIds.length > 0 
-                ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' 
-                : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'
-            }`}
-          >
-            {selectedIds.length}명과 시작하기
-          </button>
-        </div>
-      </>
-    )}
-  </motion.div>
-</ModalBackdrop>
 
-);
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+              {filteredFriends.length > 0 ? (
+                filteredFriends.map(friend => { 
+                  const isSelected = selectedIds.includes(friend.id); 
+                  return (
+                    <div 
+                      key={friend.id} 
+                      onClick={() => toggleSelection(friend.id)} 
+                      className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors ${
+                        isSelected ? 'bg-brand-DEFAULT/10' : 'hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
+                        {friend.avatar ? (
+                          <img src={friend.avatar} className="w-full h-full object-cover" alt="Avatar"/>
+                        ) : (
+                          <UserIcon className="w-5 h-5 m-auto mt-2.5 opacity-50"/>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-sm font-medium ${isSelected ? 'text-brand-DEFAULT' : 'text-white'}`}>
+                          {friend.name}
+                        </p>
+                      </div>
+                      {isSelected ? (
+                        <CheckCircle2 className="text-brand-DEFAULT w-5 h-5 fill-brand-DEFAULT/20" />
+                      ) : (
+                        <Circle className="text-[#3A3A3C] w-5 h-5" />
+                      )}
+                    </div>
+                  ) 
+                })
+              ) : (
+                <div className="flex flex-col items-center justify-center h-32 text-[#636366]">
+                  <p className="text-sm">검색 결과가 없습니다.</p>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-[#2C2C2E] shrink-0">
+              <button 
+                onClick={handleCreate} 
+                disabled={selectedIds.length === 0} 
+                className={`w-full h-12 rounded-xl font-bold text-white transition-all ${
+                  selectedIds.length > 0 
+                    ? 'bg-brand-DEFAULT hover:bg-brand-hover shadow-lg' 
+                    : 'bg-[#2C2C2E] text-[#636366] cursor-not-allowed'
+                }`}
+              >
+                {selectedIds.length}명과 시작하기
+              </button>
+            </div>
+          </>
+        )}
+      </motion.div>
+    </ModalBackdrop>
+  );
 }
+
 function ModalBackdrop({ children, onClick }: {
-children: React.ReactNode;
-onClick?: () => void
+  children: React.ReactNode;
+  onClick?: () => void
 }) {
-return (
-<div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClick}>
-<motion.div
-initial={{ opacity: 0 }}
-animate={{ opacity: 1 }}
-exit={{ opacity: 0 }}
-className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-/>
-<div className="relative z-10 w-full flex justify-center pointer-events-none">
-<div className="pointer-events-auto w-full flex justify-center">
-{children}
-</div>
-</div>
-</div>
-);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={onClick}>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      />
+      <div className="relative z-10 w-full flex justify-center pointer-events-none">
+        <div className="pointer-events-auto w-full flex justify-center">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
 }
