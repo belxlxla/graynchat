@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:257513575310:android:76a00e8059c01ff450cadf",
+        "mobilesdk_app_id": "1:257513575310:android:af0a3b80bc217d3f50cadf",
         "android_client_info": {
-          "package_name": "com.vns.grayn"
+          "package_name": "vns.grayn.app"
         }
       },
       "oauth_client": [],
