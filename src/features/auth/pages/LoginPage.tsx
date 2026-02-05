@@ -557,7 +557,7 @@ export default function LoginPage() {
         <button 
           type="submit" 
           disabled={isLoading} 
-          className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-6 hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2"
+          className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-6 hover:bg-[#E01D34] transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2"
         >
           {isLoading && !show2FAModal ? <Loader2 className="w-5 h-5 animate-spin"/> : '이메일로 로그인'}
         </button>
