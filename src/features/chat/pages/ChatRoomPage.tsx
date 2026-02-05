@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
 import { useNetworkStatus } from '../../../shared/hooks/useNetworkStatus';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface Message { 
   id: number; 
@@ -103,6 +104,10 @@ export default function ChatRoomPage() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
 
+  // ✅ 실시간 채널 ref 추가
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const messageIdsRef = useRef<Set<number>>(new Set());
+
   const isGroupChat = chatId?.startsWith('group_') ?? false;
 
   const allImages = useMemo(() => {
@@ -112,6 +117,8 @@ export default function ChatRoomPage() {
   useEffect(() => {
     if (wasOffline && isOnline) {
       toast.success('네트워크가 복구되었습니다.', { icon: '✅' });
+      // 네트워크 복구 시 메시지 다시 로드
+      fetchInitialData();
     }
   }, [isOnline, wasOffline]);
 
@@ -149,7 +156,6 @@ export default function ChatRoomPage() {
         console.error('Room fetch error:', roomError);
       }
 
-      // ✅ room_members 테이블에서 내 배경화면 설정 가져오기
       const { data: myMember } = await supabase
         .from('room_members')
         .select('wallpaper')
@@ -223,6 +229,12 @@ export default function ChatRoomPage() {
         .order('created_at', { ascending: true });
 
       if (msgError) throw msgError;
+
+      // ✅ 메시지 ID 저장 (중복 방지용)
+      messageIdsRef.current.clear();
+      msgData?.forEach(msg => {
+        messageIdsRef.current.add(msg.id);
+      });
 
       setMessages(msgData || []);
       
@@ -299,6 +311,7 @@ export default function ChatRoomPage() {
     return `${seconds}초`;
   }, [timeCapsuleNotice]);
 
+  // ✅ 실시간 구독 설정 (메인 useEffect)
   useEffect(() => {
     fetchInitialData();
 
@@ -311,68 +324,117 @@ export default function ChatRoomPage() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', markAsRead);
 
-    const channel = supabase.channel(`room_messages_${chatId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `room_id=eq.${chatId}`
-        },
-        (payload) => {
-          const newMsg = payload.new as Message;
-          
-          setMessages(prev => {
-            if (prev.some(m => m.id === newMsg.id)) {
-              return prev;
-            }
-            const updated = [...prev, newMsg];
-            setTimeout(() => {
-              scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-            }, 100);
-            return updated;
-          });
+    // ✅ 기존 채널 정리
+    if (channelRef.current) {
+      console.log('[Realtime] 기존 채널 제거');
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
 
-          if (newMsg.sender_id !== user.id) {
-            setTimeout(markAsRead, 300);
-          }
-        }
-      )
-      // ✅ room_members 테이블 변경 감지 (배경화면 실시간 반영)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'room_members',
-          filter: `room_id=eq.${chatId}`
-        },
-        (payload) => {
-          const updatedMember = payload.new as any;
-          // 내 설정만 반영
-          if (updatedMember.user_id === user.id && updatedMember.wallpaper !== undefined) {
-            setBackground(updatedMember.wallpaper || '');
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'users'
-        },
-        () => {
-          fetchInitialData();
-        }
-      )
-      .subscribe();
+    // ✅ 새 채널 생성 및 구독
+    console.log('[Realtime] 채널 구독 시작:', chatId);
+    const channel = supabase.channel(`room_messages_${chatId}`, {
+      config: {
+        broadcast: { self: false },
+        presence: { key: user.id }
+      }
+    });
 
+    // ✅ 메시지 INSERT 이벤트 감지
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `room_id=eq.${chatId}`
+      },
+      (payload) => {
+        console.log('[Realtime] 새 메시지 수신:', payload);
+        const newMsg = payload.new as Message;
+        
+        // ✅ 중복 방지: 이미 존재하는 메시지는 무시
+        if (messageIdsRef.current.has(newMsg.id)) {
+          console.log('[Realtime] 중복 메시지 무시:', newMsg.id);
+          return;
+        }
+
+        messageIdsRef.current.add(newMsg.id);
+        
+        setMessages(prev => {
+          // tempId가 있는 임시 메시지 제거하고 실제 메시지 추가
+          const filtered = prev.filter(m => !m.tempId);
+          return [...filtered, newMsg];
+        });
+
+        // ✅ 스크롤을 최하단으로
+        setTimeout(() => {
+          scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+
+        // ✅ 상대방 메시지인 경우 읽음 처리
+        if (newMsg.sender_id !== user.id) {
+          setTimeout(markAsRead, 300);
+        }
+      }
+    );
+
+    // ✅ room_members 변경 감지 (배경화면)
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'room_members',
+        filter: `room_id=eq.${chatId}`
+      },
+      (payload) => {
+        console.log('[Realtime] room_members 업데이트:', payload);
+        const updatedMember = payload.new as any;
+        if (updatedMember.user_id === user.id && updatedMember.wallpaper !== undefined) {
+          setBackground(updatedMember.wallpaper || '');
+        }
+      }
+    );
+
+    // ✅ users 테이블 변경 감지
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'users'
+      },
+      () => {
+        console.log('[Realtime] users 업데이트');
+        fetchInitialData();
+      }
+    );
+
+    // ✅ 구독 시작
+    channel.subscribe((status) => {
+      console.log('[Realtime] 구독 상태:', status);
+      if (status === 'SUBSCRIBED') {
+        console.log('[Realtime] ✅ 실시간 연결 성공');
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('[Realtime] ❌ 채널 에러 발생');
+      } else if (status === 'TIMED_OUT') {
+        console.error('[Realtime] ⏱️ 연결 타임아웃');
+      }
+    });
+
+    channelRef.current = channel;
+
+    // ✅ cleanup
     return () => {
+      console.log('[Realtime] cleanup 실행');
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', markAsRead);
-      supabase.removeChannel(channel);
+      
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
   }, [chatId, user?.id, fetchInitialData, markAsRead]);
 
@@ -445,10 +507,10 @@ export default function ChatRoomPage() {
 
       if (sendError) throw sendError;
 
+      // ✅ 실시간으로 메시지가 올라오므로 여기서는 tempId만 제거
       if (inserted) {
-        setMessages(prev => prev.map(m => 
-          m.tempId === tempId ? inserted : m
-        ));
+        messageIdsRef.current.add(inserted.id);
+        setMessages(prev => prev.filter(m => m.tempId !== tempId));
       }
 
       setTimeout(() => {
@@ -532,10 +594,10 @@ export default function ChatRoomPage() {
 
       if (insertError) throw insertError;
 
+      // ✅ 실시간으로 메시지가 올라오므로 tempId만 제거
       if (newMsg) {
-        setMessages(prev => prev.map(m => 
-          m.tempId === tempId ? newMsg : m
-        ));
+        messageIdsRef.current.add(newMsg.id);
+        setMessages(prev => prev.filter(m => m.tempId !== tempId));
       }
 
       toast.success('전송 완료', { id: uploadToast });
@@ -579,9 +641,8 @@ export default function ChatRoomPage() {
       if (sendError) throw sendError;
 
       if (inserted) {
-        setMessages(prev => prev.map(m => 
-          m.tempId === msg.tempId ? inserted : m
-        ));
+        messageIdsRef.current.add(inserted.id);
+        setMessages(prev => prev.filter(m => m.tempId !== msg.tempId));
         toast.success('메시지가 전송되었습니다.');
       }
 
