@@ -2,7 +2,7 @@
 FROM node:18 AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY . .
 # package-lock.json이 있으면 맥북/리눅스 충돌이 날 수 있으니 지우고 설치
 RUN rm -rf package-lock.json
