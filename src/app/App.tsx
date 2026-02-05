@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'; 
 import { Toaster, toast } from 'react-hot-toast'; 
 import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
+import { supabase } from '../shared/lib/supabaseClient'; // ✅ 토큰 저장을 위해 추가
 
 import Splash from '../features/auth/components/Splash';
 import LoginPage from '../features/auth/pages/LoginPage';
@@ -34,7 +35,7 @@ import CustomerServicePage from '../features/settings/pages/CustomerServicePage'
 import ReportCenterPage from '../features/settings/pages/ReportCenterPage';
 import IllegalContentReportPage from '../features/settings/pages/IllegalContentReportPage'; 
 import CopyrightReportPage from '../features/settings/pages/CopyrightReportPage';
-import HarmfulContentReportPage from '../features/settings/pages/HarmfulContentReportPage'; // ✅ 추가됨
+import HarmfulContentReportPage from '../features/settings/pages/HarmfulContentReportPage'; 
 import MainLayout from '../components/layout/MainLayout';
 
 import ContentsPage from '../features/contents/pages/ContentsPage';
@@ -63,7 +64,7 @@ function PublicRoute() {
 
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
-  const { loading } = useAuth(); 
+  const { user, loading } = useAuth(); // ✅ user 정보 추가 추출
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -102,8 +103,23 @@ function AppContent() {
 
     initPushNotifications();
 
-    const registrationListener = PushNotifications.addListener('registration', token => {
+    const registrationListener = PushNotifications.addListener('registration', async token => {
       console.log('🔥 나의 FCM 토큰:', token.value);
+      
+      // ✅ [추가] 로그인된 사용자가 있다면 DB에 토큰 저장
+      if (user?.id) {
+        try {
+          const { error } = await supabase
+            .from('users')
+            .update({ fcm_token: token.value })
+            .eq('id', user.id);
+          
+          if (error) throw error;
+          console.log('✅ FCM 토큰이 DB에 성공적으로 저장되었습니다.');
+        } catch (err) {
+          console.error('❌ FCM 토큰 저장 실패:', err);
+        }
+      }
     });
 
     const registrationErrorListener = PushNotifications.addListener('registrationError', error => {
@@ -138,7 +154,7 @@ function AppContent() {
       notificationReceivedListener.then(listener => listener.remove());
       notificationActionListener.then(listener => listener.remove());
     };
-  }, [navigate]); 
+  }, [navigate, user]); // ✅ user 의존성 추가
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('grayn_theme') || 'dark';
@@ -197,7 +213,7 @@ function AppContent() {
         <Route path="/settings/help/report" element={<ReportCenterPage />} />
         <Route path="/settings/help/report/illegal" element={<IllegalContentReportPage />} /> 
         <Route path="/settings/help/report/copyright" element={<CopyrightReportPage />} />
-        <Route path="/settings/help/report/harmful" element={<HarmfulContentReportPage />} /> {/* ✅ 추가됨 */}
+        <Route path="/settings/help/report/harmful" element={<HarmfulContentReportPage />} /> 
         <Route path="/time-capsule/create" element={<TimeCapsuleCreatePage />} />
         <Route path="/time-capsule/sent" element={<TimeCapsuleSentPage />} />
         <Route path="/time-capsule/edit/:id" element={<TimeCapsuleEditPage />} />
