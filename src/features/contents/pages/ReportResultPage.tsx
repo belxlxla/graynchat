@@ -89,7 +89,11 @@ export default function ReportResultPage() {
 
   useEffect(() => {
     const requestPerms = async () => {
-      await LocalNotifications.requestPermissions();
+      try {
+        await LocalNotifications.requestPermissions();
+      } catch (error) {
+        console.log('알림 권한 요청 실패:', error);
+      }
     };
     requestPerms();
   }, []);
@@ -103,31 +107,51 @@ export default function ReportResultPage() {
     setStep('analyzing');
 
     try {
-      const { data: myRooms } = await supabase.from('room_members').select('room_id').eq('user_id', user.id);
-      const { data: friendRooms } = await supabase.from('room_members').select('room_id').eq('user_id', selectedFriend.friend_user_id);
+      let totalCount = 0;
+      let myCount = 0;
+      
+      // 공통 채팅방 찾기
+      const { data: myRooms, error: myRoomsError } = await supabase
+        .from('room_members')
+        .select('room_id')
+        .eq('user_id', user.id);
+      
+      const { data: friendRooms, error: friendRoomsError } = await supabase
+        .from('room_members')
+        .select('room_id')
+        .eq('user_id', selectedFriend.friend_user_id);
+
+      if (myRoomsError || friendRoomsError) {
+        console.error('채팅방 조회 실패:', myRoomsError || friendRoomsError);
+      }
       
       const myIds = myRooms?.map(r => r.room_id) || [];
       const friendIds = friendRooms?.map(r => r.room_id) || [];
       const commonRoomId = myIds.find(id => friendIds.includes(id));
 
-      let totalCount = 0;
-      let myCount = 0;
+      console.log('공통 채팅방 ID:', commonRoomId);
       
       if (commonRoomId) {
-        const { data: msgs } = await supabase
+        const { data: msgs, error: msgsError } = await supabase
           .from('messages')
           .select('sender_id, created_at, content')
           .eq('room_id', commonRoomId)
           .order('created_at', { ascending: false })
           .limit(2000);
 
+        if (msgsError) {
+          console.error('메시지 조회 실패:', msgsError);
+        }
+
         if (msgs && msgs.length > 0) {
           totalCount = msgs.length;
           myCount = msgs.filter(m => m.sender_id === user.id).length;
+          console.log('총 메시지:', totalCount, '내 메시지:', myCount);
         }
       }
 
-      const myShare = totalCount > 0 ? Math.round((myCount / totalCount) * 100) : 0;
+      // 점수 계산
+      const myShare = totalCount > 0 ? Math.round((myCount / totalCount) * 100) : 50;
       const friendShare = 100 - myShare;
       
       let baseScore = Math.min((totalCount / 300) * 50, 50);
@@ -136,10 +160,15 @@ export default function ReportResultPage() {
       const bonusScore = 10 + Math.floor(Math.random() * 10);
       
       let finalScore = Math.min(100, Math.floor(baseScore + balanceScore + bonusScore));
-      if (totalCount < 10) finalScore = Math.floor(Math.random() * 30) + 10;
+      
+      // 메시지가 적으면 랜덤 점수
+      if (totalCount < 10) {
+        finalScore = Math.floor(Math.random() * 40) + 30;
+      }
 
       let resultData: Partial<AnalysisResult> = {};
 
+      // 관계 유형별 분석 결과
       if (relationId === 'dating') {
         resultData = {
           mainTitle: finalScore >= 80 ? "🔥 불타는 로맨스" : finalScore >= 50 ? "💕 썸 타는 중" : "👀 탐색전 단계",
@@ -147,9 +176,9 @@ export default function ReportResultPage() {
           stat1Label: "애정 온도", stat1Value: Math.min(100, 36.5 + finalScore * 0.6),
           stat2Label: "밀당 지수", stat2Value: Math.floor(Math.random() * 40) + 30,
           stat3Label: "설렘 포인트", stat3Value: finalScore,
-          detailedAnalysis: `두 사람의 대화에서는 서로를 향한 관심이 ${finalScore >= 70 ? '매우 강하게' : '은근하게'} 드러나고 있습니다.`,
+          detailedAnalysis: `두 사람의 대화에서는 서로를 향한 관심이 ${finalScore >= 70 ? '매우 강하게' : '은근하게'} 드러나고 있습니다. ${totalCount > 50 ? '활발한 대화 빈도는 좋은 신호입니다.' : '대화를 조금 더 자주 나눠보세요.'}`,
           advice: finalScore >= 80 ? "지금 이 분위기 그대로 데이트를 신청해보세요!" : "가벼운 질문으로 대화의 물꼬를 더 터보세요.",
-          topKeywords: ['보고싶어', '사랑해', '뭐해?', '밥', '영화', '주말', '좋아', '데이트', '선물', 'ㅋㅋㅋ', 'ㅎㅎㅎ', '❤️', '💕']
+          topKeywords: totalCount < 10 ? ['보고싶어', '사랑해', '뭐해?'] : ['보고싶어', '사랑해', '뭐해?', '밥', '영화', '주말', '좋아', '데이트', '선물', 'ㅋㅋㅋ', 'ㅎㅎㅎ', '❤️', '💕']
         };
       } else if (relationId === 'friend') {
         resultData = {
@@ -158,20 +187,20 @@ export default function ReportResultPage() {
           stat1Label: "의리 지수", stat1Value: finalScore,
           stat2Label: "티키타카", stat2Value: Math.min(100, finalScore + 10),
           stat3Label: "개그 코드", stat3Value: Math.floor(Math.random() * 50) + 50,
-          detailedAnalysis: `대화의 핑퐁이 ${finalScore >= 70 ? '환상적입니다.' : '나쁘지 않습니다.'} 서로 부담 없이 연락할 수 있는 편안한 관계입니다.`,
+          detailedAnalysis: `대화의 핑퐁이 ${finalScore >= 70 ? '환상적입니다.' : '나쁘지 않습니다.'} 서로 부담 없이 연락할 수 있는 편안한 관계입니다. ${totalCount > 100 ? '자주 연락하는 사이라는 것이 느껴집니다.' : '가끔 안부를 물어보면 더 좋을 것 같아요.'}`,
           advice: "이번 주말에 가볍게 맥주 한 잔 어떠세요?",
-          topKeywords: ['ㅋㅋㅋ', '미친', '진짜', 'ㅇㅈ', '술', '노래방','맛집','대박','헐','ㅋㅋㅋ','ㅎㅎㅎ','비밀','ㅋㅋ','대화','친구','우정','의리','티키타카','농담','장난','놀자','나와']
+          topKeywords: totalCount < 10 ? ['ㅋㅋㅋ', '미친', '진짜'] : ['ㅋㅋㅋ', '미친', '진짜', 'ㅇㅈ', '술', '노래방','맛집','대박','헐','ㅎㅎㅎ','비밀','대화','친구','우정','의리','티키타카','농담','장난','놀자','나와']
         };
       } else if (relationId === 'business') {
         resultData = {
           mainTitle: finalScore >= 80 ? "🤝 환상의 파트너" : finalScore >= 50 ? "📄 원만한 협업" : "🧊 사무적인 관계",
-          subTitle: "업무 효율을 최대로 끌어올릴 수 있습니다.",
+          subTitle: finalScore >= 70 ? "업무 효율을 최대로 끌어올릴 수 있습니다." : "서로의 업무 스타일에 적응 중입니다.",
           stat1Label: "업무 호흡", stat1Value: finalScore,
-          stat2Label: "신뢰도", stat2Value: finalScore + 5,
+          stat2Label: "신뢰도", stat2Value: Math.min(100, finalScore + 5),
           stat3Label: "소통 명확성", stat3Value: 90,
-          detailedAnalysis: `군더더기 없는 깔끔한 소통이 특징입니다. ${finalScore >= 70 ? '업무 스타일이 잘 맞아 시너지가 기대됩니다.' : '서로의 업무 스타일에 적응해가는 단계입니다.'}`,
+          detailedAnalysis: `군더더기 없는 깔끔한 소통이 특징입니다. ${finalScore >= 70 ? '업무 스타일이 잘 맞아 시너지가 기대됩니다.' : '서로의 업무 스타일에 적응해가는 단계입니다.'} ${totalCount > 50 ? '원활한 업무 커뮤니케이션이 이루어지고 있습니다.' : '필요한 만큼만 소통하는 효율적인 관계입니다.'}`,
           advice: "업무 외적인 스몰토크로 라포를 형성해보세요.",
-          topKeywords: ['확인', '감사합니다', '넵', '파일', '일정', '회의','보고','회의록','프로젝트','협업','검토','진행','업무','연락','협의','제안','피드백','지원','성과','목표','팀워크','알겠습니다','넵','좋습니다']
+          topKeywords: totalCount < 10 ? ['확인', '감사합니다', '넵'] : ['확인', '감사합니다', '넵', '파일', '일정', '회의','보고','회의록','프로젝트','협업','검토','진행','업무','연락','협의','제안','피드백','지원','성과','목표','팀워크','알겠습니다','좋습니다']
         };
       } else {
         resultData = {
@@ -180,9 +209,9 @@ export default function ReportResultPage() {
           stat1Label: "유대감", stat1Value: 100,
           stat2Label: "소통 빈도", stat2Value: finalScore,
           stat3Label: "효도 지수", stat3Value: Math.floor(finalScore * 0.8),
-          detailedAnalysis: `표현은 서툴러도 서로를 아끼는 마음이 느껴집니다. ${finalScore < 50 ? '최근 대화가 다소 부족해 보입니다.' : '서로의 안부를 자주 묻는 따뜻한 관계입니다.'}`,
+          detailedAnalysis: `표현은 서툴러도 서로를 아끼는 마음이 느껴집니다. ${finalScore < 50 ? '최근 대화가 다소 부족해 보입니다. 안부 전화 한 통이면 충분합니다.' : '서로의 안부를 자주 묻는 따뜻한 관계입니다.'}`,
           advice: "오늘 따뜻한 안부 전화 한 통 드려보세요.",
-          topKeywords: ['밥', '일찍', '조심', '건강', '용돈', '엄마/아빠','여행','생일','엄마','아빠','사랑','가족','보고싶어','조심히','잘지내','전화','걱정','건강','밥','용돈','선물','기념일','행복','추억']
+          topKeywords: totalCount < 10 ? ['밥', '건강', '조심'] : ['밥', '일찍', '조심', '건강', '용돈', '엄마/아빠','여행','생일','엄마','아빠','사랑','가족','보고싶어','조심히','잘지내','전화','걱정','건강','선물','기념일','행복','추억']
         };
       }
 
@@ -191,9 +220,9 @@ export default function ReportResultPage() {
         totalMessages: totalCount,
         myShare,
         friendShare,
-        avgReplyTime: finalScore > 70 ? '매우 빠름' : '보통',
+        avgReplyTime: finalScore > 70 ? '매우 빠름' : finalScore > 40 ? '보통' : '여유있음',
         category: relationId,
-        topKeywords: totalCount < 10 ? ['(데이터 부족)'] : resultData.topKeywords!,
+        topKeywords: resultData.topKeywords!,
         mainTitle: resultData.mainTitle!,
         subTitle: resultData.subTitle!,
         stat1Label: resultData.stat1Label!, stat1Value: resultData.stat1Value!,
@@ -203,26 +232,58 @@ export default function ReportResultPage() {
         advice: resultData.advice!
       };
 
+      console.log('최종 분석 결과:', finalResult);
       setAnalysisResult(finalResult);
 
+      // 3초 후 결과 표시
       setTimeout(async () => {
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              title: "분석 완료! 💌",
-              body: `${selectedFriend.name}님과의 리포트가 도착했습니다.`,
-              id: 1,
-              schedule: { at: new Date(Date.now() + 100) },
-              sound: undefined, attachments: undefined, actionTypeId: "", extra: null
-            }
-          ]
-        });
+        try {
+          await LocalNotifications.schedule({
+            notifications: [
+              {
+                title: "분석 완료! 💌",
+                body: `${selectedFriend.name}님과의 리포트가 도착했습니다.`,
+                id: 1,
+                schedule: { at: new Date(Date.now() + 100) },
+                sound: undefined, 
+                attachments: undefined, 
+                actionTypeId: "", 
+                extra: null
+              }
+            ]
+          });
+        } catch (error) {
+          console.log('알림 전송 실패:', error);
+        }
         setStep('result');
       }, 3000);
 
     } catch (e) {
       console.error('분석 에러:', e);
-      setStep('result');
+      
+      // 에러 발생 시에도 기본 결과 제공
+      const defaultResult: AnalysisResult = {
+        score: 50,
+        totalMessages: 0,
+        myShare: 50,
+        friendShare: 50,
+        avgReplyTime: '보통',
+        category: relationId,
+        topKeywords: ['대화', '시작', '필요'],
+        mainTitle: "🌱 새로운 시작",
+        subTitle: "대화 데이터가 부족하지만, 앞으로가 기대됩니다!",
+        stat1Label: "관계 점수", stat1Value: 50,
+        stat2Label: "소통 빈도", stat2Value: 30,
+        stat3Label: "잠재력", stat3Value: 80,
+        detailedAnalysis: "아직 충분한 대화 기록이 쌓이지 않았지만, 꾸준한 소통으로 멋진 관계를 만들어갈 수 있습니다.",
+        advice: "먼저 가볍게 인사를 건네보세요!"
+      };
+      
+      setAnalysisResult(defaultResult);
+      
+      setTimeout(() => {
+        setStep('result');
+      }, 2000);
     }
   };
 
