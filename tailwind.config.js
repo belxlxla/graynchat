@@ -32,7 +32,7 @@ export default {
         },
         
         dark: {
-          bg: '#000000',
+          bg: '#212121',
           card: '#1C1C1E',
           border: '#2C2C2E',
         },
