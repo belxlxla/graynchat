@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom'; 
 import { Toaster, toast } from 'react-hot-toast'; 
 import { AuthProvider, useAuth } from '../features/auth/contexts/AuthContext';
-import { supabase } from '../shared/lib/supabaseClient'; // ✅ 토큰 저장을 위해 추가
+import { supabase } from '../shared/lib/supabaseClient'; 
 
 import Splash from '../features/auth/components/Splash';
 import LoginPage from '../features/auth/pages/LoginPage';
@@ -64,7 +64,7 @@ function PublicRoute() {
 
 function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
-  const { user, loading } = useAuth(); // ✅ user 정보 추가 추출
+  const { user, loading } = useAuth(); 
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -72,12 +72,13 @@ function AppContent() {
 
     const initPushNotifications = async () => {
       
+      // ★ [수정됨] 안드로이드 알림 채널 생성 (ID를 'default'로 설정)
       if (Capacitor.getPlatform() === 'android') {
         await PushNotifications.createChannel({
-          id: 'halfstep_default_channel',
-          name: '일반 알림',
+          id: 'default', // Firebase 기본 채널 ID와 매칭
+          name: '기본 알림',
           description: '채팅 및 매칭 알림을 받습니다.',
-          importance: 4,
+          importance: 5, // 5 = 팝업 알림 (IMPORTANCE_HIGH)
           visibility: 1,
           vibration: true,
         });
@@ -106,7 +107,6 @@ function AppContent() {
     const registrationListener = PushNotifications.addListener('registration', async token => {
       console.log('🔥 나의 FCM 토큰:', token.value);
       
-      // ✅ [추가] 로그인된 사용자가 있다면 DB에 토큰 저장
       if (user?.id) {
         try {
           const { error } = await supabase
@@ -154,7 +154,7 @@ function AppContent() {
       notificationReceivedListener.then(listener => listener.remove());
       notificationActionListener.then(listener => listener.remove());
     };
-  }, [navigate, user]); // ✅ user 의존성 추가
+  }, [navigate, user]); 
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('grayn_theme') || 'dark';
