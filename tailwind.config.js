@@ -9,9 +9,10 @@ export default {
     extend: {
       colors: {
         brand: {
-          DEFAULT: '#FF513A',
-          hover: '#E64A35',
-          light: '#FF7D6C',
+          DEFAULT: '#FF203A',
+          hover: '#E01D34',
+          light: '#FF4D64',
+          dark: '#CC1A2E', 
         },
         dark: {
           bg: '#212121',     
