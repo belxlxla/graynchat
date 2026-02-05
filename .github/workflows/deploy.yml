@@ -19,20 +19,13 @@ jobs:
           script: |
             cd ~/graynserver
             
-            # [1] 확실하게 코드 받기 (강제 동기화)
-            # 서버는 '작업 공간'이 아니므로, 깃허브와 100% 일치시키는 게 가장 안전합니다.
+            # [1] 맥북에서 강제로 올린 최신 코드(dist 포함) 가져오기
             git fetch --all
             git reset --hard origin/main
             
-            # [2] 새 이미지 빌드 (무중단 시작)
-            # 서버가 켜진 상태에서 뒤에서 몰래 새 요리를 만듭니다.
-            echo "Building new image..."
-            sudo docker-compose build --no-cache
-            
-            # [3] 강제 교체 (무중단 적용)
-            # --force-recreate: 변경 사항이 없어도 무조건 컨테이너를 새로 갈아끼웁니다.
-            echo "Swapping containers..."
-            sudo docker-compose up -d --force-recreate
-            
-            # [4] 청소
+            # [2] 청소 (용량 확보)
             sudo docker system prune -f
+            
+            # [3] 빌드하지 않고 바로 실행 (이미 맥북에서 빌드해서 dist를 보냈으니까요!)
+            # --force-recreate를 써서 새 dist 폴더 내용을 즉시 반영합니다.
+            sudo docker-compose up -d --force-recreate
