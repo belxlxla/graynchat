@@ -19,13 +19,15 @@ jobs:
           script: |
             cd ~/graynserver
             
-            # [1] 맥북에서 강제로 올린 최신 코드(dist 포함) 가져오기
+            # 1. 최신 코드 가져오기
             git fetch --all
             git reset --hard origin/main
             
-            # [2] 청소 (용량 확보)
+            # 2. 안전하게 기존 서버 내리기 (꼬임 방지)
+            sudo docker-compose down --remove-orphans
+            
+            # 3. 청소 (선택사항, 용량 부족하면 사용)
             sudo docker system prune -f
             
-            # [3] 빌드하지 않고 바로 실행 (이미 맥북에서 빌드해서 dist를 보냈으니까요!)
-            # --force-recreate를 써서 새 dist 폴더 내용을 즉시 반영합니다.
-            sudo docker-compose up -d --force-recreate
+            # 4. 새로 빌드해서 올리기
+            sudo docker-compose up -d --build
