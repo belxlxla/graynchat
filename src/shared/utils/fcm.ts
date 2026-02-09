@@ -1,5 +1,6 @@
-import { PushNotifications, Token, PushNotificationSchema } from '@capacitor/push-notifications';
-import { supabase } from './supabase';
+import { PushNotifications } from '@capacitor/push-notifications';
+import type { Token, PushNotificationSchema } from '@capacitor/push-notifications';
+import { supabase } from '../lib/supabaseClient';
 
 export const initializePushNotifications = async () => {
   try {
@@ -57,8 +58,7 @@ const setupPushListeners = () => {
     (notification: any) => {
       console.log('푸시 알림 클릭:', notification);
       const data = notification.notification.data;
-      // 여기서 특정 화면으로 이동 처리
-      // 예: router.push(`/chat/${data.room_id}`);
+      console.log('전달받은 데이터:', data);
     }
   );
 };
