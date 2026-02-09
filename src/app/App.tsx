@@ -67,100 +67,151 @@ function AppContent() {
   const { user, loading } = useAuth(); 
   const navigate = useNavigate();
 
+  // 🔥 FCM 푸시 알림 초기화
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
+    // 네이티브 플랫폼이 아니면 실행 안 함
+    if (!Capacitor.isNativePlatform()) {
+      console.log('📱 웹 환경에서는 FCM이 작동하지 않습니다.');
+      return;
+    }
 
     const initPushNotifications = async () => {
-      
-      // ★ [수정됨] 안드로이드 알림 채널 생성 (ID를 'default'로 설정)
-      if (Capacitor.getPlatform() === 'android') {
-        await PushNotifications.createChannel({
-          id: 'default', // Firebase 기본 채널 ID와 매칭
-          name: '기본 알림',
-          description: '채팅 및 매칭 알림을 받습니다.',
-          importance: 5, // 5 = 팝업 알림 (IMPORTANCE_HIGH)
-          visibility: 1,
-          vibration: true,
-        });
+      try {
+        console.log('🔥 FCM 초기화 시작...');
+
+        // Android 알림 채널 생성 (Firebase 기본 채널과 매칭)
+        if (Capacitor.getPlatform() === 'android') {
+          await PushNotifications.createChannel({
+            id: 'default',
+            name: '기본 알림',
+            description: '채팅 및 타임캡슐 알림',
+            importance: 5, // IMPORTANCE_HIGH (팝업 알림)
+            visibility: 1,
+            vibration: true,
+          });
+          console.log('✅ Android 알림 채널 생성 완료');
+        }
+
+        // iOS 기존 알림 제거
+        if (Capacitor.getPlatform() === 'ios') {
+          await PushNotifications.removeAllDeliveredNotifications();
+        }
+
+        // 알림 권한 확인
+        let permStatus = await PushNotifications.checkPermissions();
+        console.log('📋 현재 알림 권한 상태:', permStatus);
+
+        // 권한 요청
+        if (permStatus.receive === 'prompt') {
+          permStatus = await PushNotifications.requestPermissions();
+          console.log('🔔 알림 권한 요청 결과:', permStatus);
+        }
+
+        // 권한 거부된 경우
+        if (permStatus.receive !== 'granted') {
+          console.log('❌ 푸시 알림 권한이 거부되었습니다.');
+          toast.error('푸시 알림 권한이 필요합니다.');
+          return;
+        }
+
+        // FCM 등록
+        await PushNotifications.register();
+        console.log('✅ FCM 등록 완료');
+
+      } catch (error) {
+        console.error('❌ FCM 초기화 실패:', error);
       }
-
-      if (Capacitor.getPlatform() === 'ios') {
-        await PushNotifications.removeAllDeliveredNotifications();
-      }
-
-      let permStatus = await PushNotifications.checkPermissions();
-
-      if (permStatus.receive === 'prompt') {
-        permStatus = await PushNotifications.requestPermissions();
-      }
-
-      if (permStatus.receive !== 'granted') {
-        console.log('푸시 알림 권한이 거부되었습니다.');
-        return;
-      }
-
-      await PushNotifications.register();
     };
 
+    // FCM 초기화 실행
     initPushNotifications();
 
-    const registrationListener = PushNotifications.addListener('registration', async token => {
-      console.log('🔥 나의 FCM 토큰:', token.value);
+    // 🔥 토큰 등록 리스너
+    const registrationListener = PushNotifications.addListener('registration', async (token) => {
+      console.log('🔥 FCM 토큰 발급 성공:', token.value);
       
+      // 사용자가 로그인되어 있을 때만 저장
       if (user?.id) {
         try {
           const { error } = await supabase
-            .from('users')
+            .from('profiles')  // 🔥 users → profiles로 수정
             .update({ fcm_token: token.value })
             .eq('id', user.id);
           
-          if (error) throw error;
-          console.log('✅ FCM 토큰이 DB에 성공적으로 저장되었습니다.');
+          if (error) {
+            console.error('❌ FCM 토큰 저장 실패:', error);
+            throw error;
+          }
+          
+          console.log('✅ FCM 토큰이 Supabase에 저장되었습니다.');
+          toast.success('푸시 알림이 활성화되었습니다!');
         } catch (err) {
-          console.error('❌ FCM 토큰 저장 실패:', err);
+          console.error('❌ FCM 토큰 DB 저장 오류:', err);
+          toast.error('알림 설정 중 오류가 발생했습니다.');
         }
+      } else {
+        console.log('⏳ 사용자 로그인 대기 중... (토큰은 발급됨)');
       }
     });
 
-    const registrationErrorListener = PushNotifications.addListener('registrationError', error => {
-      console.error('푸시 토큰 발급 실패:', error);
+    // 🔥 토큰 등록 실패 리스너
+    const registrationErrorListener = PushNotifications.addListener('registrationError', (error) => {
+      console.error('❌ FCM 토큰 발급 실패:', error);
+      toast.error('푸시 알림 등록에 실패했습니다.');
     });
 
-    const notificationReceivedListener = PushNotifications.addListener('pushNotificationReceived', notification => {
-      console.log('알림 수신:', notification);
-      
-      toast(notification.title || '새 알림', {
-        icon: '🔔',
-        style: {
-          background: '#333',
-          color: '#fff',
-        },
-        duration: 4000,
-      });
-    });
+    // 🔥 알림 수신 리스너 (포그라운드)
+    const notificationReceivedListener = PushNotifications.addListener(
+      'pushNotificationReceived',
+      (notification) => {
+        console.log('📬 포그라운드 알림 수신:', notification);
+        
+        toast(notification.title || '새 알림', {
+          icon: '🔔',
+          style: {
+            background: '#333',
+            color: '#fff',
+            borderRadius: '12px',
+          },
+          duration: 4000,
+        });
+      }
+    );
 
-    const notificationActionListener = PushNotifications.addListener('pushNotificationActionPerformed', notification => {
-      console.log('알림 클릭해서 들어옴:', notification);
-      
-      const data = notification.notification.data;
-      if (data.chatId) {
-        navigate(`/chat/room/${data.chatId}`);
-      } 
-    });
+    // 🔥 알림 클릭 리스너
+    const notificationActionListener = PushNotifications.addListener(
+      'pushNotificationActionPerformed',
+      (notification) => {
+        console.log('👆 알림 클릭됨:', notification);
+        
+        const data = notification.notification.data;
+        
+        // room_id 또는 chatId로 채팅방 이동
+        if (data.room_id) {
+          navigate(`/chat/room/${data.room_id}`);
+        } else if (data.chatId) {
+          navigate(`/chat/room/${data.chatId}`);
+        }
+      }
+    );
 
+    // 🧹 클린업
     return () => {
       registrationListener.then(listener => listener.remove());
       registrationErrorListener.then(listener => listener.remove());
       notificationReceivedListener.then(listener => listener.remove());
       notificationActionListener.then(listener => listener.remove());
     };
-  }, [navigate, user]); 
+  }, [navigate, user]); // user 의존성 추가
 
+  // 테마 및 폰트 설정
   useEffect(() => {
     const savedTheme = localStorage.getItem('grayn_theme') || 'dark';
     const savedSize = localStorage.getItem('grayn_text_size') || '2';
+    
     document.documentElement.classList.remove('light', 'dark');
     document.documentElement.classList.add(savedTheme);
+    
     const baseFontSize = 14 + (Number(savedSize) * 1);
     document.documentElement.style.fontSize = `${baseFontSize}px`;
     document.body.style.backgroundColor = savedTheme === 'light' ? '#F2F2F7' : '#1C1C1E';
@@ -230,7 +281,16 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Toaster position="top-center" toastOptions={{ style: { background: '#333', color: '#fff', borderRadius: '12px' } }} />
+        <Toaster 
+          position="top-center" 
+          toastOptions={{ 
+            style: { 
+              background: '#333', 
+              color: '#fff', 
+              borderRadius: '12px' 
+            } 
+          }} 
+        />
         <AppLockOverlay /> 
         <AppContent />
       </BrowserRouter>

@@ -18,6 +18,8 @@
     "@capacitor/local-notifications": "^8.0.0",
     "@capacitor/push-notifications": "^8.0.0",
     "@capacitor/share": "^8.0.0",
+    "@react-native-firebase/app": "^23.8.6",
+    "@react-native-firebase/messaging": "^23.8.6",
     "@simplewebauthn/browser": "^13.2.2",
     "@simplewebauthn/types": "^12.0.0",
     "@supabase/supabase-js": "^2.93.2",
@@ -40,6 +42,7 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@eslint/js": "^9.39.1",
+    "@react-native-community/cli": "^20.1.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
