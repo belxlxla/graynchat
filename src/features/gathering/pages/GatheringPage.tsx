@@ -5,7 +5,7 @@ import {
   MessageSquare, LayoutGrid, Plus, Search,
   Lock, Users, Heart, MessageCircle,
   Eye, Flame, X, Loader2, AlertCircle, RefreshCw,
-  ChevronRight, ArrowLeft, User
+  ChevronRight, User
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -43,66 +43,6 @@ interface GatheringPost {
   comment_count: number;
   view_count: number;
   created_at: string;
-}
-
-// ── 나가기 확인 모달 ────────────────────────────────────────
-function ExitConfirmModal({ onConfirm, onCancel }: {
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center px-6">
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-        onClick={onCancel}
-      />
-      <motion.div
-        initial={{ scale: 0.94, opacity: 0, y: 8 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.94, opacity: 0, y: 8 }}
-        transition={{ type: 'spring', damping: 30, stiffness: 380 }}
-        className="relative z-10 w-full max-w-[300px] rounded-[24px] overflow-hidden"
-        style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)' }}
-      >
-        <div className="px-6 pt-7 pb-6 text-center">
-          <div
-            className="w-11 h-11 rounded-2xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'rgba(255,32,58,0.1)', border: '1px solid rgba(255,32,58,0.15)' }}
-          >
-            <ArrowLeft className="w-5 h-5" style={{ color: '#FF203A' }} />
-          </div>
-          <p className="text-[10px] tracking-[0.12em] uppercase mb-2" style={{ color: 'rgba(255,255,255,0.28)' }}>
-            Grayn Gathering
-          </p>
-          <h3 className="text-[16px] mb-2" style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 500, letterSpacing: '-0.02em' }}>
-            게더링을 나갈까요?
-          </h3>
-          <p className="text-[12px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.32)' }}>
-            채팅 메인으로 돌아갑니다
-          </p>
-        </div>
-        <div className="flex" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={onCancel}
-            className="flex-1 py-4 text-[13px] transition-colors"
-            style={{ color: 'rgba(255,255,255,0.4)', borderRight: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            머무르기
-          </motion.button>
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={onConfirm}
-            className="flex-1 py-4 text-[13px]"
-            style={{ color: '#FF203A', fontWeight: 500 }}
-          >
-            나가기
-          </motion.button>
-        </div>
-      </motion.div>
-    </div>
-  );
 }
 
 // ── 비밀번호 모달 ────────────────────────────────────────────
@@ -177,7 +117,7 @@ function GatheringChatTab() {
   const [activeCategory, setActiveCategory] = useState('전체');
   const [selectedRoom, setSelectedRoom] = useState<GatheringRoom | null>(null);
   const [isJoining, setIsJoining] = useState(false);
-  
+
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchRooms = async () => {
@@ -187,30 +127,26 @@ function GatheringChatTab() {
       const { data, error } = await supabase
         .from('gathering_rooms')
         .select('*')
-        .order('participant_count', { ascending: false }); 
-      
+        .order('participant_count', { ascending: false });
+
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      
+
       if (error) {
         if (error.code !== 'PGRST116') console.error('Error fetching rooms:', error);
-        setRooms([]); 
+        setRooms([]);
         return;
       }
-      
+
       const list = data || [];
-      if (list.length === 0) { 
-        setRooms([]); 
-        setIsLoading(false); 
-        return; 
-      }
-      
+      if (list.length === 0) { setRooms([]); setIsLoading(false); return; }
+
       const hostIds = [...new Set(list.map((r) => r.host_id))].filter(Boolean);
       let userMap = new Map<string, string>();
       if (hostIds.length > 0) {
         const { data: usersData } = await supabase.from('users').select('id, name').in('id', hostIds);
         userMap = new Map(usersData?.map((u) => [u.id, u.name]) || []);
       }
-      
+
       const activeRooms = list.filter(r => r.is_active !== false);
       setRooms(activeRooms.map((r) => ({ ...r, host_name: userMap.get(r.host_id) || '알 수 없음' })));
     } catch (err: any) {
@@ -227,24 +163,20 @@ function GatheringChatTab() {
     fetchRooms();
 
     const channel = supabase.channel(`gathering_rooms_sync_${Date.now()}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'gathering_rooms' },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            setRooms((prev) => prev.filter((r) => r.id !== payload.old.id));
-          } else if (payload.eventType === 'INSERT') {
-            fetchRooms(); 
-          } else if (payload.eventType === 'UPDATE') {
-            setRooms((prev) => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } as GatheringRoom : r));
-          }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gathering_rooms' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          setRooms((prev) => prev.filter((r) => r.id !== payload.old.id));
+        } else if (payload.eventType === 'INSERT') {
+          fetchRooms();
+        } else if (payload.eventType === 'UPDATE') {
+          setRooms((prev) => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } as GatheringRoom : r));
         }
-      )
+      })
       .subscribe();
 
-    return () => { 
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        supabase.removeChannel(channel);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -260,16 +192,16 @@ function GatheringChatTab() {
       const { data: existing } = await supabase
         .from('gathering_room_members').select('id')
         .eq('room_id', room.id).eq('user_id', user.id).maybeSingle();
-      
+
       if (!existing) {
         await supabase.from('gathering_room_members').insert({ room_id: room.id, user_id: user.id });
       }
       setSelectedRoom(null);
       navigate(`/gathering/chat/${room.id}`);
-    } catch { 
-      toast.error('입장에 실패했습니다.'); 
-    } finally { 
-      setIsJoining(false); 
+    } catch {
+      toast.error('입장에 실패했습니다.');
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -432,15 +364,14 @@ function GatheringBoardTab() {
       const { data, error } = await supabase
         .from('gathering_posts').select('*')
         .order('created_at', { ascending: false }).limit(50);
-      
+
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (error) {
         setErrorMsg(error.code === '42P01' ? '테이블을 먼저 생성해주세요.' : error.message);
         setPosts([]); return;
       }
-      
+
       const list = data || [];
-      
       const sortedList = list.sort((a, b) => {
         const isMyA = a.author_id === user?.id ? 1 : 0;
         const isMyB = b.author_id === user?.id ? 1 : 0;
@@ -517,16 +448,16 @@ function GatheringBoardTab() {
       {/* 카테고리 및 내 글 필터 */}
       <div className="px-5 pb-4 flex items-center gap-2 overflow-x-auto custom-scrollbar">
         <motion.button
-            whileTap={{ scale: 0.93 }}
-            onClick={() => setShowMyPostsOnly(!showMyPostsOnly)}
-            className="px-3 py-1.5 rounded-full text-xs transition-all flex items-center gap-1 shrink-0"
-            style={
-              showMyPostsOnly
-                ? { background: '#FF203A', color: 'white', border: '1px solid #FF203A' }
-                : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.08)' }
-            }
+          whileTap={{ scale: 0.93 }}
+          onClick={() => setShowMyPostsOnly(!showMyPostsOnly)}
+          className="px-3 py-1.5 rounded-full text-xs transition-all flex items-center gap-1 shrink-0"
+          style={
+            showMyPostsOnly
+              ? { background: '#FF203A', color: 'white', border: '1px solid #FF203A' }
+              : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.08)' }
+          }
         >
-            <User className="w-3 h-3" /> 내 글
+          <User className="w-3 h-3" /> 내 글
         </motion.button>
 
         <div className="w-[1px] h-3 bg-white/10 mx-1 shrink-0" />
@@ -565,16 +496,16 @@ function GatheringBoardTab() {
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-2 text-center">
           <p className="text-sm" style={{ color: 'rgba(255,255,255,0.22)' }}>
-             {showMyPostsOnly ? '작성한 글이 없습니다' : '게시글이 없습니다'}
+            {showMyPostsOnly ? '작성한 글이 없습니다' : '게시글이 없습니다'}
           </p>
           {!showMyPostsOnly && <p className="text-xs" style={{ color: 'rgba(255,255,255,0.13)' }}>첫 번째 글을 작성해보세요</p>}
         </div>
       ) : (
         <div className="pb-8">
           {filtered.map((post, idx) => {
-             const isMyPost = post.author_id === user?.id;
-             return (
-                <motion.button
+            const isMyPost = post.author_id === user?.id;
+            return (
+              <motion.button
                 key={post.id}
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 transition={{ delay: idx * 0.025 }}
@@ -582,38 +513,38 @@ function GatheringBoardTab() {
                 onClick={() => navigate(`/gathering/post/${post.id}`)}
                 className="w-full px-5 py-4 text-left transition-colors relative"
                 style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                >
+              >
                 <div className="flex items-center gap-2 mb-2">
-                    {isMyPost && (
-                        <span className="text-[10px] font-bold text-[#111] bg-[#FF203A] px-1.5 py-0.5 rounded-md">MY</span>
-                    )}
-                    <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.28)' }}>{post.category}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
-                    <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.18)' }}>{getTimeAgo(post.created_at)}</span>
+                  {isMyPost && (
+                    <span className="text-[10px] font-bold text-[#111] bg-[#FF203A] px-1.5 py-0.5 rounded-md">MY</span>
+                  )}
+                  <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.28)' }}>{post.category}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.1)' }}>·</span>
+                  <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.18)' }}>{getTimeAgo(post.created_at)}</span>
                 </div>
                 <p className="text-[14px] leading-snug mb-1.5 line-clamp-2"
-                    style={{ color: 'rgba(255,255,255,0.78)', letterSpacing: '-0.01em', fontWeight: 450 }}>
-                    {post.title}
+                  style={{ color: 'rgba(255,255,255,0.78)', letterSpacing: '-0.01em', fontWeight: 450 }}>
+                  {post.title}
                 </p>
                 <p className="text-[12px] line-clamp-1 mb-3" style={{ color: 'rgba(255,255,255,0.28)' }}>
-                    {post.content}
+                  {post.content}
                 </p>
                 <div className="flex items-center gap-3">
-                    <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{post.author_name}</span>
-                    <div className="flex items-center gap-3 ml-auto">
+                  <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{post.author_name}</span>
+                  <div className="flex items-center gap-3 ml-auto">
                     <div className="flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                        <Heart className="w-3 h-3" /><span className="text-[11px]">{post.like_count}</span>
+                      <Heart className="w-3 h-3" /><span className="text-[11px]">{post.like_count}</span>
                     </div>
                     <div className="flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                        <MessageCircle className="w-3 h-3" /><span className="text-[11px]">{post.comment_count}</span>
+                      <MessageCircle className="w-3 h-3" /><span className="text-[11px]">{post.comment_count}</span>
                     </div>
                     <div className="flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.13)' }}>
-                        <Eye className="w-3 h-3" /><span className="text-[11px]">{post.view_count}</span>
+                      <Eye className="w-3 h-3" /><span className="text-[11px]">{post.view_count}</span>
                     </div>
-                    </div>
+                  </div>
                 </div>
-                </motion.button>
-             );
+              </motion.button>
+            );
           })}
         </div>
       )}
@@ -625,56 +556,36 @@ function GatheringBoardTab() {
 export default function GatheringPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<GatheringTab>('chat');
-  const [showExitModal, setShowExitModal] = useState(false);
-
-  // 안드로이드 하드웨어 백 버튼 인터셉트
-  useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      e.preventDefault();
-      setShowExitModal(true);
-      window.history.pushState(null, '', window.location.href);
-    };
-    window.history.pushState(null, '', window.location.href);
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  const handleExit = () => {
-    setShowExitModal(false);
-    navigate('/chat', { replace: true });
-  };
 
   return (
     <div className="h-full w-full flex flex-col" style={{ background: '#080808', color: 'white' }}>
       {/* 헤더 */}
       <header className="px-5 pt-6 pb-0 sticky top-0 z-10" style={{ background: '#080808' }}>
         <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            {/* 뒤로가기 / 나가기 버튼 */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setShowExitModal(true)}
-              className="w-8 h-8 flex items-center justify-center rounded-xl transition-colors"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)' }}
-            >
-              <ArrowLeft className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.45)' }} />
-            </motion.button>
-            <div>
-              <p className="text-[10px] tracking-[0.16em] uppercase" style={{ color: 'rgba(255,255,255,0.22)' }}>
-                Grayn
-              </p>
-              <h1 className="text-[20px]" style={{ color: 'rgba(255,255,255,0.88)', fontWeight: 500, letterSpacing: '-0.025em', lineHeight: 1.1 }}>
-                게더링
-              </h1>
-            </div>
+          {/* 타이틀 */}
+          <div>
+            <p className="text-[10px] tracking-[0.16em] uppercase" style={{ color: 'rgba(255,255,255,0.22)' }}>
+              Grayn
+            </p>
+            <h1 className="text-[22px]" style={{ color: 'rgba(255,255,255,0.88)', fontWeight: 500, letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+              게더링
+            </h1>
           </div>
+
+          {/* 글쓰기 / 방 만들기 버튼 */}
           <motion.button
             whileTap={{ scale: 0.92 }}
             onClick={() => navigate(activeTab === 'chat' ? '/gathering/create-room' : '/gathering/create-post')}
-            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] transition-all"
+            style={{
+              background: 'rgba(255,32,58,0.1)',
+              border: '1px solid rgba(255,32,58,0.2)',
+              color: '#FF203A',
+              fontWeight: 500,
+            }}
           >
-            <Plus className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.55)' }} />
+            <Plus className="w-3.5 h-3.5" />
+            {activeTab === 'chat' ? '방 만들기' : '글쓰기'}
           </motion.button>
         </div>
 
@@ -722,16 +633,6 @@ export default function GatheringPage() {
         >
           {activeTab === 'chat' ? <GatheringChatTab /> : <GatheringBoardTab />}
         </motion.div>
-      </AnimatePresence>
-
-      {/* 나가기 확인 모달 */}
-      <AnimatePresence>
-        {showExitModal && (
-          <ExitConfirmModal
-            onConfirm={handleExit}
-            onCancel={() => setShowExitModal(false)}
-          />
-        )}
       </AnimatePresence>
     </div>
   );
