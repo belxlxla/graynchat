@@ -47,6 +47,13 @@ import TimeCapsuleEditPage from '../features/time-capsule/pages/TimeCapsuleEditP
 import TimeCapsuleInboxPage from '../features/time-capsule/pages/TimeCapsuleInboxPage';
 import TimeCapsuleViewPage from '../features/time-capsule/pages/TimeCapsuleViewPage';
 
+import GatheringPage from '../features/gathering/pages/GatheringPage';
+import GatheringChatRoomPage from '../features/gathering/pages/GatheringChatRoomPage';
+import CreateGatheringRoomPage from '../features/gathering/pages/CreateGatheringRoomPage';
+import GatheringPostDetailPage from '../features/gathering/pages/GatheringPostDetailPage';
+import CreateGatheringPostPage from '../features/gathering/pages/CreateGatheringPostPage';
+import EditGatheringPostPage from '../features/gathering/pages/EditGatheringPostPage';
+
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 
@@ -270,6 +277,12 @@ function AppContent() {
         <Route path="/time-capsule/edit/:id" element={<TimeCapsuleEditPage />} />
         <Route path="/time-capsule/inbox" element={<TimeCapsuleInboxPage />} />
         <Route path="/time-capsule/view/:id" element={<TimeCapsuleViewPage />} />
+        <Route path="/main/gathering" element={<GatheringPage />} />
+        <Route path="/gathering/chat/:roomId" element={<GatheringChatRoomPage />} />
+        <Route path="/gathering/create-room" element={<CreateGatheringRoomPage />} />
+        <Route path="/gathering/edit/:postId" element={<EditGatheringPostPage />} />
+        <Route path="/gathering/post/:postId" element={<GatheringPostDetailPage />} />
+        <Route path="/gathering/create-post" element={<CreateGatheringPostPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/main/friends" replace />} />
