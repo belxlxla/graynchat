@@ -10,7 +10,17 @@ declare global {
 }
 
 const NAVER_CLIENT_ID = 'rKU793HIwCl3TzqdHcvj';
-const NAVER_CALLBACK_URL = 'http://localhost:5173/auth/login';
+
+// ✅ 환경별 콜백 URL 자동 분기
+// - 운영: https://graynchat.com/auth/login  → 네이버 콘솔 등록된 URL
+// - 개발: http://localhost:5173/auth/login  → 네이버 콘솔에 추가 등록 필요
+const getNaverCallbackUrl = () => {
+  const origin = window.location.origin;
+  if (origin.includes('graynchat.com')) {
+    return 'https://graynchat.com/auth/login';
+  }
+  return `${origin}/auth/login`;
+};
 
 export const useNaverLogin = () => {
   const navigate = useNavigate();
@@ -24,9 +34,11 @@ export const useNaverLogin = () => {
     const naverContainer = document.getElementById('naverIdLogin');
     if (!naverContainer || naverContainer.children.length > 0) return;
 
+    const callbackUrl = getNaverCallbackUrl();
+
     const naverLogin = new naver.LoginWithNaverId({
       clientId: NAVER_CLIENT_ID,
-      callbackUrl: NAVER_CALLBACK_URL,
+      callbackUrl: callbackUrl,
       isPopup: false,
       loginButton: { color: 'green', type: 3, height: 60 },
       callbackHandle: true,
@@ -56,96 +68,95 @@ export const useNaverLogin = () => {
   }, [location, navigate]);
 
   const handleNaverAuth = async (
-  naverId: string,
-  email: string,
-  name: string,
-  avatar: string,
-  phone: string | null
-) => {
-  try {
-    const uniqueEmail = `naver_${naverId}@grayn.app`;
-    const password = `NAVER_${naverId}_GRAYN`;
+    naverId: string,
+    email: string,
+    name: string,
+    avatar: string,
+    phone: string | null
+  ) => {
+    try {
+      const uniqueEmail = `naver_${naverId}@grayn.app`;
+      const password = `NAVER_${naverId}_GRAYN`;
 
-    // 1. 회원가입 시도
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: uniqueEmail,
-      password: password,
-      options: {
-        data: {
-          full_name: name,
-          avatar_url: avatar,
-          provider: 'naver', // ✅ 여기에 provider 명시
-          real_email: email,
-        },
-      },
-    });
-
-    let userId: string | null = null;
-    let isNewUser = false;
-
-    if (signUpError) {
-      // 2. 이미 가입된 경우 로그인
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      // 1. 회원가입 시도
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: uniqueEmail,
         password: password,
-      });
-
-      if (signInError) {
-        console.error('Login failed:', signInError);
-        toast.error('네이버 로그인에 실패했습니다.');
-        window.history.replaceState({}, '', '/auth/login');
-        return;
-      }
-
-      userId = signInData?.user?.id || null;
-      
-      // ✅ 로그인 후 user_metadata 업데이트
-      if (userId) {
-        await supabase.auth.updateUser({
+        options: {
           data: {
-            provider: 'naver',
             full_name: name,
             avatar_url: avatar,
-          }
-        });
-      }
-    } else {
-      userId = signUpData?.user?.id || null;
-      isNewUser = true;
-    }
+            provider: 'naver',
+            real_email: email,
+          },
+        },
+      });
 
-    // 3. users 테이블에 반드시 저장
-    if (userId) {
-      if (isNewUser) {
-        await supabase.from('users').insert({
-          id: userId,
-          email: email,
-          name: name,
-          avatar: avatar,
-          phone: phone || null,
+      let userId: string | null = null;
+      let isNewUser = false;
+
+      if (signUpError) {
+        // 2. 이미 가입된 경우 로그인
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: uniqueEmail,
+          password: password,
         });
+
+        if (signInError) {
+          console.error('Login failed:', signInError);
+          toast.error('네이버 로그인에 실패했습니다.');
+          window.history.replaceState({}, '', '/auth/login');
+          return;
+        }
+
+        userId = signInData?.user?.id || null;
+
+        if (userId) {
+          await supabase.auth.updateUser({
+            data: {
+              provider: 'naver',
+              full_name: name,
+              avatar_url: avatar,
+            }
+          });
+        }
       } else {
-        await supabase.from('users').update({
-          name: name,
-          avatar: avatar,
-          phone: phone || null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', userId);
+        userId = signUpData?.user?.id || null;
+        isNewUser = true;
       }
+
+      // 3. users 테이블에 저장
+      if (userId) {
+        if (isNewUser) {
+          await supabase.from('users').insert({
+            id: userId,
+            email: email,
+            name: name,
+            avatar: avatar,
+            phone: phone || null,
+          });
+        } else {
+          await supabase.from('users').update({
+            name: name,
+            avatar: avatar,
+            phone: phone || null,
+            updated_at: new Date().toISOString(),
+          }).eq('id', userId);
+        }
+      }
+
+      toast.success(`${name}님 환영합니다!`);
+      window.history.replaceState({}, '', '/auth/login');
+      navigate('/main/friends');
+
+    } catch (error: any) {
+      console.error('Naver Auth Error:', error);
+      toast.error('로그인 처리 중 오류가 발생했습니다.');
+      window.history.replaceState({}, '', '/auth/login');
+    } finally {
+      isProcessing.current = false;
     }
-
-    toast.success(`${name}님 환영합니다!`);
-    window.history.replaceState({}, '', '/auth/login');
-    navigate('/main/friends');
-
-  } catch (error: any) {
-    console.error('Naver Auth Error:', error);
-    toast.error('로그인 처리 중 오류가 발생했습니다.');
-    window.history.replaceState({}, '', '/auth/login');
-  } finally {
-    isProcessing.current = false;
-  }
-};
+  };
 
   const triggerNaverLogin = useCallback(() => {
     const btn = document.getElementById('naverIdLogin')?.firstChild as HTMLElement;
