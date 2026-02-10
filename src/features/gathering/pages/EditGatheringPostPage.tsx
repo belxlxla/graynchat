@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Loader2, Camera, X, Image as ImageIcon, HelpCircle, Info, Smile, Heart, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Camera, X, HelpCircle, Info, Smile, Heart, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
 
-// 카테고리별 설정 (작성 페이지와 동일하게 유지)
 const CATEGORY_CONFIG: Record<string, {
   icon: any;
   label: string;
@@ -76,7 +75,6 @@ export default function EditGatheringPostPage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState('일상');
-  // 기존 이미지 URL과 새로 추가된 파일 객체를 구분해서 관리
   const [existingImages, setExistingImages] = useState<string[]>([]);
   const [newImages, setNewImages] = useState<File[]>([]); 
   const [newPreviews, setNewPreviews] = useState<string[]>([]);
@@ -89,7 +87,6 @@ export default function EditGatheringPostPage() {
 
   const isValid = title.trim().length > 0 && content.trim().length > 0;
 
-  // 초기 데이터 로드
   useEffect(() => {
     if (!postId || !user) return;
     const loadPost = async () => {
@@ -122,7 +119,6 @@ export default function EditGatheringPostPage() {
     loadPost();
   }, [postId, user, navigate]);
 
-  // 이미지 선택
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -140,12 +136,10 @@ export default function EditGatheringPostPage() {
     setNewPreviews(prev => [...prev, ...previews]);
   };
 
-  // 기존 이미지 삭제
   const removeExistingImage = (index: number) => {
     setExistingImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  // 새 이미지 삭제
   const removeNewImage = (index: number) => {
     setNewImages(prev => prev.filter((_, i) => i !== index));
     setNewPreviews(prev => {
@@ -154,7 +148,6 @@ export default function EditGatheringPostPage() {
     });
   };
 
-  // 이미지 업로드
   const uploadNewImages = async (): Promise<string[]> => {
     if (newImages.length === 0) return [];
 
@@ -185,13 +178,9 @@ export default function EditGatheringPostPage() {
     const toastId = toast.loading('수정 내용을 저장하고 있어요...');
 
     try {
-      // 1. 새 이미지 업로드
       const newImageUrls = await uploadNewImages();
-      
-      // 2. 최종 이미지 배열 (기존 유지분 + 새로 올린 것)
       const finalImages = [...existingImages, ...newImageUrls];
 
-      // 3. DB 업데이트
       const { error } = await supabase
         .from('gathering_posts')
         .update({
@@ -206,7 +195,7 @@ export default function EditGatheringPostPage() {
       if (error) throw error;
 
       toast.success('게시글이 수정되었습니다!', { id: toastId });
-      navigate(-1); // 상세 페이지로 복귀
+      navigate(-1); 
     } catch (err) {
       console.error(err);
       toast.error('수정에 실패했습니다.', { id: toastId });
@@ -219,7 +208,6 @@ export default function EditGatheringPostPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] text-white bg-[#080808]">
-      {/* 헤더 */}
       <header className="flex items-center gap-3 px-4 h-14 shrink-0 bg-[#0d0d0d] border-b border-[#2C2C2E]">
         <motion.button 
           whileTap={{ scale: 0.9 }} 
@@ -246,7 +234,6 @@ export default function EditGatheringPostPage() {
       </header>
 
       <div className="flex-1 overflow-y-auto">
-        {/* 카테고리 선택 */}
         <div className="pt-5 pb-2">
           <div className="px-5 mb-2">
             <span className="text-[11px] font-medium text-[#8E8E93] tracking-wide">주제 선택</span>
@@ -275,7 +262,6 @@ export default function EditGatheringPostPage() {
         </div>
 
         <div className="px-5 space-y-6">
-          {/* 가이드 메시지 */}
           <AnimatePresence mode="wait">
             <motion.div
               key={category}
@@ -296,7 +282,6 @@ export default function EditGatheringPostPage() {
             </motion.div>
           </AnimatePresence>
 
-          {/* 이미지 첨부 영역 */}
           <div>
             <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
               <motion.button
@@ -308,12 +293,13 @@ export default function EditGatheringPostPage() {
                 <span className="text-[10px] font-medium">{existingImages.length + newImages.length}/5</span>
               </motion.button>
 
-              {/* 기존 이미지 */}
               <AnimatePresence>
                 {existingImages.map((url, idx) => (
                   <motion.div
                     key={`existing-${url}`}
-                    initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+                    initial={{ opacity: 0, scale: 0.8, x: -10 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
                     className="relative w-20 h-20 rounded-2xl overflow-hidden shrink-0 border border-[#2C2C2E]"
                   >
                     <img src={url} alt="existing" className="w-full h-full object-cover" />
@@ -322,7 +308,6 @@ export default function EditGatheringPostPage() {
                     </button>
                   </motion.div>
                 ))}
-                {/* 새 이미지 미리보기 */}
                 {newPreviews.map((url, idx) => (
                   <motion.div
                     key={`new-${url}`}
@@ -340,7 +325,6 @@ export default function EditGatheringPostPage() {
             <input type="file" ref={fileInputRef} multiple accept="image/*" className="hidden" onChange={handleImageSelect} />
           </div>
 
-          {/* 제목 입력 */}
           <div className="space-y-2">
             <input
               value={title} 
@@ -352,7 +336,6 @@ export default function EditGatheringPostPage() {
             <div className="h-[1px] bg-[#2C2C2E] w-full" />
           </div>
 
-          {/* 내용 입력 */}
           <div className="relative pb-10">
             <textarea
               value={content} 

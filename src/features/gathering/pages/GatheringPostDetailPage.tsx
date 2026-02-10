@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Heart, MessageCircle, Share2, MoreHorizontal,
-  Send, Loader2, User as UserIcon, Trash2, AlertCircle, Eye, Edit2
+  Send, Loader2, User as UserIcon, Trash2, AlertCircle, Edit2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -327,7 +327,7 @@ export default function GatheringPostDetailPage() {
                 >
                     <div className="w-10 h-1 bg-[#333] rounded-full mx-auto my-3" />
                     
-                    {/* 수정 버튼 추가 */}
+                    {/* 수정 버튼 */}
                     <button 
                         onClick={() => { setShowMenu(false); navigate(`/gathering/edit/${postId}`); }}
                         className="w-full p-4 flex items-center gap-3 text-white hover:bg-[#222] rounded-xl transition-colors"

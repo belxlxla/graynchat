@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Loader2, Camera, X, Image as ImageIcon, HelpCircle, Info, Smile, Heart, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Camera, X, HelpCircle, Info, Smile, Heart, MessageCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
