@@ -44,7 +44,7 @@ export default function CreateGatheringRoomPage() {
         }).select().single();
       if (roomError) throw roomError;
       await supabase.from('gathering_room_members').insert({ room_id: roomData.id, user_id: user.id });
-      toast.success('채팅방이 개설되었습니다');
+      toast.success('그레인 챗이 개설되었습니다');
       navigate(`/gathering/chat/${roomData.id}`, { replace: true });
     } catch (err: any) {
       toast.error(err.message || '채팅방 생성에 실패했습니다.');

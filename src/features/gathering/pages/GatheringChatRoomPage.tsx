@@ -317,12 +317,12 @@ export default function GatheringChatRoomPage() {
         // 방장인 경우: 방 자체를 삭제 (Cascade 설정이 있다면 메시지/멤버 자동 삭제)
         // Cascade가 없더라도 최소한 방 목록에서는 사라짐
         await supabase.from('gathering_rooms').delete().eq('id', roomId);
-        toast.success('게더링이 종료되었습니다.');
+        toast.success('게더링 챗을 삭제했습니다.');
       } else {
         // 일반 멤버인 경우: 멤버 테이블에서만 삭제
         await supabase.from('gathering_room_members').delete()
           .eq('room_id', roomId).eq('user_id', user.id);
-        toast.success('게더링을 나갔습니다.');
+        toast.success('게더링 챗을 나갔습니다.');
       }
       // 정확한 경로로 이동
       navigate('/main/gathering', { replace: true });
