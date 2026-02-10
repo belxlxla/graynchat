@@ -1,315 +1,242 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Loader2, Camera, X, HelpCircle, Info, Smile, Heart, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Lock, Unlock, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
 
-// 카테고리별 설정
-const CATEGORY_CONFIG: Record<string, {
-  icon: any;
-  label: string;
-  placeholderTitle: string;
-  placeholderContent: string;
-  guide: string;
-  color: string;
-}> = {
-  '일상': {
-    icon: Smile,
-    label: '일상',
-    placeholderTitle: '오늘 어떤 일이 있었나요?',
-    placeholderContent: '소소한 일상 이야기를 이웃들과 나누어보세요.',
-    guide: '사진과 함께 올리면 공감을 더 많이 받아요!',
-    color: '#FFD43B'
-  },
-  '질문': {
-    icon: HelpCircle,
-    label: '질문',
-    placeholderTitle: '무엇이 궁금한가요?',
-    placeholderContent: '궁금한 내용을 구체적으로 적어주세요.',
-    guide: '자세히 질문할수록 정확한 답변을 받을 수 있어요.',
-    color: '#FF6B6B'
-  },
-  '정보': {
-    icon: Info,
-    label: '정보',
-    placeholderTitle: '공유하고 싶은 꿀팁이 있나요?',
-    placeholderContent: '나만 알기 아까운 정보를 공유해주세요.',
-    guide: '출처나 정확한 정보를 함께 적어주면 좋아요.',
-    color: '#339AF0'
-  },
-  '유머': {
-    icon: Smile,
-    label: '유머',
-    placeholderTitle: '재미있는 이야기를 들려주세요!',
-    placeholderContent: '피식 웃음이 나오는 이야기나 짤을 공유해보세요.',
-    guide: '센스 있는 제목은 필수!',
-    color: '#FCC419'
-  },
-  '감동': {
-    icon: Heart,
-    label: '감동',
-    placeholderTitle: '따뜻한 이야기를 전해주세요.',
-    placeholderContent: '마음이 따뜻해지는 순간을 기록해보세요.',
-    guide: '진심이 담긴 글은 모두에게 힘이 됩니다.',
-    color: '#FF8787'
-  },
-  '고민': {
-    icon: MessageCircle,
-    label: '고민',
-    placeholderTitle: '어떤 고민이 있으신가요?',
-    placeholderContent: '혼자 끙끙 앓지 말고 털어놓아 보세요.',
-    guide: '익명으로도 편하게 이야기할 수 있어요.',
-    color: '#51CF66'
-  }
-};
+const CATEGORIES = ['일상', '게임', '음악', '스터디', '운동', '여행', '맛집', '기타'];
+const COLORS = ['#FF203A', '#FF6B35', '#845EF7', '#339AF0', '#20C997', '#F59F00', '#E64980', '#74C0FC'];
+const MAX_OPTIONS = [10, 20, 30, 50, 100];
 
-const CATEGORIES = Object.keys(CATEGORY_CONFIG);
-const BUCKET_NAME = 'gathering-uploads';
-
-export default function CreateGatheringPostPage() {
+export default function CreateGatheringRoomPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [description, setDescription] = useState('');
   const [category, setCategory] = useState('일상');
-  const [images, setImages] = useState<File[]>([]);
-  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [isLocked, setIsLocked] = useState(false);
+  const [password, setPassword] = useState('');
+  const [maxParticipants, setMaxParticipants] = useState(50);
+  const [thumbnailColor, setThumbnailColor] = useState('#FF203A');
   const [isLoading, setIsLoading] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isValid = title.trim().length > 0 && (!isLocked || password.trim().length >= 4);
 
-  const currentConfig = CATEGORY_CONFIG[category];
-
-  const isValid = title.trim().length > 0 && content.trim().length > 0;
-
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-
-    const newFiles = Array.from(files);
-    const totalImages = images.length + newFiles.length;
-
-    if (totalImages > 5) {
-      toast.error('이미지는 최대 5장까지 첨부할 수 있어요.');
-      return;
-    }
-
-    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
-    
-    setImages(prev => [...prev, ...newFiles]);
-    setPreviewUrls(prev => [...prev, ...newPreviews]);
-  };
-
-  const removeImage = (index: number) => {
-    setImages(prev => prev.filter((_, i) => i !== index));
-    setPreviewUrls(prev => {
-      URL.revokeObjectURL(prev[index]);
-      return prev.filter((_, i) => i !== index);
-    });
-  };
-
-  const uploadImages = async (): Promise<string[]> => {
-    if (images.length === 0) return [];
-
-    const uploadPromises = images.map(async (file) => {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
-      const filePath = `posts/${user?.id}/${fileName}`;
-
-      const { error } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(filePath, file);
-
-      if (error) throw error;
-
-      const { data } = supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(filePath);
-
-      return data.publicUrl;
-    });
-
-    return Promise.all(uploadPromises);
-  };
-
-  const handleSubmit = async () => {
+  const handleCreate = async () => {
     if (!user) return toast.error('로그인이 필요합니다.');
-    if (!title.trim()) return toast.error('제목을 입력해주세요.');
-    if (!content.trim()) return toast.error('내용을 입력해주세요.');
-
+    if (!title.trim()) return toast.error('채팅방 이름을 입력해주세요.');
+    if (isLocked && password.trim().length < 4) return toast.error('비밀번호는 4자 이상 입력해주세요.');
     setIsLoading(true);
-    const toastId = toast.loading('게시글을 등록하고 있어요...');
-
     try {
-      const imageUrls = await uploadImages();
-      const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
-
-      const { error } = await supabase.from('gathering_posts').insert({
-        author_id: user.id,
-        author_name: userData?.name || '사용자',
-        author_avatar: userData?.avatar || null,
-        title: title.trim(),
-        content: content.trim(),
-        category,
-        image_urls: imageUrls,
-      });
-
-      if (error) throw error;
-
-      toast.success('게시글이 등록되었습니다!', { id: toastId });
-      navigate(-1);
+      const { data: roomData, error: roomError } = await supabase
+        .from('gathering_rooms').insert({
+          host_id: user.id,
+          title: title.trim(),
+          description: description.trim(),
+          category,
+          is_locked: isLocked,
+          password: isLocked ? password.trim() : null,
+          max_participants: maxParticipants,
+          thumbnail_color: thumbnailColor,
+        }).select().single();
+      if (roomError) throw roomError;
+      await supabase.from('gathering_room_members').insert({ room_id: roomData.id, user_id: user.id });
+      toast.success('채팅방이 개설되었습니다');
+      navigate(`/gathering/chat/${roomData.id}`, { replace: true });
     } catch (err: any) {
-      console.error(err);
-      toast.error('등록에 실패했습니다. 잠시 후 다시 시도해주세요.', { id: toastId });
+      toast.error(err.message || '채팅방 생성에 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const fieldStyle = {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.07)',
+    color: 'rgba(255,255,255,0.82)',
+  };
+
   return (
-    <div className="flex flex-col h-[100dvh] text-white bg-[#080808]">
-      <header className="flex items-center gap-3 px-4 h-14 shrink-0 bg-[#0d0d0d] border-b border-[#2C2C2E]">
-        <motion.button 
-          whileTap={{ scale: 0.9 }} 
-          onClick={() => navigate(-1)}
-          className="w-8 h-8 flex items-center justify-center rounded-xl text-[#8E8E93] hover:text-white transition-colors"
-        >
+    <div className="flex flex-col h-[100dvh] text-white" style={{ background: '#080808' }}>
+      {/* 헤더 */}
+      <header className="flex items-center gap-3 px-4 h-14 shrink-0"
+        style={{ background: '#0d0d0d', borderBottom: '1px solid rgba(255,255,255,0.055)' }}>
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => navigate(-1)}
+          className="w-8 h-8 flex items-center justify-center rounded-xl"
+          style={{ color: 'rgba(255,255,255,0.45)' }}>
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
-        <h1 className="flex-1 text-[16px] font-semibold text-white/90">
-          게더링 글쓰기
+        <h1 className="flex-1 text-[15px]"
+          style={{ color: 'rgba(255,255,255,0.82)', fontWeight: 500, letterSpacing: '-0.015em' }}>
+          채팅방 개설
         </h1>
         <motion.button
           whileTap={{ scale: 0.95 }}
-          onClick={handleSubmit}
+          onClick={handleCreate}
           disabled={isLoading || !isValid}
-          className={`px-4 py-1.5 rounded-xl text-[13px] font-medium transition-all ${
-            isValid 
-              ? 'bg-[#FF203A] text-white shadow-lg shadow-[#FF203A]/20' 
-              : 'bg-[#2C2C2E] text-[#636366]'
-          }`}
+          className="px-4 py-1.5 rounded-xl text-[13px] transition-all"
+          style={{
+            background: isValid ? '#FF203A' : 'rgba(255,255,255,0.06)',
+            color: isValid ? 'white' : 'rgba(255,255,255,0.25)',
+            fontWeight: 500,
+            opacity: isLoading ? 0.6 : 1,
+          }}
         >
-          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '완료'}
+          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '개설'}
         </motion.button>
       </header>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="pt-5 pb-2">
-          <div className="px-5 mb-2">
-            <span className="text-[11px] font-medium text-[#8E8E93] tracking-wide">주제 선택</span>
-          </div>
-          <div className="flex gap-2 px-5 overflow-x-auto pb-3 custom-scrollbar">
-            {CATEGORIES.map((cat) => {
-              const config = CATEGORY_CONFIG[cat];
-              const isSelected = category === cat;
-              return (
-                <motion.button 
-                  key={cat} 
-                  whileTap={{ scale: 0.95 }} 
-                  onClick={() => setCategory(cat)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-[13px] whitespace-nowrap transition-all border ${
-                    isSelected 
-                      ? 'bg-[#FF203A]/10 border-[#FF203A] text-[#FF203A]' 
-                      : 'bg-[#1C1C1E] border-[#2C2C2E] text-[#8E8E93] hover:bg-[#2C2C2E]'
-                  }`}
-                >
-                  <config.icon className="w-3.5 h-3.5" />
-                  {cat}
-                </motion.button>
-              );
-            })}
+      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-7">
+        {/* 프리뷰 + 색상 */}
+        <div className="flex flex-col items-center gap-4">
+          <motion.div
+            key={title.charAt(0) + thumbnailColor}
+            animate={{ scale: [1, 1.05, 1] }}
+            transition={{ duration: 0.25 }}
+            className="w-[72px] h-[72px] rounded-[22px] flex items-center justify-center text-[26px] select-none"
+            style={{
+              background: `${thumbnailColor}18`,
+              color: thumbnailColor,
+              fontWeight: 600,
+              border: `1px solid ${thumbnailColor}28`,
+            }}
+          >
+            {title.charAt(0) || '?'}
+          </motion.div>
+          <div className="flex gap-2.5">
+            {COLORS.map((c) => (
+              <motion.button
+                key={c}
+                whileTap={{ scale: 0.85 }}
+                onClick={() => setThumbnailColor(c)}
+                className="w-6 h-6 rounded-full transition-all"
+                style={{
+                  background: c,
+                  outline: thumbnailColor === c ? `2px solid ${c}` : 'none',
+                  outlineOffset: '2px',
+                  opacity: thumbnailColor === c ? 1 : 0.45,
+                  transform: thumbnailColor === c ? 'scale(1.15)' : 'scale(1)',
+                }}
+              />
+            ))}
           </div>
         </div>
 
-        <div className="px-5 space-y-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={category}
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="bg-[#1C1C1E] rounded-2xl p-4 border border-[#2C2C2E] flex items-start gap-3"
-            >
-              <div className="p-2 rounded-full bg-[#2C2C2E]">
-                {currentConfig.icon && <currentConfig.icon className="w-4 h-4 text-white" />}
+        {/* 채팅방 이름 */}
+        <div>
+          <p className="text-[11px] mb-2.5 tracking-wide" style={{ color: 'rgba(255,255,255,0.28)' }}>채팅방 이름</p>
+          <input
+            value={title} onChange={(e) => setTitle(e.target.value)} maxLength={30}
+            placeholder="어떤 주제로 모일까요?"
+            className="w-full rounded-2xl px-4 py-3.5 text-[14px] focus:outline-none transition-all placeholder-white/20"
+            style={{ ...fieldStyle, letterSpacing: '-0.01em' }}
+          />
+          <div className="flex justify-end mt-1.5">
+            <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.18)' }}>{title.length}/30</span>
+          </div>
+        </div>
+
+        {/* 소개 */}
+        <div>
+          <p className="text-[11px] mb-2.5 tracking-wide" style={{ color: 'rgba(255,255,255,0.28)' }}>
+            소개 <span style={{ color: 'rgba(255,255,255,0.18)' }}>선택</span>
+          </p>
+          <textarea
+            value={description} onChange={(e) => setDescription(e.target.value)}
+            maxLength={100} placeholder="채팅방을 간단히 소개해주세요" rows={3}
+            className="w-full rounded-2xl px-4 py-3.5 text-sm focus:outline-none transition-all resize-none placeholder-white/20 leading-relaxed"
+            style={fieldStyle}
+          />
+        </div>
+
+        {/* 카테고리 */}
+        <div>
+          <p className="text-[11px] mb-2.5 tracking-wide" style={{ color: 'rgba(255,255,255,0.28)' }}>카테고리</p>
+          <div className="flex flex-wrap gap-2">
+            {CATEGORIES.map((cat) => (
+              <motion.button key={cat} whileTap={{ scale: 0.93 }} onClick={() => setCategory(cat)}
+                className="px-3.5 py-2 rounded-xl text-[13px] transition-all"
+                style={category === cat
+                  ? { background: 'rgba(255,32,58,0.12)', color: '#FF203A', border: '1px solid rgba(255,32,58,0.25)' }
+                  : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.07)' }
+                }>
+                {cat}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+
+        {/* 최대 인원 */}
+        <div>
+          <p className="text-[11px] mb-2.5 tracking-wide" style={{ color: 'rgba(255,255,255,0.28)' }}>최대 인원</p>
+          <div className="flex gap-2">
+            {MAX_OPTIONS.map((n) => (
+              <motion.button key={n} whileTap={{ scale: 0.93 }} onClick={() => setMaxParticipants(n)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] transition-all"
+                style={maxParticipants === n
+                  ? { background: 'rgba(255,32,58,0.12)', color: '#FF203A', border: '1px solid rgba(255,32,58,0.25)' }
+                  : { background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.07)' }
+                }>
+                {n}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+
+        {/* 비밀번호 */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+          <motion.button whileTap={{ scale: 0.99 }} onClick={() => setIsLocked(!isLocked)}
+            className="w-full flex items-center justify-between px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-all"
+                style={{ background: isLocked ? 'rgba(255,32,58,0.12)' : 'rgba(255,255,255,0.05)' }}>
+                {isLocked
+                  ? <Lock className="w-4 h-4" style={{ color: '#FF203A' }} />
+                  : <Unlock className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.35)' }} />
+                }
               </div>
-              <div className="flex-1">
-                <p className="text-[13px] text-white font-medium mb-0.5">{currentConfig.label} 글쓰기 Tip</p>
-                <p className="text-[12px] text-[#8E8E93] leading-relaxed">
-                  {currentConfig.guide}
+              <div className="text-left">
+                <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.72)', fontWeight: 450 }}>비밀번호 설정</p>
+                <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.28)' }}>
+                  {isLocked ? '입장 시 비밀번호 필요' : '누구나 입장 가능'}
                 </p>
               </div>
-            </motion.div>
-          </AnimatePresence>
+            </div>
+            <div className="w-11 h-6 rounded-full flex items-center px-0.5 transition-all"
+              style={{ background: isLocked ? '#FF203A' : 'rgba(255,255,255,0.1)' }}>
+              <motion.div
+                animate={{ x: isLocked ? 20 : 0 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="w-5 h-5 rounded-full bg-white shadow"
+              />
+            </div>
+          </motion.button>
 
-          <div>
-            <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => fileInputRef.current?.click()}
-                className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center bg-[#1C1C1E] border border-[#2C2C2E] text-[#8E8E93] hover:text-white hover:border-[#FF203A]/50 transition-colors shrink-0"
+          <AnimatePresence>
+            {isLocked && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}
+                className="overflow-hidden"
               >
-                <Camera className="w-6 h-6 mb-1" />
-                <span className="text-[10px] font-medium">{images.length}/5</span>
-              </motion.button>
-
-              <AnimatePresence>
-                {previewUrls.map((url, idx) => (
-                  <motion.div
-                    key={url}
-                    initial={{ opacity: 0, scale: 0.8, x: -10 }}
-                    animate={{ opacity: 1, scale: 1, x: 0 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    className="relative w-20 h-20 rounded-2xl overflow-hidden shrink-0 border border-[#2C2C2E]"
-                  >
-                    <img src={url} alt="preview" className="w-full h-full object-cover" />
-                    <button
-                      onClick={() => removeImage(idx)}
-                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white/80 hover:bg-black/80 transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              multiple 
-              accept="image/*" 
-              className="hidden" 
-              onChange={handleImageSelect}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <input
-              value={title} 
-              onChange={(e) => setTitle(e.target.value)} 
-              maxLength={50}
-              placeholder={currentConfig.placeholderTitle}
-              className="w-full bg-transparent text-[18px] font-bold text-white placeholder-[#636366] focus:outline-none"
-            />
-            <div className="h-[1px] bg-[#2C2C2E] w-full" />
-          </div>
-
-          <div className="relative pb-10">
-            <textarea
-              value={content} 
-              onChange={(e) => setContent(e.target.value)}
-              maxLength={2000} 
-              placeholder={currentConfig.placeholderContent} 
-              className="w-full bg-transparent text-[15px] leading-relaxed text-white/90 placeholder-[#636366] focus:outline-none resize-none min-h-[300px]"
-            />
-            <div className="absolute bottom-0 right-0 text-[11px] text-[#636366] font-medium bg-[#080808] pl-2">
-              {content.length} / 2000
-            </div>
-          </div>
+                <div className="px-5 pb-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <input
+                    type="password" value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="비밀번호 입력 (4자 이상)" maxLength={20}
+                    className="w-full rounded-xl px-4 py-3.5 text-sm focus:outline-none mt-4 transition-all placeholder-white/20 text-center tracking-wider"
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.82)' }}
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+
+        <div className="h-4" />
       </div>
     </div>
   );
