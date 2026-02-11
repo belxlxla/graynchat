@@ -134,6 +134,7 @@ export default function ChatRoomPage() {
   const channelRef     = useRef<RealtimeChannel | null>(null);
   const messageIdsRef  = useRef<Set<number>>(new Set());
 
+
   const isGroupChat = chatId?.startsWith('group_') ?? false;
 
   const allImages = useMemo(() =>
@@ -815,7 +816,7 @@ export default function ChatRoomPage() {
                     </div>
 
                     <div className={`flex items-center gap-1.5 ${isMe ? 'flex-row-reverse' : ''}`}>
-                      <span className="text-[10px] text-white/22 tabular-nums">
+                      <span className="text-[10px] text-white/20 tabular-nums">
                         {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       {msg.isRetrying && <RefreshCw className="w-2.5 h-2.5 text-white/22 animate-spin" />}
