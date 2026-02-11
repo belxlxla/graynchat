@@ -227,28 +227,29 @@ export default function AccountInfoPage() {
           <div
             onClick={() => setEditTarget('bg')}
             className="h-44 w-full relative cursor-pointer overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, #1a1a1a 0%, #2a1a1a 100%)' }}
+            style={{ background: '#161616' }}
           >
             {profile.bg ? (
               <img src={profile.bg} alt="bg" className="w-full h-full object-cover" />
             ) : (
-              <div className="absolute inset-0"
-                style={{
-                  background: 'radial-gradient(ellipse at 30% 60%, rgba(255,32,58,0.12) 0%, transparent 60%), radial-gradient(ellipse at 70% 30%, rgba(255,32,58,0.06) 0%, transparent 50%)',
-                }} />
+              <div className="absolute inset-0 flex items-center justify-center gap-2"
+                style={{ color: 'rgba(255,255,255,0.1)' }}>
+                <Camera className="w-5 h-5" />
+                <span className="text-[12px]">배경 사진 설정</span>
+              </div>
             )}
             {/* 편집 오버레이 */}
             <div className="absolute inset-0 flex items-center justify-center opacity-0 active:opacity-100 transition-opacity"
-              style={{ background: 'rgba(0,0,0,0.5)' }}>
+              style={{ background: 'rgba(0,0,0,0.55)' }}>
               <div className="flex items-center gap-2 px-4 py-2 rounded-full"
-                style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)' }}>
+                style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.12)' }}>
                 <Camera className="w-4 h-4 text-white" />
                 <span className="text-[12px] font-medium text-white">배경 변경</span>
               </div>
             </div>
-            {/* 그라디언트 페이드 아웃 */}
-            <div className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
-              style={{ background: 'linear-gradient(to bottom, transparent, var(--color-dark-bg, #111111))' }} />
+            {/* 하단 페이드 - 솔리드 오버레이 */}
+            <div className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
+              style={{ background: 'rgba(0,0,0,0.3)' }} />
           </div>
 
           {/* 아바타 + 이름 + 이메일 */}
@@ -265,7 +266,7 @@ export default function AccountInfoPage() {
                     <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center"
-                      style={{ background: 'linear-gradient(135deg, #2C2C2E, #3A3A3C)' }}>
+                      style={{ background: '#2C2C2E' }}>
                       <User className="w-7 h-7" style={{ color: 'rgba(255,255,255,0.3)' }} />
                     </div>
                   )}
