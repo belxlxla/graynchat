@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  ChevronLeft, ChevronRight, 
-  Camera, User, Phone, Globe, LogOut, 
-  Trash2, Image as ImageIcon, X, Search, CheckCircle2, Circle
+import {
+  ChevronLeft, ChevronRight,
+  Camera, User, Phone, Globe, LogOut,
+  Trash2, Image as ImageIcon, X, Search, CheckCircle2, Circle,
+  ShieldCheck, Pencil
 } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Point, Area } from 'react-easy-crop';
@@ -76,8 +77,8 @@ const COUNTRIES: Country[] = [
 
 export default function AccountInfoPage() {
   const navigate = useNavigate();
-  const { user } = useAuth(); 
-  
+  const { user } = useAuth();
+
   const [profile, setProfile] = useState<UserProfile>({
     name: '사용자',
     avatar: null,
@@ -86,10 +87,10 @@ export default function AccountInfoPage() {
     email: '',
     phone: '번호 없음'
   });
-  
+
   const [blockedCountries, setBlockedCountries] = useState<string[]>([]);
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null); 
+  const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [showVerifyConfirm, setShowVerifyConfirm] = useState<'phone' | 'name' | null>(null);
 
@@ -119,10 +120,7 @@ export default function AccountInfoPage() {
     if (!user) return;
     try {
       const { data: dbData, error: dbError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+        .from('users').select('*').eq('id', user.id).single();
       if (dbError) throw dbError;
       setProfile({
         name: dbData?.name || user.user_metadata?.full_name || '사용자',
@@ -155,22 +153,16 @@ export default function AccountInfoPage() {
   const handleCropSave = async () => {
     if (!tempImageSrc || !croppedAreaPixels || !user) return;
     const loadingToast = toast.loading('사진 업로드 중...');
-
     try {
       const croppedImageUrl = await getCroppedImg(tempImageSrc, croppedAreaPixels);
       const res = await fetch(croppedImageUrl);
       const blob = await res.blob();
-      
       const filePath = `${user.id}/${currentImageType}_${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, blob, { upsert: true });
-      
       if (uploadError) throw uploadError;
-      
       const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
       const dbField = currentImageType === 'avatar' ? 'avatar' : 'bg_image';
-      
       await supabase.from('users').update({ [dbField]: publicUrl }).eq('id', user.id);
-      
       setProfile(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
       toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
       setIsCropOpen(false);
@@ -203,29 +195,23 @@ export default function AccountInfoPage() {
     } catch (err) { toast.error('설정 저장 실패', { id: loadingToast }); }
   };
 
-  const handlePhoneClick = () => {
-    setShowVerifyConfirm('phone');
-  };
-
-  const handleNameClick = () => {
-    setShowVerifyConfirm('name');
-  };
+  const handlePhoneClick = () => { setShowVerifyConfirm('phone'); };
+  const handleNameClick = () => { setShowVerifyConfirm('name'); };
 
   const handleConfirmVerify = () => {
     if (!user) return;
     const type = showVerifyConfirm;
     setShowVerifyConfirm(null);
-    
     sessionStorage.setItem('verify_return_type', type || '');
     sessionStorage.setItem('verify_user_id', user.id);
     sessionStorage.setItem('verify_current_name', profile.name);
     sessionStorage.setItem('verify_current_phone', profile.phone);
-    
     navigate('/auth/phone-verify');
   };
 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
+      {/* ── 헤더 (유지) ───────────────────────────────── */}
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
         <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
           <ChevronLeft className="w-7 h-7" />
@@ -233,173 +219,433 @@ export default function AccountInfoPage() {
         <h1 className="text-lg font-bold ml-1">계정 정보</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar pb-10">
-        <div className="relative mb-16">
-          <div onClick={() => setEditTarget('bg')} className="h-48 w-full bg-[#2C2C2E] relative cursor-pointer group overflow-hidden">
-            {profile.bg ? <img src={profile.bg} alt="bg" className="w-full h-full object-cover opacity-80 group-hover:opacity-60 transition-opacity" /> : <div className="w-full h-full flex items-center justify-center text-[#8E8E93] gap-2"><ImageIcon className="w-6 h-6" /><span className="text-sm">배경 사진 설정</span></div>}
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="w-8 h-8 text-white drop-shadow-md" /></div>
+      <div className="flex-1 overflow-y-auto pb-12" style={{ scrollbarWidth: 'none' }}>
+
+        {/* ── 프로필 히어로 영역 ───────────────────────── */}
+        <div className="relative">
+          {/* 배경 이미지 */}
+          <div
+            onClick={() => setEditTarget('bg')}
+            className="h-44 w-full relative cursor-pointer overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, #1a1a1a 0%, #2a1a1a 100%)' }}
+          >
+            {profile.bg ? (
+              <img src={profile.bg} alt="bg" className="w-full h-full object-cover" />
+            ) : (
+              <div className="absolute inset-0"
+                style={{
+                  background: 'radial-gradient(ellipse at 30% 60%, rgba(255,32,58,0.12) 0%, transparent 60%), radial-gradient(ellipse at 70% 30%, rgba(255,32,58,0.06) 0%, transparent 50%)',
+                }} />
+            )}
+            {/* 편집 오버레이 */}
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 active:opacity-100 transition-opacity"
+              style={{ background: 'rgba(0,0,0,0.5)' }}>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)' }}>
+                <Camera className="w-4 h-4 text-white" />
+                <span className="text-[12px] font-medium text-white">배경 변경</span>
+              </div>
+            </div>
+            {/* 그라디언트 페이드 아웃 */}
+            <div className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
+              style={{ background: 'linear-gradient(to bottom, transparent, var(--color-dark-bg, #111111))' }} />
           </div>
-          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
-            <div onClick={() => setEditTarget('avatar')} className="w-24 h-24 rounded-full border-4 border-dark-bg bg-[#3A3A3C] overflow-hidden cursor-pointer group relative shadow-xl">
-              {profile.avatar ? <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover group-hover:opacity-70 transition-opacity" /> : <User className="w-10 h-10 text-[#8E8E93] m-auto mt-6" />}
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="w-6 h-6 text-white drop-shadow-md" /></div>
+
+          {/* 아바타 + 이름 + 이메일 */}
+          <div className="px-5 -mt-12 pb-5">
+            <div className="flex items-end gap-4">
+              {/* 아바타 */}
+              <div className="relative shrink-0" onClick={() => setEditTarget('avatar')}>
+                <div className="w-[72px] h-[72px] rounded-[20px] overflow-hidden cursor-pointer shadow-xl"
+                  style={{
+                    border: '2.5px solid rgba(255,255,255,0.12)',
+                    background: '#2C2C2E',
+                  }}>
+                  {profile.avatar ? (
+                    <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center"
+                      style={{ background: 'linear-gradient(135deg, #2C2C2E, #3A3A3C)' }}>
+                      <User className="w-7 h-7" style={{ color: 'rgba(255,255,255,0.3)' }} />
+                    </div>
+                  )}
+                </div>
+                {/* 편집 뱃지 */}
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ background: '#FF203A', border: '2px solid #111111' }}>
+                  <Camera className="w-3 h-3 text-white" />
+                </div>
+              </div>
+
+              {/* 이름 + 이메일 */}
+              <div className="pb-1 min-w-0">
+                <h2 className="text-[18px] font-bold text-white truncate" style={{ letterSpacing: '-0.02em' }}>
+                  {profile.name}
+                </h2>
+                <p className="text-[12px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.38)' }}>
+                  {profile.email}
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="text-center mb-8 px-5">
-          <h2 className="text-xl font-bold text-white mb-1">{profile.name}</h2>
-          <p className="text-xs text-[#8E8E93]">{profile.email}</p>
-        </div>
+        <div className="px-4 space-y-4">
 
-        <div className="px-5 space-y-6">
-          <Section label="기본 정보">
-            <button onClick={handlePhoneClick} className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group">
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center"><Phone className="w-5 h-5" /></div>
-                <span className="text-[15px] text-white">휴대폰 번호</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{profile.phone}</span>
-                <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
-              </div>
-            </button>
-            <div className="h-[1px] bg-[#3A3A3C] mx-4" />
-            <button onClick={handleNameClick} className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#3A3A3C] active:bg-[#48484A] transition-colors group">
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center"><User className="w-5 h-5" /></div>
-                <span className="text-[15px] text-white">이름</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{profile.name}</span>
-                <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
-              </div>
-            </button>
-            <div className="h-[1px] bg-[#3A3A3C] mx-4" />
-            <InfoItem label="로그인 방식" value={profile.provider.toUpperCase()} icon={<Globe className="w-5 h-5" />} />
-          </Section>
-
-          <Section label="보안 설정">
-            <button onClick={() => setIsCountryModalOpen(true)} className="w-full flex items-center justify-between px-5 py-4 bg-[#2C2C2E] rounded-2xl hover:bg-[#3A3A3C] transition-colors group">
-              <div className="flex items-center gap-3">
-                <Globe className="w-5 h-5 text-[#8E8E93]" />
-                <div className="text-left">
-                  <p className="text-[15px] text-white">국가별 접근 및 노출 제한</p>
-                  <p className={`text-xs mt-0.5 ${blockedCountries.length > 0 ? 'text-brand-DEFAULT font-bold' : 'text-[#8E8E93]'}`}>
-                    {blockedCountries.length > 0 ? `${blockedCountries.length}개국 차단 중` : '설정된 국가 없음'}
+          {/* ── 본인 정보 카드 (2열 그리드) ─────────────── */}
+          <div>
+            <SectionLabel>본인 정보</SectionLabel>
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* 전화번호 카드 */}
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={handlePhoneClick}
+                className="relative flex flex-col gap-3 p-4 rounded-2xl text-left overflow-hidden"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                }}
+              >
+                {/* 아이콘 */}
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(255,32,58,0.1)' }}>
+                  <Phone className="w-4 h-4" style={{ color: '#FF203A' }} />
+                </div>
+                {/* 레이블 */}
+                <div className="min-w-0">
+                  <p className="text-[11px] mb-1" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>
+                    휴대폰 번호
+                  </p>
+                  <p className="text-[13px] font-semibold truncate"
+                    style={{
+                      color: profile.phone === '번호 없음' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.82)',
+                      letterSpacing: '-0.01em',
+                    }}>
+                    {profile.phone === '번호 없음' ? '미등록' : profile.phone.replace('+82 ', '')}
                   </p>
                 </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-[#636366] group-hover:text-[#8E8E93]" />
-            </button>
-          </Section>
+                {/* 편집 인디케이터 */}
+                <div className="absolute top-3 right-3">
+                  <Pencil className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.15)' }} />
+                </div>
+              </motion.button>
 
-          <div className="flex flex-col items-center gap-4 mt-6">
-            <button onClick={() => setIsLogoutModalOpen(true)} className="w-full py-4 text-[#FF203A] text-[15px] font-medium hover:bg-white/5 rounded-2xl transition-colors flex items-center justify-center gap-2">
-              <LogOut className="w-4 h-4" />로그아웃
-            </button>
-            <button onClick={() => navigate('/settings/account/withdraw')} className="text-[12px] text-[#48484A] underline underline-offset-2 hover:text-[#8E8E93] transition-colors">회원 탈퇴하기</button>
+              {/* 이름 카드 */}
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={handleNameClick}
+                className="relative flex flex-col gap-3 p-4 rounded-2xl text-left overflow-hidden"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                }}
+              >
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.07)' }}>
+                  <User className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.55)' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] mb-1" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>
+                    이름
+                  </p>
+                  <p className="text-[13px] font-semibold truncate"
+                    style={{ color: 'rgba(255,255,255,0.82)', letterSpacing: '-0.01em' }}>
+                    {profile.name}
+                  </p>
+                </div>
+                <div className="absolute top-3 right-3">
+                  <Pencil className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.15)' }} />
+                </div>
+              </motion.button>
+            </div>
+
+            {/* 본인인증 안내 */}
+            <div className="flex items-center gap-2 mt-2 px-1">
+              <ShieldCheck className="w-3 h-3 shrink-0" style={{ color: 'rgba(255,255,255,0.2)' }} />
+              <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                수정 시 본인인증이 필요합니다
+              </p>
+            </div>
           </div>
+
+          {/* ── 로그인 방식 ───────────────────────────────── */}
+          <div>
+            <SectionLabel>계정</SectionLabel>
+            <div className="rounded-2xl overflow-hidden"
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}>
+              <div className="flex items-center justify-between px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+                    style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <Globe className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.4)' }} />
+                  </div>
+                  <span className="text-[14px]" style={{ color: 'rgba(255,255,255,0.65)' }}>로그인 방식</span>
+                </div>
+                <span className="text-[12px] font-bold px-2.5 py-1 rounded-lg"
+                  style={{
+                    background: 'rgba(255,255,255,0.07)',
+                    color: 'rgba(255,255,255,0.5)',
+                    letterSpacing: '0.05em',
+                  }}>
+                  {profile.provider.toUpperCase()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 보안 설정 ─────────────────────────────────── */}
+          <div>
+            <SectionLabel>보안</SectionLabel>
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsCountryModalOpen(true)}
+              className="w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all"
+              style={{
+                background: blockedCountries.length > 0
+                  ? 'rgba(255,32,58,0.05)'
+                  : 'rgba(255,255,255,0.03)',
+                border: blockedCountries.length > 0
+                  ? '1px solid rgba(255,32,58,0.2)'
+                  : '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: blockedCountries.length > 0
+                    ? 'rgba(255,32,58,0.1)'
+                    : 'rgba(255,255,255,0.06)',
+                }}>
+                <ShieldCheck className="w-4.5 h-4.5" style={{
+                  color: blockedCountries.length > 0 ? '#FF203A' : 'rgba(255,255,255,0.4)',
+                }} />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-[14px]" style={{ color: 'rgba(255,255,255,0.82)' }}>
+                  국가별 접근 및 노출 제한
+                </p>
+                <p className="text-[11px] mt-0.5"
+                  style={{ color: blockedCountries.length > 0 ? '#FF203A' : 'rgba(255,255,255,0.28)' }}>
+                  {blockedCountries.length > 0 ? `${blockedCountries.length}개국 차단 중` : '설정된 국가 없음'}
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'rgba(255,255,255,0.18)' }} />
+            </motion.button>
+          </div>
+
+          {/* ── 로그아웃 / 탈퇴 ───────────────────────────── */}
+          <div className="pt-2 space-y-2">
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsLogoutModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl transition-all"
+              style={{
+                background: 'rgba(255,32,58,0.06)',
+                border: '1px solid rgba(255,32,58,0.15)',
+                color: '#FF203A',
+              }}
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-[14px] font-semibold">로그아웃</span>
+            </motion.button>
+
+            <button
+              onClick={() => navigate('/settings/account/withdraw')}
+              className="w-full py-2.5 text-[12px] transition-colors"
+              style={{ color: 'rgba(255,255,255,0.2)' }}
+            >
+              회원 탈퇴하기
+            </button>
+          </div>
+
         </div>
       </div>
 
-      <input type="file" ref={bgInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'bg')} />
-      <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar')} />
+      {/* ── 히든 파일 인풋 ─────────────────────────────── */}
+      <input type="file" ref={bgInputRef} className="hidden" accept="image/*"
+        onChange={(e) => handleFileChange(e, 'bg')} />
+      <input type="file" ref={avatarInputRef} className="hidden" accept="image/*"
+        onChange={(e) => handleFileChange(e, 'avatar')} />
 
+      {/* ── 이미지 편집 바텀시트 ──────────────────────── */}
       <AnimatePresence>
         {editTarget && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setEditTarget(null)}>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="relative z-10 w-full max-w-[480px] bg-[#1C1C1E] rounded-t-3xl overflow-hidden p-6 pb-safe" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-center text-white font-bold text-lg mb-6">{editTarget === 'avatar' ? '프로필 사진 설정' : '배경 사진 설정'}</h3>
-              <div className="space-y-3">
-                <button onClick={() => (editTarget === 'avatar' ? avatarInputRef : bgInputRef).current?.click()} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-white font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><ImageIcon className="w-5 h-5" /> 앨범에서 선택</button>
-                <button onClick={() => handleResetImage(editTarget)} className="w-full py-3.5 bg-[#2C2C2E] rounded-xl text-[#FF203A] font-medium hover:bg-[#3A3A3C] flex items-center justify-center gap-2"><Trash2 className="w-5 h-5" /> 기본값으로 변경</button>
+          <div className="fixed inset-0 z-50 flex items-end justify-center"
+            onClick={() => setEditTarget(null)}>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative z-10 w-full max-w-[480px] rounded-t-[28px] px-5 pt-5 pb-safe-or-10"
+              style={{ background: '#1A1A1A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-9 h-[3px] rounded-full mx-auto mb-5"
+                style={{ background: 'rgba(255,255,255,0.12)' }} />
+              <p className="text-[16px] font-bold text-center mb-5 text-white">
+                {editTarget === 'avatar' ? '프로필 사진 설정' : '배경 사진 설정'}
+              </p>
+              <div className="space-y-2">
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => (editTarget === 'avatar' ? avatarInputRef : bgInputRef).current?.click()}
+                  className="w-full py-3.5 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-2.5"
+                  style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)' }}
+                >
+                  <ImageIcon className="w-4.5 h-4.5" />앨범에서 선택
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleResetImage(editTarget)}
+                  className="w-full py-3.5 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-2.5"
+                  style={{ background: 'rgba(255,32,58,0.08)', color: '#FF203A' }}
+                >
+                  <Trash2 className="w-4.5 h-4.5" />기본값으로 변경
+                </motion.button>
+                <button
+                  onClick={() => setEditTarget(null)}
+                  className="w-full py-3 text-[13px]"
+                  style={{ color: 'rgba(255,255,255,0.25)' }}
+                >
+                  취소
+                </button>
               </div>
-              <button onClick={() => setEditTarget(null)} className="w-full mt-4 py-3 text-[#8E8E93] text-sm">취소</button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
+      {/* ── 이미지 크롭 전체화면 ─────────────────────── */}
       <AnimatePresence>
         {isCropOpen && tempImageSrc && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black flex flex-col">
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black flex flex-col"
+          >
             <div className="h-16 flex items-center justify-between px-5 bg-black/80 backdrop-blur-md z-10 sticky top-0">
-              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2 text-white"><X className="w-7 h-7" /></button>
+              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2 text-white">
+                <X className="w-7 h-7" />
+              </button>
               <span className="font-bold text-lg text-white">이미지 편집</span>
-              <button onClick={handleCropSave} className="px-5 py-2 bg-brand-DEFAULT rounded-full font-black text-sm text-white shadow-lg active:scale-95 transition-all">완료</button>
+              <button
+                onClick={handleCropSave}
+                className="px-5 py-2 rounded-full font-black text-sm text-white shadow-lg active:scale-95 transition-all"
+                style={{ background: '#FF203A' }}
+              >
+                완료
+              </button>
             </div>
             <div className="relative flex-1 bg-black">
-              <Cropper 
-                image={tempImageSrc} 
-                crop={crop} 
-                zoom={zoom} 
-                aspect={currentImageType === 'avatar' ? 1 : 16/9} 
-                onCropChange={setCrop} 
-                onCropComplete={(_, p) => setCroppedAreaPixels(p)} 
-                onZoomChange={setZoom} 
+              <Cropper
+                image={tempImageSrc} crop={crop} zoom={zoom}
+                aspect={currentImageType === 'avatar' ? 1 : 16 / 9}
+                onCropChange={setCrop}
+                onCropComplete={(_, p) => setCroppedAreaPixels(p)}
+                onZoomChange={setZoom}
                 cropShape={currentImageType === 'avatar' ? 'round' : 'rect'}
                 showGrid={false}
               />
             </div>
             <div className="h-24 bg-black/80 backdrop-blur-md flex items-center justify-center px-10 gap-4">
-               <span className="text-xs text-[#8E8E93]">확대</span>
-               <input 
-                 type="range" 
-                 min={1} 
-                 max={3} 
-                 step={0.1} 
-                 value={zoom} 
-                 onChange={(e) => setZoom(Number(e.target.value))} 
-                 className="flex-1 accent-brand-DEFAULT"
-               />
+              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>확대</span>
+              <input
+                type="range" min={1} max={3} step={0.1} value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="flex-1 accent-[#FF203A]"
+              />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ── 본인인증 확인 모달 ─────────────────────────── */}
       <AnimatePresence>
         {showVerifyConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowVerifyConfirm(null)} />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative z-10 w-full max-w-[320px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
-              <div className="p-8">
-                <div className="w-16 h-16 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                  {showVerifyConfirm === 'phone' ? <Phone className="w-8 h-8 text-brand-DEFAULT" /> : <User className="w-8 h-8 text-brand-DEFAULT" />}
-                </div>
-                <h3 className="text-white font-bold text-xl mb-2">본인 정보 변경</h3>
-                <p className="text-[#8E8E93] text-[15px] leading-relaxed">
-                  {showVerifyConfirm === 'phone' ? '전화번호' : '이름'}를 변경하려면 본인인증이 필요합니다.
-                </p>
+          <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setShowVerifyConfirm(null)}
+            />
+            <motion.div
+              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative z-10 w-full max-w-[480px] rounded-t-[28px] px-5 pt-5 pb-safe-or-10"
+              style={{ background: '#1A1A1A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <div className="w-9 h-[3px] rounded-full mx-auto mb-6"
+                style={{ background: 'rgba(255,255,255,0.12)' }} />
+
+              {/* 아이콘 */}
+              <div className="w-14 h-14 rounded-[18px] flex items-center justify-center mx-auto mb-5"
+                style={{ background: 'rgba(255,32,58,0.1)', border: '1px solid rgba(255,32,58,0.2)' }}>
+                {showVerifyConfirm === 'phone'
+                  ? <Phone className="w-6 h-6" style={{ color: '#FF203A' }} />
+                  : <User className="w-6 h-6" style={{ color: '#FF203A' }} />
+                }
               </div>
-              <div className="flex border-t border-[#2C2C2E] h-14">
-                <button onClick={() => setShowVerifyConfirm(null)} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button>
-                <button onClick={handleConfirmVerify} className="flex-1 text-brand-DEFAULT font-bold">본인인증</button>
+
+              <h3 className="text-[18px] font-bold text-center mb-2 text-white" style={{ letterSpacing: '-0.02em' }}>
+                {showVerifyConfirm === 'phone' ? '전화번호 변경' : '이름 변경'}
+              </h3>
+              <p className="text-[13px] text-center mb-8" style={{ color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
+                {showVerifyConfirm === 'phone' ? '전화번호' : '이름'}를 변경하려면{'\n'}본인인증이 필요합니다.
+              </p>
+
+              <div className="flex gap-2.5">
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setShowVerifyConfirm(null)}
+                  className="flex-1 py-3.5 rounded-2xl text-[14px] font-semibold"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}
+                >
+                  취소
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleConfirmVerify}
+                  className="flex-1 py-3.5 rounded-2xl text-[14px] font-bold"
+                  style={{ background: '#FF203A', color: 'white' }}
+                >
+                  본인인증
+                </motion.button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
-      <CountrySelectModal isOpen={isCountryModalOpen} onClose={() => setIsCountryModalOpen(false)} blockedList={blockedCountries} onSave={handleSaveBlockedCountries} />
-      <LogoutModal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)} onConfirm={() => supabase.auth.signOut().then(() => navigate('/'))} />
+      <CountrySelectModal
+        isOpen={isCountryModalOpen}
+        onClose={() => setIsCountryModalOpen(false)}
+        blockedList={blockedCountries}
+        onSave={handleSaveBlockedCountries}
+      />
+      <LogoutModal
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
+        onConfirm={() => supabase.auth.signOut().then(() => navigate('/'))}
+      />
     </div>
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+// ── 섹션 레이블 ───────────────────────────────────────────
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div><h3 className="text-xs font-bold text-[#8E8E93] ml-1 mb-2 tracking-wider uppercase">{label}</h3><div className="bg-[#2C2C2E] rounded-2xl overflow-hidden border border-[#3A3A3C] divide-y divide-[#3A3A3C] shadow-sm">{children}</div></div>
+    <p className="text-[11px] font-bold mb-2.5 px-1 tracking-[0.1em] uppercase"
+      style={{ color: 'rgba(255,255,255,0.25)' }}>
+      {children}
+    </p>
   );
 }
 
-function InfoItem({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between px-5 py-4"><div className="flex items-center gap-3"><div className="w-5 h-5 text-[#8E8E93] flex justify-center items-center">{icon}</div><span className="text-[15px] text-white">{label}</span></div><span className="text-[15px] text-[#E5E5EA] font-medium font-mono">{value}</span></div>
-  );
-}
-
+// ── 국가 선택 모달 ────────────────────────────────────────
 function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: any) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>(blockedList);
@@ -407,38 +653,150 @@ function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: any) {
   const filtered = COUNTRIES.filter(c => c.name.includes(search));
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={onClose}>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-[400px] bg-[#1C1C1E] rounded-2xl overflow-hidden shadow-2xl border border-[#2C2C2E] flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-        <div className="h-14 flex items-center justify-between px-5 bg-[#2C2C2E] shrink-0"><h3 className="text-white font-bold text-lg">접근 제한 국가 선택</h3><button onClick={onClose}><X className="w-6 h-6 text-[#8E8E93]" /></button></div>
-        <div className="p-4 bg-[#1C1C1E] border-b border-[#2C2C2E]"><div className="bg-[#2C2C2E] rounded-xl flex items-center px-3 py-2.5"><Search className="w-4 h-4 text-[#8E8E93] mr-2" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="검색" className="bg-transparent text-white text-sm w-full focus:outline-none" /></div></div>
-        <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      />
+      <motion.div
+        initial={{ y: '100%' }} animate={{ y: 0 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+        className="relative z-10 w-full max-w-[480px] rounded-t-[28px] overflow-hidden flex flex-col"
+        style={{
+          background: '#1A1A1A',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          maxHeight: '85dvh',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* 핸들 */}
+        <div className="w-9 h-[3px] rounded-full mx-auto mt-4 mb-4 shrink-0"
+          style={{ background: 'rgba(255,255,255,0.12)' }} />
+
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-5 pb-4 shrink-0">
+          <h3 className="text-[16px] font-bold text-white">접근 제한 국가</h3>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,0.07)' }}
+          >
+            <X className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.5)' }} />
+          </button>
+        </div>
+
+        {/* 검색 */}
+        <div className="px-4 pb-3 shrink-0">
+          <div className="flex items-center gap-2.5 rounded-2xl px-4 py-2.5"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <Search className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.25)' }} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="국가 검색"
+              className="bg-transparent text-[13px] w-full focus:outline-none placeholder-white/20"
+              style={{ color: 'rgba(255,255,255,0.8)' }}
+            />
+          </div>
+        </div>
+
+        {/* 리스트 */}
+        <div className="flex-1 overflow-y-auto px-3 pb-2" style={{ scrollbarWidth: 'none' }}>
           {filtered.map(country => (
-            <button key={country.code} onClick={() => setSelected(prev => prev.includes(country.code) ? prev.filter(c => c !== country.code) : [...prev, country.code])} className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-[#2C2C2E]">
-              <div className="flex items-center gap-3"><span className="text-xl">{country.flag}</span><div className="flex flex-col items-start"><span className="text-white font-medium">{country.name}</span><span className="text-[10px] text-[#636366]">{country.code}</span></div></div>
-              {selected.includes(country.code) ? <CheckCircle2 className="w-5 h-5 text-brand-DEFAULT fill-brand-DEFAULT/20" /> : <Circle className="w-5 h-5 text-[#3A3A3C]" />}
+            <button
+              key={country.code}
+              onClick={() => setSelected(prev =>
+                prev.includes(country.code)
+                  ? prev.filter(c => c !== country.code)
+                  : [...prev, country.code]
+              )}
+              className="w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all"
+              style={{
+                background: selected.includes(country.code)
+                  ? 'rgba(255,32,58,0.06)'
+                  : 'transparent',
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl">{country.flag}</span>
+                <div className="text-left">
+                  <p className="text-[13px] font-medium text-white">{country.name}</p>
+                  <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{country.code}</p>
+                </div>
+              </div>
+              {selected.includes(country.code)
+                ? <CheckCircle2 className="w-5 h-5" style={{ color: '#FF203A' }} />
+                : <Circle className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.12)' }} />
+              }
             </button>
           ))}
         </div>
-        <div className="p-4 bg-[#1C1C1E] border-t border-[#2C2C2E] flex items-center gap-3"><div className="flex-1 text-xs text-[#8E8E93]"><span className="text-white font-bold">{selected.length}</span>개국 선택됨</div><button onClick={() => { onSave(selected); onClose(); }} className="px-6 h-11 bg-brand-DEFAULT text-white font-bold rounded-xl">적용하기</button></div>
+
+        {/* 푸터 */}
+        <div className="px-4 pt-3 pb-safe-or-8 shrink-0 flex items-center gap-3"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <p className="flex-1 text-[12px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <span className="font-bold text-white">{selected.length}</span>개국 선택
+          </p>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => { onSave(selected); onClose(); }}
+            className="px-6 h-11 rounded-2xl text-[14px] font-bold text-white"
+            style={{ background: '#FF203A' }}
+          >
+            적용
+          </motion.button>
+        </div>
       </motion.div>
     </div>
   );
 }
 
+// ── 로그아웃 모달 ─────────────────────────────────────────
 function LogoutModal({ isOpen, onClose, onConfirm }: any) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative z-10 w-full max-w-[300px] bg-[#1C1C1E] rounded-3xl overflow-hidden shadow-2xl border border-[#2C2C2E] text-center">
-        <div className="p-8"><div className="w-16 h-16 bg-[#FF203A]/10 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut className="w-8 h-8 text-[#FF203A]" />
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+        className="relative z-10 w-full max-w-[480px] rounded-t-[28px] px-5 pt-5 pb-safe-or-10"
+        style={{ background: '#1A1A1A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+      >
+        <div className="w-9 h-[3px] rounded-full mx-auto mb-6"
+          style={{ background: 'rgba(255,255,255,0.12)' }} />
+        <div className="w-14 h-14 rounded-[18px] flex items-center justify-center mx-auto mb-5"
+          style={{ background: 'rgba(255,32,58,0.1)', border: '1px solid rgba(255,32,58,0.2)' }}>
+          <LogOut className="w-6 h-6" style={{ color: '#FF203A' }} />
         </div>
-        <h3 className="text-white font-bold text-xl mb-2">로그아웃</h3>
-        <p className="text-[#8E8E93] text-[15px] leading-relaxed">계정에서 로그아웃 하시겠습니까?</p></div>
-        <div className="flex border-t border-[#2C2C2E] h-14">
-          <button onClick={onClose} className="flex-1 text-[#8E8E93] font-bold border-r border-[#2C2C2E]">취소</button>
-          <button onClick={onConfirm} className="flex-1 text-[#FF203A] font-bold">로그아웃</button>
+        <h3 className="text-[18px] font-bold text-center mb-2 text-white" style={{ letterSpacing: '-0.02em' }}>
+          로그아웃
+        </h3>
+        <p className="text-[13px] text-center mb-8" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          계정에서 로그아웃 하시겠습니까?
+        </p>
+        <div className="flex gap-2.5">
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={onClose}
+            className="flex-1 py-3.5 rounded-2xl text-[14px] font-semibold"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}
+          >
+            취소
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={onConfirm}
+            className="flex-1 py-3.5 rounded-2xl text-[14px] font-bold"
+            style={{ background: '#FF203A', color: 'white' }}
+          >
+            로그아웃
+          </motion.button>
         </div>
       </motion.div>
     </div>
