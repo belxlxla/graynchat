@@ -477,7 +477,7 @@ export default function LoginPage() {
       <div id="naverIdLogin" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}/>
 
       <div className="flex flex-col items-center mb-8">
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.5 }} className="w-24 h-24 mb-4">
+        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.5 }} className="w-12 h-28 mb-4">
           <img src={GraynLogo} alt="Grayn" className="w-full h-full object-contain"/>
         </motion.div>
         <motion.h1 initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="text-2xl font-bold text-white tracking-tight">
