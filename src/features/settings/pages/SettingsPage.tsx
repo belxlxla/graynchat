@@ -239,7 +239,7 @@ export default function SettingsPage() {
   }, [searchQuery]);
 
   return (
-    <div className="w-full h-full flex flex-col bg-dark-bg text-white pb-4">
+    <div className="w-full h-full flex flex-col bg-dark-bg text-white pb-24">
 
       {/* ── 헤더 ────────────────────────────────────────── */}
       <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 shrink-0"

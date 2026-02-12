@@ -517,7 +517,7 @@ export default function FriendsListPage() {
         {selectedFriend && (
           <Sheet onClose={() => setSelectedFriend(null)} maxH="92dvh">
             {/* BG strip */}
-            <div className="relative h-36 shrink-0 overflow-hidden rounded-t-[24px]">
+            <div className="relative h-20 shrink-0 overflow-hidden rounded-t-[24px]">
               {selectedFriend.bg
                 ? <img src={selectedFriend.bg} className="w-full h-full object-cover" alt="" />
                 : <div className="w-full h-full" style={{ background: T.surface }} />
@@ -778,7 +778,7 @@ function ScoreInfoModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
   return (
     <AnimatePresence>
       <Sheet onClose={onClose} maxH="85dvh">
-        <div className="px-5 pt-3 pb-28 overflow-y-auto">
+        <div className="px-5 pt-3 pb-12 overflow-y-auto">
           {/* Title */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
