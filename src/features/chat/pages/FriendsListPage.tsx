@@ -7,11 +7,18 @@ import {
   UserPlus, MessageSquarePlus, CheckCircle2, Circle,
   Image as ImageIcon, Trash2, RefreshCw,
   ChevronRight, Users, Ban, AlertTriangle, BookUser,
-  Phone, ArrowLeft,
+  Phone, ArrowLeft, HelpCircle, Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
+import {
+  calculateFriendlyScore,
+  updateFriendlyScoreInDB,
+  getScoreColor,
+  getScoreLabel,
+  SCORE_EXPLANATION,
+} from './friendlyScoreUtils';
 
 // ── Types ────────────────────────────────────────────────────
 interface Friend {
@@ -26,6 +33,15 @@ interface Friend {
   friendlyScore: number;
 }
 interface MyProfile { name: string; status: string; avatar: string | null; bg: string | null; }
+interface ScoreBreakdown {
+  total: number;
+  messageCount: number;
+  recency: number;
+  frequency: number;
+  balance: number;
+  duration: number;
+  consistency: number;
+}
 type StepType     = 'permission' | 'complete' | 'list';
 type ChatStepType = 'select-type' | 'select-friends';
 
@@ -97,29 +113,23 @@ export default function FriendsListPage() {
   const [searchQuery, setSearchQuery]                 = useState('');
   const [isSettingsOpen, setIsSettingsOpen]           = useState(false);
   const [calculatingScore, setCalculatingScore]       = useState(false);
+  const [scoreBreakdown, setScoreBreakdown]           = useState<ScoreBreakdown | null>(null);
+  const [showScoreInfo, setShowScoreInfo]             = useState(false);
 
   // ── Permission check ──────────────────────────────────────
-useEffect(() => {
-  if (!user?.id) { setIsCheckingPermission(false); return; }
-  
-  const check = async () => {
-    try {
-      const { data } = await supabase
-        .from('users')
-        .select('contact_permission')
-        .eq('id', user.id)
-        .maybeSingle();
-      const p = data?.contact_permission;
-      setStep(p === 'granted' || p === 'denied' ? 'list' : 'permission');
-    } catch {
-      setStep('list');
-    } finally {
-      setIsCheckingPermission(false);
-    }
-  };
-  
-  check();
-}, [user?.id]);
+  useEffect(() => {
+    if (!user?.id) { setIsCheckingPermission(false); return; }
+    const check = async () => {
+      try {
+        const { data } = await supabase.from('users').select('contact_permission')
+          .eq('id', user.id).maybeSingle();
+        const p = data?.contact_permission;
+        setStep(p === 'granted' || p === 'denied' ? 'list' : 'permission');
+      } catch { setStep('list'); }
+      finally { setIsCheckingPermission(false); }
+    };
+    check();
+  }, [user?.id]);
 
   const handleAllowContacts = useCallback(async () => {
     if (!user?.id) return;
@@ -161,7 +171,7 @@ useEffect(() => {
           .eq('user_id', session.user.id).eq('friend_user_id', u.id).maybeSingle();
         if (!ex) await supabase.from('friends').insert({
           user_id: session.user.id, friend_user_id: u.id, name: u.name, phone: u.phone,
-          avatar: u.avatar, status: u.status_message, friendly_score: 50, is_favorite: false, is_blocked: false,
+          avatar: u.avatar, status: u.status_message, friendly_score: 10, is_favorite: false, is_blocked: false,
         });
       });
       await Promise.all(tasks);
@@ -196,7 +206,7 @@ useEffect(() => {
         id: item.id, friend_user_id: item.friend_user_id || '',
         name: item.name, phone: item.phone, status: item.status,
         avatar: item.avatar, bg: item.bg,
-        isFavorite: item.is_favorite || false, friendlyScore: item.friendly_score || 50,
+        isFavorite: item.is_favorite || false, friendlyScore: item.friendly_score || 10,
       })));
     } catch { toast.error('친구 목록을 불러오는데 실패했습니다.'); }
     finally { setIsLoading(false); }
@@ -227,31 +237,25 @@ useEffect(() => {
     catch { setFriends(prev => prev.map(f => f.id === id ? { ...f, isFavorite: !ns } : f)); }
   }, [friends, selectedFriend]);
 
+  // ── AI 점수 계산 (고도화) ─────────────────────────────────
   const analyzeFriendlyScore = useCallback(async (friend: Friend) => {
-    if (!friend.friend_user_id) return;
+    if (!friend.friend_user_id || !user?.id) return;
     setCalculatingScore(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
-      const roomId = [session.user.id, friend.friend_user_id].sort().join('_');
-      const { data: msgs } = await supabase.from('messages')
-        .select('sender_id,created_at').eq('room_id', roomId)
-        .order('created_at', { ascending: false }).limit(100);
-      let score = 30;
-      if (msgs?.length) {
-        score += Math.min(msgs.length, 40);
-        const days = (Date.now() - new Date(msgs[0].created_at).getTime()) / 86400000;
-        score += days < 1 ? 20 : days < 3 ? 15 : days < 7 ? 10 : 5;
-        const my = msgs.filter(m => m.sender_id === session.user.id).length;
-        score += Math.abs(my - (msgs.length - my)) / msgs.length < 0.2 ? 10 : 5;
-      }
-      const final = Math.min(100, score);
-      setSelectedFriend(prev => prev ? { ...prev, friendlyScore: final } : null);
-      supabase.from('friends').update({ friendly_score: final }).eq('id', friend.id).then();
-    } catch { } finally { setCalculatingScore(false); }
-  }, []);
+      const breakdown = await calculateFriendlyScore(user.id, friend.friend_user_id, friend.id);
+      setScoreBreakdown(breakdown);
+      setSelectedFriend(prev => prev ? { ...prev, friendlyScore: breakdown.total } : null);
+      setFriends(prev => prev.map(f => f.id === friend.id ? { ...f, friendlyScore: breakdown.total } : f));
+      await updateFriendlyScoreInDB(friend.id, breakdown.total);
+    } catch (e) { console.error(e); }
+    finally { setCalculatingScore(false); }
+  }, [user?.id]);
 
-  const handleFriendClick = (f: Friend) => { setSelectedFriend(f); analyzeFriendlyScore(f); };
+  const handleFriendClick = (f: Friend) => {
+    setSelectedFriend(f);
+    setScoreBreakdown(null);
+    analyzeFriendlyScore(f);
+  };
 
   const handleEnterChat = useCallback(async (friend: Friend) => {
     const t = toast.loading('채팅방 연결 중...');
@@ -539,25 +543,78 @@ useEffect(() => {
               </div>
               <h3 className="text-[19px] font-bold mb-0.5">{selectedFriend.name}</h3>
               {selectedFriend.status && (
-                <p className="text-[13px] mb-5" style={{ color: T.muted }}>{selectedFriend.status}</p>
+                <p className="text-[13px] mb-4" style={{ color: T.muted }}>{selectedFriend.status}</p>
               )}
+
               {/* AI Score */}
-              <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-6"
+              <div className="w-full max-w-[280px] px-4 py-3.5 rounded-2xl mb-2"
                 style={{ background: T.surface, border: `1px solid ${T.border}` }}>
-                <span className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: T.red }}>AI</span>
-                {calculatingScore
-                  ? <RefreshCw className="w-3 h-3 animate-spin" style={{ color: T.muted }} />
-                  : <span className={`w-1.5 h-1.5 rounded-full ${
-                      selectedFriend.friendlyScore > 80 ? 'bg-green-400' :
-                      selectedFriend.friendlyScore > 40 ? 'bg-yellow-400' : 'bg-red-400'}`} />
-                }
-                <span className="text-[13px] font-bold font-mono" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                  {calculatingScore ? '분석 중' : `${selectedFriend.friendlyScore}점`}
-                </span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+                      style={{ background: `${T.red}15` }}>
+                      <Sparkles className="w-3 h-3" style={{ color: T.red }} />
+                      <span className="text-[10px] font-bold tracking-[0.08em] uppercase" style={{ color: T.red }}>AI 친밀도</span>
+                    </div>
+                    <button onClick={() => setShowScoreInfo(true)}
+                      className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
+                      <HelpCircle className="w-3.5 h-3.5" style={{ color: T.muted }} />
+                    </button>
+                  </div>
+                  {calculatingScore && (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: T.muted }} />
+                  )}
+                </div>
+
+                <div className="flex items-baseline justify-center gap-1.5 mb-1">
+                  <span className="text-[32px] font-bold font-mono tabular-nums"
+                    style={{ color: getScoreColor(selectedFriend.friendlyScore) }}>
+                    {calculatingScore ? '...' : selectedFriend.friendlyScore}
+                  </span>
+                  <span className="text-[16px] font-medium" style={{ color: T.muted }}>점</span>
+                </div>
+                <p className="text-[12px] font-medium"
+                  style={{ color: getScoreColor(selectedFriend.friendlyScore) }}>
+                  {getScoreLabel(selectedFriend.friendlyScore)}
+                </p>
+
+                {/* Breakdown */}
+                {scoreBreakdown && !calculatingScore && (
+                  <div className="mt-4 pt-3 space-y-2"
+                    style={{ borderTop: `1px solid ${T.border}` }}>
+                    {[
+                      { label: '메시지', value: scoreBreakdown.messageCount },
+                      { label: '최근성', value: scoreBreakdown.recency },
+                      { label: '빈도', value: scoreBreakdown.frequency },
+                      { label: '균형', value: scoreBreakdown.balance },
+                      { label: '기간', value: scoreBreakdown.duration },
+                      { label: '지속성', value: scoreBreakdown.consistency },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex items-center justify-between">
+                        <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.45)' }}>{label}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1 rounded-full overflow-hidden"
+                            style={{ background: 'rgba(255,255,255,0.08)' }}>
+                            <div className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${value}%`,
+                                background: getScoreColor(value),
+                              }} />
+                          </div>
+                          <span className="text-[11px] font-mono w-7 text-right tabular-nums"
+                            style={{ color: 'rgba(255,255,255,0.65)' }}>
+                            {value}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
               {/* CTA */}
               <button onClick={() => handleEnterChat(selectedFriend)}
-                className="w-full h-[50px] rounded-2xl font-bold text-[15px] text-white flex items-center justify-center gap-2.5"
+                className="w-full h-[50px] rounded-2xl font-bold text-[15px] text-white flex items-center justify-center gap-2.5 mt-3"
                 style={{ background: T.red }}>
                 <MessageCircle className="w-[18px] h-[18px]" />
                 1:1 채팅 시작
@@ -566,6 +623,9 @@ useEffect(() => {
           </Sheet>
         )}
       </AnimatePresence>
+
+      {/* ── Score info modal ──────────────────────────────── */}
+      <ScoreInfoModal isOpen={showScoreInfo} onClose={() => setShowScoreInfo(false)} />
 
       {/* ── All modals ────────────────────────────────────── */}
       <EditProfileModal
@@ -635,9 +695,7 @@ function FriendRow({ friend, onClick, onBlock, onDelete }: {
     await controls.start({ x: info.offset.x < -44 ? SWIPE : 0 });
   };
 
-  const scoreColor =
-    friend.friendlyScore >= 80 ? '#4ade80' :
-    friend.friendlyScore >= 40 ? '#facc15' : T.muted;
+  const scoreColor = getScoreColor(friend.friendlyScore);
 
   return (
     <div className="relative h-[66px] overflow-hidden" style={{ background: T.bg }}>
@@ -711,6 +769,82 @@ function Sheet({ children, onClose, maxH = 'auto' }: {
         {children}
       </motion.div>
     </div>
+  );
+}
+
+// ── Score info modal ──────────────────────────────────────────
+function ScoreInfoModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  if (!isOpen) return null;
+  return (
+    <AnimatePresence>
+      <Sheet onClose={onClose} maxH="85dvh">
+        <div className="px-5 pt-3 pb-28 overflow-y-auto">
+          {/* Title */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5" style={{ color: T.red }} />
+              <h3 className="text-[18px] font-bold">{SCORE_EXPLANATION.title}</h3>
+            </div>
+            <button onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full"
+              style={{ background: T.surface }}>
+              <X className="w-4 h-4" style={{ color: T.muted }} />
+            </button>
+          </div>
+
+          <p className="text-[13px] leading-relaxed mb-6" style={{ color: T.muted }}>
+            {SCORE_EXPLANATION.description}
+          </p>
+
+          {/* Components */}
+          <div className="mb-6">
+            <p className="text-[11px] font-semibold tracking-[0.08em] uppercase mb-3"
+              style={{ color: 'rgba(255,255,255,0.28)' }}>
+              점수 구성 요소
+            </p>
+            <div className="space-y-2">
+              {SCORE_EXPLANATION.components.map(({ label, weight, desc }) => (
+                <div key={label} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                  style={{ background: T.surface }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[13px] font-semibold">{label}</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: `${T.red}15`, color: T.red }}>
+                        {weight}%
+                      </span>
+                    </div>
+                    <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Levels */}
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.08em] uppercase mb-3"
+              style={{ color: 'rgba(255,255,255,0.28)' }}>
+              점수 레벨
+            </p>
+            <div className="space-y-1.5">
+              {SCORE_EXPLANATION.levels.map(({ min, label, color, emoji }) => (
+                <div key={label} className="flex items-center gap-3 px-3 py-2 rounded-xl"
+                  style={{ background: T.surface }}>
+                  <span className="text-lg">{emoji}</span>
+                  <div className="flex-1">
+                    <span className="text-[13px] font-semibold">{label}</span>
+                  </div>
+                  <span className="text-[11px] font-mono tabular-nums" style={{ color }}>
+                    {min}+
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Sheet>
+    </AnimatePresence>
   );
 }
 
@@ -898,7 +1032,7 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
       if (dup) { toast.dismiss(t); toast.error('이미 등록된 친구입니다.'); return; }
       await supabase.from('friends').insert([{
         user_id: session.user.id, friend_user_id: u.id, name: u.name, phone: u.phone,
-        avatar: u.avatar, status: u.status_message, friendly_score: 50, is_favorite: false, is_blocked: false,
+        avatar: u.avatar, status: u.status_message, friendly_score: 10, is_favorite: false, is_blocked: false,
       }]);
       toast.dismiss(t); toast.success(`${u.name}님을 추가했습니다.`);
       onFriendAdded?.(); onClose();

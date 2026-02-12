@@ -57,13 +57,26 @@ const getFileName = (url: string) => {
 const classifyContent = (url: string) => {
   if (!url) return null;
   const lowerUrl = url.toLowerCase();
+  const trimmed = url.trim();
+  
+  // 링크 체크 우선 (https://, http://, www. 로 시작)
+  if (/^(https?:\/\/|www\.)/i.test(trimmed)) return 'link';
+  
   const ext = lowerUrl.split('.').pop() || '';
   const isStorage = lowerUrl.includes('supabase.co/storage') || lowerUrl.includes('chat-uploads');
   if (['jpg', 'jpeg', 'png', 'gif', 'webp'].some(e => ext.includes(e))) return 'image';
   if (['mp4', 'mov', 'webm', 'avi', 'm4v'].some(e => ext.includes(e))) return 'video';
   if (isStorage) return 'file';
-  if (lowerUrl.startsWith('http')) return 'link';
   return null;
+};
+
+const normalizeUrl = (url: string): string => {
+  const trimmed = url.trim();
+  // www. 로 시작하면 https:// 추가
+  if (trimmed.toLowerCase().startsWith('www.')) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
 };
 
 // ─── 공통 바텀시트 ───────────────────────────────────────────
@@ -201,20 +214,114 @@ export default function ChatRoomSettingsPage() {
 
   const handleInvite = async (selectedFriendIds: number[]) => {
     if (!chatId || selectedFriendIds.length === 0) return;
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const myId = session?.user.id;
       if (!myId) return;
-      const inserts = selectedFriendIds
-        .map(fid => { const f = friendsList.find(fr => fr.id === fid); return { room_id: chatId, user_id: f?.friend_user_id }; })
-        .filter(Boolean);
-      if (inserts.length === 0) return;
-      const { error } = await supabase.from('room_members').insert(inserts);
-      if (error) throw error;
-      toast.success(`${inserts.length}명을 초대했습니다.`);
+
+      const { data: currentMembers } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', chatId);
+
+      const currentMemberIds = currentMembers?.map(m => m.user_id) || [];
+
+      const selectedUserIds = selectedFriendIds
+        .map(fid => friendsList.find(fr => fr.id === fid)?.friend_user_id)
+        .filter(Boolean) as string[];
+
+      if (selectedUserIds.length === 0) {
+        toast.error('선택한 친구를 찾을 수 없습니다.');
+        return;
+      }
+
+      const alreadyMembers = selectedUserIds.filter(uid => currentMemberIds.includes(uid));
+      const newMembers = selectedUserIds.filter(uid => !currentMemberIds.includes(uid));
+
+      if (alreadyMembers.length > 0) {
+        const alreadyMemberNames = alreadyMembers
+          .map(uid => friendsList.find(f => f.friend_user_id === uid)?.name)
+          .filter(Boolean);
+        toast.error(`${alreadyMemberNames.join(', ')}님은 이미 채팅방에 있습니다.`);
+      }
+
+      if (newMembers.length === 0) {
+        return;
+      }
+
+      const isGroupChat = chatId.startsWith('group_');
+
+      if (!isGroupChat) {
+        const allMembers = [...currentMemberIds, ...newMembers];
+        const groupId = `group_${Date.now()}`;
+
+        const { data: userProfiles } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', allMembers);
+
+        const memberNames = userProfiles?.map(u => u.name).filter(Boolean) || [];
+        const groupTitle = memberNames.length > 0
+          ? `${memberNames.slice(0, 3).join(', ')}${memberNames.length > 3 ? ` 외 ${memberNames.length - 3}명` : ''}`
+          : `그룹 채팅 (${allMembers.length}명)`;
+
+        const { error: roomError } = await supabase
+          .from('chat_rooms')
+          .insert({
+            id: groupId,
+            type: 'group',
+            title: groupTitle,
+            created_by: myId,
+            members_count: allMembers.length,
+          });
+
+        if (roomError) throw roomError;
+
+        const memberInserts = allMembers.map(uid => ({
+          room_id: groupId,
+          user_id: uid,
+        }));
+
+        const { error: membersError } = await supabase
+          .from('room_members')
+          .insert(memberInserts);
+
+        if (membersError) throw membersError;
+
+        toast.success('새 그룹 채팅방이 생성되었습니다.');
+        setIsInviteModalOpen(false);
+        navigate(`/chat/room/${groupId}`);
+        return;
+      }
+
+      const memberInserts = newMembers.map(uid => ({
+        room_id: chatId,
+        user_id: uid,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('room_members')
+        .insert(memberInserts);
+
+      if (insertError) throw insertError;
+
+      const newMemberCount = currentMemberIds.length + newMembers.length;
+      const { error: updateError } = await supabase
+        .from('chat_rooms')
+        .update({ members_count: newMemberCount })
+        .eq('id', chatId);
+
+      if (updateError) console.warn('멤버 수 업데이트 실패:', updateError);
+
+      toast.success(`${newMembers.length}명을 초대했습니다.`);
       setIsInviteModalOpen(false);
       window.location.reload();
-    } catch { toast.error('초대에 실패했습니다.'); }
+
+    } catch (err) {
+      console.error('초대 실패:', err);
+      toast.error('초대에 실패했습니다.');
+    }
   };
 
   const handleDownload = async (url: string, filename: string) => {
@@ -233,6 +340,11 @@ export default function ChatRoomSettingsPage() {
   };
 
   const openImageViewer = (index: number) => { setInitialImageIndex(index); setViewerOpen(true); };
+
+  const handleLinkClick = (url: string) => {
+    const normalizedUrl = normalizeUrl(url);
+    window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+  };
 
   // ── 서브뷰: 미디어 ────────────────────────────────────────
   if (currentView === 'media') {
@@ -329,7 +441,7 @@ export default function ChatRoomSettingsPage() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.04 }}
-                onClick={() => window.open(link.url, '_blank')}
+                onClick={() => handleLinkClick(link.url)}
                 className="w-full flex items-center gap-3.5 p-3.5 bg-[#242424] rounded-[18px] border border-white/[0.06] text-left group hover:border-white/10 transition-colors"
               >
                 <div className="w-11 h-11 rounded-[13px] bg-blue-500/10 flex items-center justify-center shrink-0">
