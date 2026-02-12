@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import { 
   User as UserIcon, Users, 
@@ -92,6 +92,7 @@ function Avatar({ src, isGroup, size = 48, radius = 17 }: {
 export default function ChatListPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const location = useLocation();
 
   const [chats, setChats]                     = useState<ChatRoom[]>([]);
   const [isLoading, setIsLoading]             = useState(true);
@@ -164,7 +165,15 @@ export default function ChatListPage() {
         };
       }).filter((c): c is ChatRoom => c !== null);
 
-      setChats(formattedData);
+      // ✅ 중복 제거
+      const uniqueChats = formattedData.reduce((acc: ChatRoom[], chat) => {
+        if (!acc.find(c => c.id === chat.id)) {
+          acc.push(chat);
+        }
+        return acc;
+      }, []);
+
+      setChats(uniqueChats);
     } catch (error) {
       console.error('Fetch Chats Error:', error);
     } finally {
@@ -172,33 +181,58 @@ export default function ChatListPage() {
     }
   }, [user]);
 
+  // ✅ 경로 변경될 때마다 새로고침
   useEffect(() => {
     if (!user?.id) return;
     fetchChats();
+  }, [location.pathname, user?.id, fetchChats]);
 
-    const channel = supabase.channel(`chat_list_realtime_${user.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-        const newMsg = payload.new as any;
-        setChats(prev => {
-          const idx = prev.findIndex(c => c.id === newMsg.room_id);
-          if (idx === -1) { fetchChats(); return prev; }
-          const updated = [...prev];
-          const chat = { ...updated[idx] };
-          chat.lastMessage = newMsg.content;
-          chat.timestamp = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          if (newMsg.sender_id !== user.id) chat.unreadCount = (chat.unreadCount || 0) + 1;
-          updated.splice(idx, 1);
-          updated.unshift(chat);
-          return updated;
-        });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members', filter: `user_id=eq.${user.id}` }, () => fetchChats())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, () => fetchChats())
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users' }, () => fetchChats())
+  // ✅ Realtime 구독
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase.channel(`chat_list_realtime_${user.id}_${Date.now()}`)
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'messages' }, 
+        (payload) => {
+          const newMsg = payload.new as any;
+          setChats(prev => {
+            const idx = prev.findIndex(c => c.id === newMsg.room_id);
+            if (idx === -1) { 
+              fetchChats(); 
+              return prev; 
+            }
+            const updated = [...prev];
+            const chat = { ...updated[idx] };
+            chat.lastMessage = newMsg.content;
+            chat.timestamp = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (newMsg.sender_id !== user.id) chat.unreadCount = (chat.unreadCount || 0) + 1;
+            updated.splice(idx, 1);
+            updated.unshift(chat);
+            return updated;
+          });
+        }
+      )
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'room_members', filter: `user_id=eq.${user.id}` }, 
+        () => { fetchChats(); }
+      )
+      .on('postgres_changes', 
+        { event: 'DELETE', schema: 'public', table: 'room_members', filter: `user_id=eq.${user.id}` }, 
+        () => { fetchChats(); }
+      )
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'chat_rooms' }, 
+        () => fetchChats()
+      )
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'users' }, 
+        () => fetchChats()
+      )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user, fetchChats]);
+  }, [user?.id, fetchChats]);
 
   const fetchFriends = useCallback(async () => {
     if (!user?.id) return;
@@ -224,20 +258,71 @@ export default function ChatListPage() {
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
 
+  // ✅ [핵심 수정] 채팅방 나가기: 메시지 삭제 + AI 점수 초기화
   const handleLeaveChatConfirm = async () => {
     if (!user?.id || !leaveChatTarget) return;
-    setChats(prev => prev.filter(c => c.id !== leaveChatTarget.id));
+
+    const targetRoomId = leaveChatTarget.id;
+    const isIndividual = leaveChatTarget.type === 'individual';
+
+    // UI에서 먼저 제거 (Optimistic UI)
+    setChats(prev => prev.filter(c => c.id !== targetRoomId));
     setLeaveChatTarget(null);
+    
     try {
-      const { error } = await supabase.from('room_members').delete()
-        .match({ room_id: leaveChatTarget.id, user_id: user.id });
-      if (error) throw error;
-      const { count } = await supabase.from('room_members').select('count(*)', { count: 'exact', head: true })
-        .eq('room_id', leaveChatTarget.id);
-      if (count === 0) await supabase.from('chat_rooms').delete().eq('id', leaveChatTarget.id);
-      else await supabase.from('chat_rooms').update({ members_count: count }).eq('id', leaveChatTarget.id);
-      toast.success('채팅방을 나갔습니다.');
-    } catch { toast.error('나가기에 실패했습니다.'); fetchChats(); }
+      // 1. [AI 점수 초기화] 1:1 채팅인 경우
+      if (isIndividual) {
+        // roomId 형식 (uid_uid)에서 친구 ID 추출
+        const friendId = targetRoomId.split('_').find(id => id !== user.id);
+        
+        if (friendId) {
+          // AI 점수를 1로 초기화
+          const { error: scoreError } = await supabase
+            .from('friends')
+            .update({ friendly_score: 1 })
+            .match({ user_id: user.id, friend_user_id: friendId });
+
+          if (scoreError) console.error('점수 초기화 실패:', scoreError);
+        }
+      }
+
+      // 2. [대화 내용 삭제] 해당 방의 모든 메시지 삭제
+      const { error: msgDeleteError } = await supabase
+        .from('messages')
+        .delete()
+        .eq('room_id', targetRoomId);
+
+      if (msgDeleteError) console.error('메시지 삭제 실패:', msgDeleteError);
+      
+      // 3. [멤버 삭제] 나를 멤버에서 제외
+      const { error: deleteMemberError } = await supabase
+        .from('room_members')
+        .delete()
+        .match({ room_id: targetRoomId, user_id: user.id });
+      
+      if (deleteMemberError) throw deleteMemberError;
+      
+      // 4. [방 청소] 남은 멤버가 없으면 방 삭제
+      const { count } = await supabase
+        .from('room_members')
+        .select('count(*)', { count: 'exact', head: true })
+        .eq('room_id', targetRoomId);
+      
+      if (count === 0) {
+        await supabase.from('chat_rooms').delete().eq('id', targetRoomId);
+      } else if (isIndividual) {
+        // 1:1 방은 한 명만 나가도 사실상 폭파 개념이므로 정리 가능하면 정리
+        // (단, 상대방 화면에서도 사라지게 하려면 여기서 방을 지워도 되지만, 
+        //  보통은 상대방 기록은 남겨두므로 멤버만 나감 처리)
+      }
+      
+      toast.success('채팅방이 초기화되었습니다.');
+      
+    } catch (error) {
+      console.error('나가기 실패:', error);
+      toast.error('나가기에 실패했습니다.');
+      fetchChats(); // 실패 시 목록 원복
+    }
   };
 
   const handleMarkAsRead = async (id: string) => {
@@ -290,7 +375,6 @@ export default function ChatListPage() {
         </div>
 
         <div className="flex items-center gap-1 relative">
-          {/* 검색 */}
           <button
             onClick={() => setIsSearching(v => !v)}
             className={`w-9 h-9 flex items-center justify-center rounded-[12px] transition-colors ${
@@ -299,16 +383,12 @@ export default function ChatListPage() {
           >
             <Search className="w-[19px] h-[19px]" />
           </button>
-
-          {/* 새 채팅 */}
           <button
             onClick={() => setIsCreateChatOpen(true)}
             className="w-9 h-9 flex items-center justify-center rounded-[12px] text-white/60 hover:bg-white/[0.06] hover:text-white transition-colors"
           >
             <Plus className="w-[19px] h-[19px]" />
           </button>
-
-          {/* 설정 */}
           <button
             onClick={() => setIsSettingsOpen(v => !v)}
             className={`w-9 h-9 flex items-center justify-center rounded-[12px] transition-colors ${
@@ -318,7 +398,6 @@ export default function ChatListPage() {
             <Settings className="w-[19px] h-[19px]" />
           </button>
 
-          {/* 설정 드롭다운 */}
           <AnimatePresence>
             {isSettingsOpen && (
               <>
@@ -447,7 +526,7 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
   data: ChatRoom; onLeave: () => void; onRead: () => void; onEditTitle: () => void;
 }) {
   const navigate = useNavigate();
-  const controls = useAnimation();
+  const controls = useAnimation(); // ✅ useAnimation 정상 동작
   const isGroup = data.type === 'group';
 
   // 그룹: 이름변경 + 읽음 + 나가기 = 3칸 (216px)
@@ -562,7 +641,9 @@ function LeaveChatModal({ chat, onClose, onConfirm }: {
         </div>
         <h3 className="text-[18px] font-bold text-white mb-2 tracking-tight">채팅방을 나갈까요?</h3>
         <p className="text-[13.5px] text-white/38 leading-relaxed">
-          대화 내용이 삭제되며<br />채팅 목록에서 사라집니다.
+          {chat?.type === 'individual' 
+            ? '1:1 채팅방의 모든 대화 내용이 삭제되며\n채팅 목록에서 사라집니다.'
+            : '채팅방에서 나가면\n채팅 목록에서 사라집니다.'}
         </p>
       </div>
       <div className="px-4 pb-8 pt-2 flex gap-2.5 shrink-0">
@@ -616,7 +697,10 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
         roomId = [user.id, friendId].sort().join('_');
 
         const { data: existing } = await supabase.from('chat_rooms').select('id').eq('id', roomId).maybeSingle();
-        if (existing) { if (onCreated) onCreated(roomId); return; }
+        if (existing) { 
+          if (onCreated) onCreated(roomId); 
+          return; 
+        }
 
         const { data: fu } = await supabase.from('users').select('name').eq('id', friendId).maybeSingle();
         const friendName = fu?.name || friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
@@ -760,7 +844,7 @@ function EditTitleModal({ isOpen, onClose, currentTitle, onSave }: {
   isOpen: boolean; onClose: () => void; currentTitle: string; onSave: (v: string) => void;
 }) {
   const [text, setText] = useState(currentTitle);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null); // ✅ useRef 정상 동작
 
   useEffect(() => {
     if (isOpen) {

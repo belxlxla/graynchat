@@ -257,28 +257,77 @@ export default function FriendsListPage() {
     analyzeFriendlyScore(f);
   };
 
+  // ✅ 수정된 handleEnterChat (중복 생성 방지 강화)
   const handleEnterChat = useCallback(async (friend: Friend) => {
-    const t = toast.loading('채팅방 연결 중...');
+    const loadingToast = toast.loading('채팅방 연결 중...');
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (!session?.user?.id || !friend.friend_user_id) {
-        toast.dismiss(t); toast.error('정보를 불러올 수 없습니다.'); return;
+        toast.error('로그인 정보를 확인할 수 없습니다.', { id: loadingToast });
+        return;
       }
-      const roomId = [session.user.id, friend.friend_user_id].sort().join('_');
-      const { data: ex } = await supabase.from('chat_rooms').select('id').eq('id', roomId).maybeSingle();
-      if (!ex) {
-        const { error: re } = await supabase.from('chat_rooms').insert([{
-          id: roomId, title: friend.name, type: 'individual',
-          created_by: session.user.id, last_message: '새로운 대화를 시작해보세요!', members_count: 2,
-        }]);
-        if (re && re.code !== '23505') throw re;
-        await supabase.from('room_members').upsert([
-          { room_id: roomId, user_id: session.user.id, unread_count: 0 },
-          { room_id: roomId, user_id: friend.friend_user_id, unread_count: 0 },
+
+      const myId = session.user.id;
+      const friendId = friend.friend_user_id;
+      const roomId = [myId, friendId].sort().join('_');
+
+      console.log('📋 roomId:', roomId);
+
+      // 1️⃣ 기존 채팅방 확인 (가장 먼저 수행)
+      const { data: existingRoom, error: checkError } = await supabase
+        .from('chat_rooms')
+        .select('id')
+        .eq('id', roomId)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('❌ 채팅방 조회 실패:', checkError);
+      }
+
+      // 2️⃣ 채팅방이 없다면 생성 (upsert 사용으로 중복 에러 무시)
+      if (!existingRoom) {
+        console.log('📝 채팅방 신규 생성 시도...');
+        
+        const { error: createError } = await supabase
+          .from('chat_rooms')
+          .upsert({ // insert 대신 upsert 사용
+            id: roomId,
+            title: friend.name,
+            type: 'individual',
+            created_by: myId,
+            last_message: '대화를 시작해보세요!',
+            last_message_at: new Date().toISOString(),
+            members_count: 2,
+          }, { onConflict: 'id', ignoreDuplicates: true }); // 중복이면 무시
+
+        if (createError) {
+           console.error('⚠️ 채팅방 생성 경고 (이미 존재할 수 있음):', createError);
+        }
+      }
+
+      // 3️⃣ 멤버십 추가 (마찬가지로 upsert 사용)
+      console.log('👥 멤버십 등록 중...');
+      const { error: memberError } = await supabase
+        .from('room_members')
+        .upsert([
+          { room_id: roomId, user_id: myId, unread_count: 0 },
+          { room_id: roomId, user_id: friendId, unread_count: 0 },
         ], { onConflict: 'room_id,user_id', ignoreDuplicates: true });
+
+      if (memberError) {
+        console.error('⚠️ 멤버십 등록 경고:', memberError);
       }
-      toast.dismiss(t); setSelectedFriend(null); navigate(`/chat/room/${roomId}`);
-    } catch { toast.dismiss(t); toast.error('채팅방 입장에 실패했습니다.'); }
+
+      console.log('✅ 채팅방 입장 준비 완료');
+      toast.success('채팅방으로 이동합니다.', { id: loadingToast });
+      navigate(`/chat/room/${roomId}`);
+
+    } catch (error: any) {
+      console.error('\n💥 치명적 오류 발생:', error);
+      toast.error(error.message || '채팅방 입장에 실패했습니다.', { id: loadingToast });
+    }
   }, [navigate]);
 
   const handleDeleteClick  = useCallback((id: number) => {
@@ -517,7 +566,7 @@ export default function FriendsListPage() {
         {selectedFriend && (
           <Sheet onClose={() => setSelectedFriend(null)} maxH="92dvh">
             {/* BG strip */}
-            <div className="relative h-20 shrink-0 overflow-hidden rounded-t-[24px]">
+            <div className="relative h-36 shrink-0 overflow-hidden rounded-t-[24px]">
               {selectedFriend.bg
                 ? <img src={selectedFriend.bg} className="w-full h-full object-cover" alt="" />
                 : <div className="w-full h-full" style={{ background: T.surface }} />

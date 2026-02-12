@@ -197,19 +197,53 @@ export default function ChatRoomSettingsPage() {
     toast.success(n ? '알림이 켜졌습니다.' : '알림이 꺼졌습니다.', { icon: n ? '🔔' : '🔕' });
   };
 
+  // ✅ 수정된 채팅방 나가기 (대화내용 삭제 + AI 점수 초기화 + 나가기)
   const handleConfirmLeave = async () => {
     try {
       if (!chatId) return;
       const { data: { session } } = await supabase.auth.getSession();
       const myId = session?.user.id;
       if (!myId) return;
+
+      // 1. [AI 점수 초기화] 1:1 채팅방인 경우
+      const isGroup = chatId.startsWith('group_');
+      if (!isGroup) {
+        const friendId = chatId.split('_').find(id => id !== myId);
+        if (friendId) {
+           await supabase.from('friends')
+             .update({ friendly_score: 1 })
+             .match({ user_id: myId, friend_user_id: friendId });
+        }
+      }
+
+      // 2. [대화 내용 삭제] 해당 채팅방의 모든 메시지 삭제
+      await supabase.from('messages').delete().eq('room_id', chatId);
+
+      // 3. [멤버 삭제] 방 나가기 처리
       const { error } = await supabase.from('room_members').delete()
         .eq('room_id', chatId).eq('user_id', myId);
+
       if (error) throw error;
-      toast.success('채팅방을 나갔습니다.');
+
+      // 4. [방 청소] 멤버가 0명이면 방 자체 삭제
+      const { count } = await supabase.from('room_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('room_id', chatId);
+
+      if (count === 0) {
+        await supabase.from('chat_rooms').delete().eq('id', chatId);
+      } else {
+        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', chatId);
+      }
+
+      toast.success('채팅방을 나갔습니다. (초기화 완료)');
       setIsLeaveModalOpen(false);
       navigate('/main/chats');
-    } catch { toast.error('나가기에 실패했습니다.'); }
+
+    } catch (err) {
+      console.error('나가기 실패:', err);
+      toast.error('나가기에 실패했습니다.');
+    }
   };
 
   const handleInvite = async (selectedFriendIds: number[]) => {
@@ -610,7 +644,7 @@ export default function ChatRoomSettingsPage() {
           </div>
           <h3 className="text-[18px] font-bold text-white mb-1.5 tracking-tight">채팅방 나가기</h3>
           <p className="text-[13.5px] text-white/38 leading-relaxed">
-            대화 내용이 삭제되며<br />목록에서 사라집니다.
+            대화 내용이 삭제되며<br />AI 지수도 1점으로 초기화 됩니다.
           </p>
         </div>
         <div className="px-4 pb-8 pt-2 flex gap-2.5 shrink-0">
