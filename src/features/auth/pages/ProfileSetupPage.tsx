@@ -24,7 +24,7 @@ async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<Blob> {
 
       canvas.width = pixelCrop.width;
       canvas.height = pixelCrop.height;
-
+ 
       ctx.drawImage(
         image,
         pixelCrop.x,
