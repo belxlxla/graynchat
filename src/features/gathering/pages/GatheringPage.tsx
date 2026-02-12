@@ -266,7 +266,7 @@ function GatheringChatTab() {
         <div className="flex gap-2">
           {[
             { key: false, label: '전체 채팅방', icon: UsersRound },
-            { key: true, label: '내가 만든 방', icon: Crown },
+            { key: true, label: '내가 만든 그룹 채팅방', icon: Crown },
           ].map(({ key, label, icon: Icon }) => (
             <motion.button key={String(key)} whileTap={{ scale: 0.94 }}
               onClick={() => setShowMineOnly(key)}
@@ -354,7 +354,7 @@ function GatheringChatTab() {
                 <div className="flex items-center gap-2 px-1 pt-3 pb-2">
                   <UsersRound className="w-3 h-3" style={{ color: 'rgba(255,255,255,0.3)' }} />
                   <span className="text-[10px] font-bold tracking-[0.1em] uppercase"
-                    style={{ color: 'rgba(255,255,255,0.3)' }}>다른 사람들의 방</span>
+                    style={{ color: 'rgba(255,255,255,0.3)' }}>다른 사람들의 그룹 채팅방</span>
                   <span className="text-[10px] font-bold" style={{ color: 'rgba(255,255,255,0.2)' }}>{otherRooms.length}</span>
                 </div>
               )}

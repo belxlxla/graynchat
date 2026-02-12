@@ -121,7 +121,7 @@ export default function SignUpPage() {
     
     if (!accountData.name.trim()) return toast.error('이름을 입력해주세요.');
     if (!accountData.email.trim()) return toast.error('이메일을 입력해주세요.');
-    if (!accountData.phone.trim()) return toast.error('전화번호를 입력해주세요.'); // 전화번호 체크
+    if (!accountData.phone.trim()) return toast.error('전화번호(휴대폰 번호)를 입력해주세요.');
     if (!isRequiredAgreed) return toast.error('필수 약관에 동의해 주세요.');
 
     setIsLoading(true);
@@ -173,7 +173,7 @@ export default function SignUpPage() {
       console.error('Signup Error:', error);
       let message = error.message || '회원가입 중 오류가 발생했습니다.';
       if (message.includes('Database error')) message = '서버 설정 오류입니다. (DB Trigger 확인 필요)';
-      if (message.includes('User already registered')) message = '이미 가입된 이메일입니다.';
+      if (message.includes('User already registered')) message = '이미 가입된 이메일 주소입니다.';
       
       toast.error(message);
     } finally {

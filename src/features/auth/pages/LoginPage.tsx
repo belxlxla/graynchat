@@ -484,13 +484,13 @@ export default function LoginPage() {
           GRAYN에 오신 것을 환영합니다
         </motion.h1>
         <motion.p initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="text-[#8E8E93] text-sm mt-2">
-          그레인으로 똑똑하게 소통하세요.
+          그레인으로 똑똑하게 소통하기
         </motion.p>
       </div>
 
       <motion.form initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.4 }} onSubmit={handleLogin} className="space-y-4 w-full max-w-sm mx-auto">
         <div className="space-y-1.5">
-          <label className="text-xs font-bold text-[#8E8E93] ml-1">이메일</label>
+          <label className="text-xs font-bold text-[#8E8E93] ml-1">아이디 (이메일 주소)</label>
           <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
             <Mail className="w-5 h-5 text-[#636366] mr-3"/>
             <input 

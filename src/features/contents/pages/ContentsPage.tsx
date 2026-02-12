@@ -117,7 +117,7 @@ export default function ContentsPage() {
       {/* ── 헤더 ────────────────────────────────────────── */}
       <header className="h-14 px-5 flex items-center sticky top-0 z-10"
         style={{ background: '#0d0d0d', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <h1 className="text-[18px] font-bold tracking-tight">콘텐츠</h1>
+        <h1 className="text-[18px] font-bold tracking-tight">그레인 콘텐츠</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto pb-24" style={{ scrollbarWidth: 'none' }}>
@@ -136,7 +136,7 @@ export default function ContentsPage() {
               </span>
             </div>
             <h2 className="text-[22px] font-bold tracking-tight mb-1">
-              미래의 당신이<br />오늘의 감동을 전합니다
+              미래에게 보내는<br />감동 메시지
             </h2>
             <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
               원하는 날짜에 열리는 편지를 지금 보내보세요
@@ -168,7 +168,7 @@ export default function ContentsPage() {
                   <p className="text-[16px] font-bold text-white tracking-tight">새 캡슐 보내기</p>
                 </div>
                 <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                  소중한 사람에게 미래의 편지를
+                  소중한 사람에게 타임캡슐
                 </p>
               </div>
             </div>
