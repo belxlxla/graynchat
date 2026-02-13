@@ -4,12 +4,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 serve(async (req) => {
-  // CORS preflight
+  // ✅ CORS preflight 처리
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders, status: 200 });
   }
 
   try {
@@ -47,7 +48,7 @@ serve(async (req) => {
     const serviceId = Deno.env.get('NCLOUD_SENS_SERVICE_ID')!;
     const accessKey = Deno.env.get('NCLOUD_ACCESS_KEY')!;
     const secretKey = Deno.env.get('NCLOUD_SECRET_KEY')!;
-    const fromNumber = Deno.env.get('NCLOUD_FROM_NUMBER')!; // 발신번호
+    const fromNumber = Deno.env.get('NCLOUD_FROM_NUMBER')!;
 
     const timestamp = Date.now().toString();
     const method = 'POST';
