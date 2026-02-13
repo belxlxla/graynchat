@@ -861,7 +861,7 @@ export default function SignUpPage() {
                       Object.values(agreedTerms).every(v => v) ? 'text-white' : 'text-[#636366]'
                     }`} />
                   </div>
-                  <span className="font-bold text-sm text-white">약관에 전체 동의</span>
+                  <span className="font-bold text-sm text-white">약관에 전체 동의합니다.</span>
                 </div>
               </div>
 
@@ -906,7 +906,7 @@ export default function SignUpPage() {
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                '다음 (본인인증)'
+                '본인인증 하기'
               )}
             </button>
           </form>
