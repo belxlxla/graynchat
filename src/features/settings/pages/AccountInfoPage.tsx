@@ -116,19 +116,12 @@ export default function AccountInfoPage() {
     return phoneNumber;
   };
 
-  // ✅ 수정된 부분: single() -> maybeSingle() 로 변경하여 데이터가 없을 때도 에러 방지
   const fetchUserData = useCallback(async () => {
     if (!user) return;
     try {
       const { data: dbData, error: dbError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle(); // 👈 여기를 single()에서 maybeSingle()로 변경
-
+        .from('users').select('*').eq('id', user.id).single();
       if (dbError) throw dbError;
-
-      // dbData가 null일 경우(데이터 없을 때)에도 에러 없이 기본값이나 Auth 정보로 표시
       setProfile({
         name: dbData?.name || user.user_metadata?.full_name || '사용자',
         avatar: dbData?.avatar || null,
@@ -138,9 +131,7 @@ export default function AccountInfoPage() {
         phone: formatPhoneNumber(dbData?.phone || '번호 없음')
       });
       setBlockedCountries(dbData?.blocked_countries || []);
-    } catch (err) { 
-      console.error('Data load error:', err); 
-    }
+    } catch (err) { console.error('Data load error:', err); }
   }, [user]);
 
   useEffect(() => { fetchUserData(); }, [fetchUserData]);
@@ -171,11 +162,7 @@ export default function AccountInfoPage() {
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
       const dbField = currentImageType === 'avatar' ? 'avatar' : 'bg_image';
-      
-      // ✅ 데이터가 없을 수도 있으므로 update 대신 upsert 사용 권장 (또는 insert 확인 필요)
-      // 여기서는 일단 update를 유지하되, 만약 row가 없으면 생성이 필요할 수 있음.
       await supabase.from('users').update({ [dbField]: publicUrl }).eq('id', user.id);
-      
       setProfile(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
       toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
       setIsCropOpen(false);
@@ -495,7 +482,7 @@ export default function AccountInfoPage() {
             <motion.div
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="relative z-10 w-full max-w-[480px] rounded-[28px] mb-6 px-5 pt-5 pb-6"
+              className="relative z-10 w-full max-w-[480px] rounded-t-[28px] px-5 pt-5 pb-safe-or-10"
               style={{ background: '#1A1A1A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -523,7 +510,7 @@ export default function AccountInfoPage() {
                 </motion.button>
                 <button
                   onClick={() => setEditTarget(null)}
-                  className="w-full h-20 py-3 text-[13px]"
+                  className="w-full py-3 text-[13px]"
                   style={{ color: 'rgba(255,255,255,0.25)' }}
                 >
                   취소
@@ -589,7 +576,7 @@ export default function AccountInfoPage() {
             <motion.div
               initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="relative z-10 w-full max-w-[480px] rounded-[28px] mb-6 px-5 pt-5 pb-6"
+              className="relative z-10 w-full max-w-[480px] rounded-t-[28px] px-5 pt-5 pb-safe-or-10"
               style={{ background: '#1A1A1A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
             >
               <div className="w-9 h-[3px] rounded-full mx-auto mb-6"
@@ -675,7 +662,7 @@ function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: any) {
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }}
         transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        className="relative z-10 w-full max-w-[480px] rounded-[28px] mb-4 overflow-hidden flex flex-col"
+        className="relative z-10 w-full max-w-[480px] rounded-t-[28px] overflow-hidden flex flex-col"
         style={{
           background: '#1A1A1A',
           borderTop: '1px solid rgba(255,255,255,0.08)',
@@ -749,13 +736,13 @@ function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: any) {
         {/* 푸터 */}
         <div className="px-4 pt-3 pb-safe-or-8 shrink-0 flex items-center gap-3"
           style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <p className="flex-1 text-[12px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          <p className="flex-1 text-[16px] mb-3" style={{ color: 'rgba(255,255,255,0.35)' }}>
             <span className="font-bold text-white">{selected.length}</span>개국 선택
           </p>
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => { onSave(selected); onClose(); }}
-            className="px-6 h-11 rounded-2xl text-[14px] font-bold text-white mb-4"
+            className="px-6 h-11 rounded-2xl text-[14px] font-bold text-white mb-3"
             style={{ background: '#FF203A' }}
           >
             적용
@@ -779,7 +766,7 @@ function LogoutModal({ isOpen, onClose, onConfirm }: any) {
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        className="relative z-10 w-full max-w-[480px] rounded-[28px] mb-6 px-5 pt-5 pb-6"
+        className="relative z-10 w-full max-w-[480px] rounded-t-[28px] px-5 pt-5 pb-safe-or-10"
         style={{ background: '#1A1A1A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
       >
         <div className="w-9 h-[3px] rounded-full mx-auto mb-6"
