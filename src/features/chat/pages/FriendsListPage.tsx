@@ -349,18 +349,6 @@ export default function FriendsListPage() {
 
   return (
     <div className="h-full w-full flex flex-col relative" style={{ background: T.bg, color: '#fff' }}>
-      
-      {/* ── [전역 동기화] 사용자 배경화면 ── */}
-      {myProfile.bg && (
-        <div className="absolute top-0 left-0 w-full h-[320px] z-0 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-[#212121]/50 to-[#212121]" />
-          <img 
-            src={myProfile.bg} 
-            alt="background" 
-            className="w-full h-full object-cover opacity-60"
-          />
-        </div>
-      )}
 
       {/* ── Permission screen ───────────────────────────── */}
       {step === 'permission' && (
@@ -401,11 +389,7 @@ export default function FriendsListPage() {
         <>
           {/* Header */}
           <header className="h-[54px] flex items-center justify-between px-4 shrink-0 relative z-20"
-            style={{ 
-              background: 'rgba(33, 33, 33, 0.6)', // 반투명 배경
-              backdropFilter: 'blur(12px)',        // 블러 효과
-              borderBottom: `1px solid ${T.border}` 
-            }}>
+            style={{ background: T.bg, borderBottom: `1px solid ${T.border}` }}>
             <span className="text-[18px] font-bold tracking-tight pl-1">친구</span>
 
             <div className="flex items-center gap-0">
@@ -550,7 +534,14 @@ export default function FriendsListPage() {
       <AnimatePresence>
         {selectedFriend && (
           <Sheet onClose={() => setSelectedFriend(null)} maxH="92dvh">
-            {/* BG strip */}
+            {/* BG strip - [수정됨] 내가 설정한 배경화면을 모달 뒤에 은은하게 표시 */}
+            {myProfile.bg && (
+              <div className="absolute inset-0 z-[-1] overflow-hidden rounded-t-[24px]">
+                 <img src={myProfile.bg} alt="" className="w-full h-full object-cover opacity-20 blur-sm" />
+                 <div className="absolute inset-0 bg-[#1d1d1d]/80" />
+              </div>
+            )}
+            
             <div className="relative h-20 shrink-0 overflow-hidden rounded-t-[24px]">
               {selectedFriend.bg
                 ? <img src={selectedFriend.bg} className="w-full h-full object-cover" alt="" />
