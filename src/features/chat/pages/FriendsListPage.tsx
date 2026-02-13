@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
@@ -7,9 +7,11 @@ import {
   UserPlus, MessageSquarePlus, CheckCircle2, Circle,
   Image as ImageIcon, Trash2, RefreshCw,
   ChevronRight, Users, Ban, AlertTriangle, BookUser,
-  Phone, ArrowLeft, HelpCircle, Sparkles,
+  Phone, ArrowLeft, HelpCircle, Sparkles, Camera, PenLine
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import Cropper from 'react-easy-crop';
+import type { Point, Area } from 'react-easy-crop';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
 import {
@@ -55,6 +57,22 @@ const T = {
   red:     '#FF203A',
   sheet:   '#1d1d1d',
 };
+
+// ── Image Utils ──────────────────────────────────────────────
+async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<string> {
+  const image = await new Promise<HTMLImageElement>((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.src = imageSrc;
+  });
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(URL.createObjectURL(blob!)), 'image/jpeg'));
+}
 
 // ── Contacts utils ────────────────────────────────────────────
 const requestContactsPermission = async (): Promise<boolean> => {
@@ -257,77 +275,28 @@ export default function FriendsListPage() {
     analyzeFriendlyScore(f);
   };
 
-  // ✅ 수정된 handleEnterChat (중복 생성 방지 강화)
   const handleEnterChat = useCallback(async (friend: Friend) => {
-    const loadingToast = toast.loading('채팅방 연결 중...');
-    
+    const t = toast.loading('채팅방 연결 중...');
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
       if (!session?.user?.id || !friend.friend_user_id) {
-        toast.error('로그인 정보를 확인할 수 없습니다.', { id: loadingToast });
-        return;
+        toast.dismiss(t); toast.error('정보를 불러올 수 없습니다.'); return;
       }
-
-      const myId = session.user.id;
-      const friendId = friend.friend_user_id;
-      const roomId = [myId, friendId].sort().join('_');
-
-      console.log('📋 roomId:', roomId);
-
-      // 1️⃣ 기존 채팅방 확인 (가장 먼저 수행)
-      const { data: existingRoom, error: checkError } = await supabase
-        .from('chat_rooms')
-        .select('id')
-        .eq('id', roomId)
-        .maybeSingle();
-
-      if (checkError) {
-        console.error('❌ 채팅방 조회 실패:', checkError);
-      }
-
-      // 2️⃣ 채팅방이 없다면 생성 (upsert 사용으로 중복 에러 무시)
-      if (!existingRoom) {
-        console.log('📝 채팅방 신규 생성 시도...');
-        
-        const { error: createError } = await supabase
-          .from('chat_rooms')
-          .upsert({ // insert 대신 upsert 사용
-            id: roomId,
-            title: friend.name,
-            type: 'individual',
-            created_by: myId,
-            last_message: '대화를 시작해보세요!',
-            last_message_at: new Date().toISOString(),
-            members_count: 2,
-          }, { onConflict: 'id', ignoreDuplicates: true }); // 중복이면 무시
-
-        if (createError) {
-           console.error('⚠️ 채팅방 생성 경고 (이미 존재할 수 있음):', createError);
-        }
-      }
-
-      // 3️⃣ 멤버십 추가 (마찬가지로 upsert 사용)
-      console.log('👥 멤버십 등록 중...');
-      const { error: memberError } = await supabase
-        .from('room_members')
-        .upsert([
-          { room_id: roomId, user_id: myId, unread_count: 0 },
-          { room_id: roomId, user_id: friendId, unread_count: 0 },
+      const roomId = [session.user.id, friend.friend_user_id].sort().join('_');
+      const { data: ex } = await supabase.from('chat_rooms').select('id').eq('id', roomId).maybeSingle();
+      if (!ex) {
+        const { error: re } = await supabase.from('chat_rooms').insert([{
+          id: roomId, title: friend.name, type: 'individual',
+          created_by: session.user.id, last_message: '새로운 대화를 시작해보세요!', members_count: 2,
+        }]);
+        if (re && re.code !== '23505') throw re;
+        await supabase.from('room_members').upsert([
+          { room_id: roomId, user_id: session.user.id, unread_count: 0 },
+          { room_id: roomId, user_id: friend.friend_user_id, unread_count: 0 },
         ], { onConflict: 'room_id,user_id', ignoreDuplicates: true });
-
-      if (memberError) {
-        console.error('⚠️ 멤버십 등록 경고:', memberError);
       }
-
-      console.log('✅ 채팅방 입장 준비 완료');
-      toast.success('채팅방으로 이동합니다.', { id: loadingToast });
-      navigate(`/chat/room/${roomId}`);
-
-    } catch (error: any) {
-      console.error('\n💥 치명적 오류 발생:', error);
-      toast.error(error.message || '채팅방 입장에 실패했습니다.', { id: loadingToast });
-    }
+      toast.dismiss(t); setSelectedFriend(null); navigate(`/chat/room/${roomId}`);
+    } catch { toast.dismiss(t); toast.error('채팅방 입장에 실패했습니다.'); }
   }, [navigate]);
 
   const handleDeleteClick  = useCallback((id: number) => {
@@ -379,11 +348,23 @@ export default function FriendsListPage() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col" style={{ background: T.bg, color: '#fff' }}>
+    <div className="h-full w-full flex flex-col relative" style={{ background: T.bg, color: '#fff' }}>
+      
+      {/* ── [전역 동기화] 사용자 배경화면 ── */}
+      {myProfile.bg && (
+        <div className="absolute top-0 left-0 w-full h-[320px] z-0 pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-[#212121]/50 to-[#212121]" />
+          <img 
+            src={myProfile.bg} 
+            alt="background" 
+            className="w-full h-full object-cover opacity-60"
+          />
+        </div>
+      )}
 
       {/* ── Permission screen ───────────────────────────── */}
       {step === 'permission' && (
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center relative z-10">
           <div className="w-[68px] h-[68px] rounded-[22px] flex items-center justify-center mb-7"
             style={{ background: `${T.red}12`, border: `1.5px solid ${T.red}22` }}>
             <BookUser className="w-7 h-7" style={{ color: T.red }} />
@@ -405,7 +386,7 @@ export default function FriendsListPage() {
 
       {/* ── Sync complete ────────────────────────────────── */}
       {step === 'complete' && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 relative z-10">
           <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
             className="w-[68px] h-[68px] rounded-[22px] flex items-center justify-center"
             style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.2)' }}>
@@ -419,8 +400,12 @@ export default function FriendsListPage() {
       {step === 'list' && (
         <>
           {/* Header */}
-          <header className="h-[54px] flex items-center justify-between px-4 shrink-0 relative"
-            style={{ background: T.bg, borderBottom: `1px solid ${T.border}` }}>
+          <header className="h-[54px] flex items-center justify-between px-4 shrink-0 relative z-20"
+            style={{ 
+              background: 'rgba(33, 33, 33, 0.6)', // 반투명 배경
+              backdropFilter: 'blur(12px)',        // 블러 효과
+              borderBottom: `1px solid ${T.border}` 
+            }}>
             <span className="text-[18px] font-bold tracking-tight pl-1">친구</span>
 
             <div className="flex items-center gap-0">
@@ -432,7 +417,7 @@ export default function FriendsListPage() {
               ].map(({ Icon, active, onClick }, i) => (
                 <button key={i} onClick={onClick}
                   className="w-9 h-9 flex items-center justify-center rounded-xl transition-colors"
-                  style={{ color: active ? T.red : 'rgba(255,255,255,0.5)' }}>
+                  style={{ color: active ? T.red : 'rgba(255,255,255,0.7)' }}>
                   <Icon className="w-[21px] h-[21px]" />
                 </button>
               ))}
@@ -475,11 +460,11 @@ export default function FriendsListPage() {
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{ duration: 0.18 }}
-                className="overflow-hidden shrink-0"
-                style={{ borderBottom: `1px solid ${T.border}` }}>
+                className="overflow-hidden shrink-0 relative z-20"
+                style={{ background: T.bg, borderBottom: `1px solid ${T.border}` }}>
                 <div className="px-4 py-2.5">
                   <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
-                    style={{ background: T.surface }}>
+                    style={{ background: 'rgba(255,255,255,0.08)' }}>
                     <Search className="w-4 h-4 shrink-0" style={{ color: T.muted }} />
                     <input autoFocus type="text" placeholder="이름으로 검색"
                       value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -497,7 +482,7 @@ export default function FriendsListPage() {
           </AnimatePresence>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto pb-6" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex-1 overflow-y-auto pb-6 relative z-10" style={{ scrollbarWidth: 'none' }}>
             {isLoading ? (
               <div className="flex items-center justify-center h-[50vh]">
                 <RefreshCw className="w-5 h-5 animate-spin" style={{ color: T.red }} />
@@ -506,35 +491,35 @@ export default function FriendsListPage() {
               <>
                 {/* My profile */}
                 {!searchQuery && (
-                  <div className="px-4 pt-2 pb-0">
+                  <div className="px-4 pt-4 pb-1">
                     <div onClick={() => setShowEditProfileModal(true)}
-                      className="flex items-center gap-3.5 px-3 py-3 rounded-2xl cursor-pointer transition-colors active:bg-white/[0.04]">
+                      className="flex items-center gap-3.5 px-3 py-3 rounded-2xl cursor-pointer transition-colors hover:bg-white/[0.06] active:bg-white/[0.08]">
                       <div className="relative shrink-0">
-                        <Av src={myProfile.avatar} size={52} r={17} />
-                        <span className="absolute -bottom-0.5 -right-0.5 w-[11px] h-[11px] rounded-full bg-green-400"
-                          style={{ border: `2px solid ${T.bg}` }} />
+                        <Av src={myProfile.avatar} size={56} r={20} ring={{ w: 2, c: 'rgba(255,255,255,0.1)' }} />
+                        <span className="absolute -bottom-0.5 -right-0.5 w-[13px] h-[13px] rounded-full bg-green-500"
+                          style={{ border: `2.5px solid ${T.bg}` }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[15px] font-semibold truncate">{myProfile.name}</p>
-                        <p className="text-[12px] mt-0.5 truncate" style={{ color: T.muted }}>
+                        <p className="text-[16px] font-bold truncate text-white drop-shadow-md">{myProfile.name}</p>
+                        <p className="text-[12px] mt-0.5 truncate text-white/60">
                           {myProfile.status || '상태메시지를 입력해보세요'}
                         </p>
                       </div>
                     </div>
-                    <div className="h-[1px] mt-1 mx-1" style={{ background: T.border }} />
+                    <div className="h-[1px] mt-2 mx-2" style={{ background: 'rgba(255,255,255,0.1)' }} />
                   </div>
                 )}
 
                 {/* Empty */}
                 {friends.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-[44vh] gap-3 px-10 text-center">
-                    <UserIcon className="w-10 h-10" style={{ opacity: 0.07 }} />
+                    <UserIcon className="w-10 h-10" style={{ opacity: 0.1 }} />
                     <p className="text-[13px] leading-6" style={{ color: T.muted }}>
                       아직 친구가 없습니다.<br />친구를 추가하거나 연락처를 동기화해보세요.
                     </p>
                   </div>
                 ) : (
-                  <>
+                  <div className="mt-2">
                     {favorites.length > 0 && (
                       <>
                         <SectionLabel text={`즐겨찾기 ${favorites.length}`} />
@@ -553,7 +538,7 @@ export default function FriendsListPage() {
                         onBlock={() => setBlockTarget(f)}
                         onDelete={() => handleDeleteClick(f.id)} />
                     ))}
-                  </>
+                  </div>
                 )}
               </>
             )}
@@ -566,7 +551,7 @@ export default function FriendsListPage() {
         {selectedFriend && (
           <Sheet onClose={() => setSelectedFriend(null)} maxH="92dvh">
             {/* BG strip */}
-            <div className="relative h-36 shrink-0 overflow-hidden rounded-t-[24px]">
+            <div className="relative h-20 shrink-0 overflow-hidden rounded-t-[24px]">
               {selectedFriend.bg
                 ? <img src={selectedFriend.bg} className="w-full h-full object-cover" alt="" />
                 : <div className="w-full h-full" style={{ background: T.surface }} />
@@ -727,7 +712,7 @@ function Av({ src, size, r, ring }: {
 function SectionLabel({ text }: { text: string }) {
   return (
     <p className="text-[11px] font-semibold tracking-[0.08em] uppercase px-5 pt-4 pb-1.5"
-      style={{ color: 'rgba(255,255,255,0.18)' }}>
+      style={{ color: 'rgba(255,255,255,0.25)' }}>
       {text}
     </p>
   );
@@ -749,7 +734,7 @@ function FriendRow({ friend, onClick, onBlock, onDelete }: {
   return (
     <div className="relative h-[66px] overflow-hidden" style={{ background: T.bg }}>
       {/* Action strip */}
-      <div className="absolute inset-y-0 right-0 flex" style={{ width: SWIPE * -1 }}>
+      <div className="absolute inset-y-0 right-0 flex" style={{ width: SWIPE * -1, zIndex: 0 }}>
         <button
           onClick={e => { e.stopPropagation(); onBlock(); controls.start({ x: 0 }); }}
           className="flex-1 flex flex-col items-center justify-center gap-1"
@@ -771,18 +756,18 @@ function FriendRow({ friend, onClick, onBlock, onDelete }: {
         drag="x" dragConstraints={{ left: SWIPE, right: 0 }} dragElastic={0.05}
         onDragEnd={handleDragEnd} animate={controls}
         onClick={onClick}
-        className="absolute inset-0 flex items-center px-4 cursor-pointer z-10 transition-colors active:bg-white/[0.04]"
-        style={{ background: T.bg, touchAction: 'pan-y' }}>
+        className="absolute inset-0 flex items-center px-4 cursor-pointer transition-colors active:bg-white/[0.04]"
+        style={{ background: T.bg, touchAction: 'pan-y', zIndex: 10 }}>
         <Av src={friend.avatar} size={44} r={15} />
         <div className="flex-1 min-w-0 ml-3.5">
           <div className="flex items-center gap-1.5">
-            <span className="text-[14px] font-semibold truncate">{friend.name}</span>
+            <span className="text-[14px] font-semibold truncate text-white/90">{friend.name}</span>
             <span className="text-[10px] font-bold tabular-nums shrink-0" style={{ color: scoreColor }}>
               {friend.friendlyScore}°
             </span>
           </div>
           {friend.status && (
-            <p className="text-[12px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.24)' }}>
+            <p className="text-[12px] truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
               {friend.status}
             </p>
           )}
@@ -790,7 +775,7 @@ function FriendRow({ friend, onClick, onBlock, onDelete }: {
       </motion.div>
 
       {/* Divider */}
-      <div className="absolute bottom-0 left-[60px] right-0 h-[1px]" style={{ background: T.border }} />
+      <div className="absolute bottom-0 left-[60px] right-0 h-[1px] z-20" style={{ background: 'rgba(255,255,255,0.06)' }} />
     </div>
   );
 }
@@ -979,11 +964,101 @@ function DeleteFriendModal({ friend, onClose, onConfirm }: {
 function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
   isOpen: boolean; onClose: () => void; initialProfile: MyProfile; onSave: (p: MyProfile) => void;
 }) {
+  // ── States for editing
   const [p, setP] = useState(initialProfile);
+  const [isCropOpen, setIsCropOpen] = useState(false);
+  const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
+  const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bgInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+
   useEffect(() => { if (isOpen) setP(initialProfile); }, [isOpen, initialProfile]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTempImageSrc(reader.result as string);
+        setCurrentImageType(type);
+        setIsCropOpen(true);
+        setZoom(1);
+        setCrop({ x: 0, y: 0 });
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    }
+  };
+
+  const handleCropSave = async () => {
+    if (!tempImageSrc || !croppedAreaPixels || !user) return;
+    try {
+      const croppedImageUrl = await getCroppedImg(tempImageSrc, croppedAreaPixels);
+      // Upload to storage
+      const res = await fetch(croppedImageUrl);
+      const blob = await res.blob();
+      const filePath = `${user.id}/${currentImageType}_${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, blob);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
+
+      setP(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
+      setIsCropOpen(false);
+    } catch (e) {
+      console.error(e);
+      toast.error('이미지 업로드 실패');
+    }
+  };
+
+  const handleResetImage = async (type: 'avatar' | 'bg') => {
+    setP(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: null }));
+    toast.success('기본 이미지로 설정되었습니다.');
+  };
+
   if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: T.bg }}>
+      {/* ── Image Cropper Overlay ── */}
+      <AnimatePresence>
+        {isCropOpen && tempImageSrc && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-black flex flex-col"
+          >
+            <div className="h-16 flex items-center justify-between px-5 bg-black/80 backdrop-blur-md z-10 sticky top-0">
+              <button onClick={() => setIsCropOpen(false)} className="p-2 -ml-2 text-white">
+                <X className="w-7 h-7" />
+              </button>
+              <span className="font-bold text-lg text-white">이미지 편집</span>
+              <button
+                onClick={handleCropSave}
+                className="px-5 py-2 rounded-full font-black text-sm text-white shadow-lg active:scale-95 transition-all"
+                style={{ background: '#FF203A' }}
+              >
+                완료
+              </button>
+            </div>
+            <div className="relative flex-1 bg-black">
+              <Cropper
+                image={tempImageSrc}
+                crop={crop}
+                zoom={zoom}
+                aspect={currentImageType === 'avatar' ? 1 : 16 / 9}
+                onCropChange={setCrop}
+                onCropComplete={(_, p) => setCroppedAreaPixels(p)}
+                onZoomChange={setZoom}
+                cropShape={currentImageType === 'avatar' ? 'round' : 'rect'}
+                showGrid={false}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="h-[54px] flex items-center justify-between px-4 shrink-0"
         style={{ borderBottom: `1px solid ${T.border}` }}>
@@ -1000,22 +1075,84 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
       </div>
 
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-        {/* BG */}
-        <div className="relative h-44 cursor-pointer" style={{ background: T.surface }}>
+        {/* BG Section - Clickable wrapper */}
+        <div 
+           className="relative h-44 group overflow-hidden cursor-pointer" 
+           style={{ background: T.surface }}
+           onClick={() => bgInputRef.current?.click()} // Main area triggers upload
+        >
           {p.bg
-            ? <img src={p.bg} className="w-full h-full object-cover" alt="" />
+            ? <img src={p.bg} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700" alt="" />
             : <div className="w-full h-full flex items-center justify-center gap-2" style={{ color: T.muted }}>
                 <ImageIcon className="w-5 h-5" />
                 <span className="text-[13px]">배경 사진 추가</span>
               </div>
           }
+          
+          {/* Controls Overlay - Visible on hover/tap */}
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+              {/* Pill Container - Stop propagation to separate actions */}
+              <div 
+                className="flex items-center gap-1 p-1 bg-black/50 backdrop-blur-md rounded-full border border-white/10 pointer-events-auto shadow-xl transform scale-95 group-hover:scale-100 transition-transform"
+                onClick={e => e.stopPropagation()}
+              >
+                  {/* Change Button */}
+                  <button 
+                    onClick={() => bgInputRef.current?.click()}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/10 transition-colors"
+                  >
+                     <Camera className="w-4 h-4 text-[#FF203A]" />
+                     <span className="text-[12px] font-medium text-white">변경</span>
+                  </button>
+
+                  {/* Divider */}
+                  {p.bg && <div className="w-[1px] h-4 bg-white/20" />}
+
+                  {/* Remove Button */}
+                  {p.bg && (
+                    <button 
+                      onClick={() => handleResetImage('bg')}
+                      className="p-1.5 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                    >
+                       <X className="w-4 h-4" />
+                    </button>
+                  )}
+              </div>
+          </div>
+          <input type="file" ref={bgInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'bg')} onClick={e => e.stopPropagation()} />
         </div>
-        {/* Avatar */}
-        <div className="flex justify-center -mt-10 mb-7">
-          <div className="cursor-pointer" style={{ filter: 'drop-shadow(0 6px 24px rgba(0,0,0,0.55))' }}>
-            <Av src={p.avatar} size={88} r={24} ring={{ w: 3, c: T.bg }} />
+
+        {/* Avatar Section */}
+        <div className="flex justify-center -mt-10 mb-7 relative z-10">
+          <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
+            <div className="transition-transform group-hover:scale-[1.02]" style={{ filter: 'drop-shadow(0 6px 24px rgba(0,0,0,0.55))' }}>
+              <Av src={p.avatar} size={88} r={28} ring={{ w: 3, c: T.bg }} />
+            </div>
+            
+            {/* Avatar Edit Controls */}
+            <div className="absolute inset-0 rounded-[28px] bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                 <div 
+                    className="flex items-center gap-1 p-1 bg-black/50 backdrop-blur-md rounded-full border border-white/10 pointer-events-auto shadow-lg"
+                    onClick={e => e.stopPropagation()}
+                 >
+                     <button onClick={() => avatarInputRef.current?.click()} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                        <Camera className="w-4 h-4 text-[#FF203A]" />
+                     </button>
+                     
+                     {p.avatar && (
+                       <>
+                         <div className="w-[1px] h-4 bg-white/20" />
+                         <button onClick={() => handleResetImage('avatar')} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                            <X className="w-4 h-4 text-white/80" />
+                         </button>
+                       </>
+                     )}
+                 </div>
+            </div>
+            <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar')} onClick={e => e.stopPropagation()} />
           </div>
         </div>
+
         {/* Fields */}
         <div className="px-5 space-y-4 pb-12">
           {[
@@ -1025,10 +1162,13 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
             <div key={key}>
               <p className="text-[11px] font-semibold tracking-[0.08em] uppercase px-1 mb-2"
                 style={{ color: 'rgba(255,255,255,0.18)' }}>{label}</p>
-              <input type="text" value={v}
-                onChange={e => setP(prev => ({ ...prev, [key]: e.target.value }))}
-                className="w-full px-4 py-3.5 rounded-2xl text-[14px] focus:outline-none"
-                style={{ background: T.surface, border: `1px solid ${T.border}`, color: '#fff' }} />
+              <div className="relative group">
+                <input type="text" value={v}
+                  onChange={e => setP(prev => ({ ...prev, [key]: e.target.value }))}
+                  className="w-full px-4 py-3.5 rounded-2xl text-[14px] focus:outline-none transition-all"
+                  style={{ background: T.surface, border: `1px solid ${T.border}`, color: '#fff' }} />
+                <PenLine className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 group-focus-within:text-[#FF203A] transition-colors" />
+              </div>
             </div>
           ))}
         </div>
