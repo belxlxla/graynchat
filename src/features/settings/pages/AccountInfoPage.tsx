@@ -510,7 +510,7 @@ export default function AccountInfoPage() {
                 </motion.button>
                 <button
                   onClick={() => setEditTarget(null)}
-                  className="w-full py-3 text-[13px]"
+                  className="w-full h-20 py-3 text-[13px]"
                   style={{ color: 'rgba(255,255,255,0.25)' }}
                 >
                   취소
@@ -598,7 +598,7 @@ export default function AccountInfoPage() {
                 {showVerifyConfirm === 'phone' ? '전화번호' : '이름'}를 변경하려면{'\n'}본인인증이 필요합니다.
               </p>
 
-              <div className="flex gap-2.5">
+              <div className="flex gap-2.5 mb-12">
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => setShowVerifyConfirm(null)}
@@ -736,13 +736,13 @@ function CountrySelectModal({ isOpen, onClose, blockedList, onSave }: any) {
         {/* 푸터 */}
         <div className="px-4 pt-3 pb-safe-or-8 shrink-0 flex items-center gap-3"
           style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <p className="flex-1 text-[12px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          <p className="flex-1 text-[14px] mb-4" style={{ color: 'rgba(255,255,255,0.35)' }}>
             <span className="font-bold text-white">{selected.length}</span>개국 선택
           </p>
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={() => { onSave(selected); onClose(); }}
-            className="px-6 h-11 rounded-2xl text-[14px] font-bold text-white"
+            className="px-6 h-11 rounded-2xl text-[14px] font-bold text-white mb-4"
             style={{ background: '#FF203A' }}
           >
             적용
@@ -781,7 +781,7 @@ function LogoutModal({ isOpen, onClose, onConfirm }: any) {
         <p className="text-[13px] text-center mb-8" style={{ color: 'rgba(255,255,255,0.4)' }}>
           계정에서 로그아웃 하시겠습니까?
         </p>
-        <div className="flex gap-2.5">
+        <div className="flex gap-2.5 mb-12">
           <motion.button
             whileTap={{ scale: 0.97 }}
             onClick={onClose}

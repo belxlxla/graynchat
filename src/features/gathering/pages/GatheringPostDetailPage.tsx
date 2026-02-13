@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Heart, MessageCircle, Share2, MoreHorizontal,
-  Send, Loader2, User as UserIcon, Trash2, AlertCircle, Edit2
+  Send, Loader2, User as UserIcon, Trash2, AlertCircle, Edit2,
+  CornerDownRight, X, ChevronDown, ChevronUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
@@ -26,11 +27,13 @@ interface PostDetail {
 
 interface Comment {
   id: string;
+  post_id: string;
   author_id: string;
   author_name: string;
   author_avatar: string | null;
   content: string;
   created_at: string;
+  parent_id: string | null;
 }
 
 const getTimeAgo = (dateStr: string) => {
@@ -56,12 +59,16 @@ export default function GatheringPostDetailPage() {
   const [isLiked, setIsLiked] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
   
+  // 대댓글 상태 관리
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+  
   // 모달 상태 관리
   const [showMenu, setShowMenu] = useState(false);
   const [showDeletePostModal, setShowDeletePostModal] = useState(false);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
 
   const commentsEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!postId || !user) return;
@@ -123,16 +130,25 @@ export default function GatheringPostDetailPage() {
     setIsSendingComment(true);
     try {
       const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
+      
       const { data: newComment } = await supabase.from('gathering_comments').insert({
-        post_id: postId, author_id: user.id, author_name: userData?.name || '익명', author_avatar: userData?.avatar,
-        content: commentInput.trim()
+        post_id: postId, 
+        author_id: user.id, 
+        author_name: userData?.name || '익명', 
+        author_avatar: userData?.avatar,
+        content: commentInput.trim(),
+        parent_id: replyingTo ? replyingTo.id : null
       }).select().single();
       
       if (newComment) {
         setComments(prev => [...prev, newComment]);
         setPost(prev => prev ? { ...prev, comment_count: prev.comment_count + 1 } : null);
         setCommentInput('');
-        setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        setReplyingTo(null);
+        
+        if (!replyingTo) {
+          setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+        }
       }
     } catch {
       toast.error('전송 실패');
@@ -153,7 +169,8 @@ export default function GatheringPostDetailPage() {
     if (!commentToDelete) return;
     try {
       await supabase.from('gathering_comments').delete().eq('id', commentToDelete);
-      setComments(prev => prev.filter(c => c.id !== commentToDelete));
+      
+      setComments(prev => prev.filter(c => c.id !== commentToDelete && c.parent_id !== commentToDelete));
       setPost(prev => prev ? { ...prev, comment_count: Math.max(0, prev.comment_count - 1) } : null);
       toast.success('댓글이 삭제되었습니다.');
     } catch { 
@@ -163,6 +180,27 @@ export default function GatheringPostDetailPage() {
     }
   };
 
+  const onClickReply = (comment: Comment) => {
+    setReplyingTo(comment);
+    inputRef.current?.focus();
+  };
+
+  const { rootComments, getReplies } = useMemo(() => {
+    const root = comments.filter(c => !c.parent_id);
+    const repliesMap = new Map<string, Comment[]>();
+    
+    comments.forEach(c => {
+      if (c.parent_id) {
+        if (!repliesMap.has(c.parent_id)) {
+          repliesMap.set(c.parent_id, []);
+        }
+        repliesMap.get(c.parent_id)?.push(c);
+      }
+    });
+
+    return { rootComments: root, getReplies: (id: string) => repliesMap.get(id) || [] };
+  }, [comments]);
+
   if (isLoading) return <div className="h-screen bg-[#111] flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>;
   if (!post) return null;
 
@@ -170,7 +208,6 @@ export default function GatheringPostDetailPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-[#111] text-[#eee] relative">
-      {/* Header */}
       <header className="fixed top-0 w-full h-[52px] flex items-center justify-between px-4 bg-[#111]/80 backdrop-blur-md z-50 border-b border-white/5">
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-white">
             <ArrowLeft className="w-6 h-6" />
@@ -191,8 +228,7 @@ export default function GatheringPostDetailPage() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto pt-[52px] pb-[80px]">
+      <div className="flex-1 overflow-y-auto pt-[52px] pb-[90px]">
         <div className="px-5 pt-6 pb-8">
             <div className="inline-flex items-center justify-center px-3 py-1 rounded-[6px] bg-[#222] text-[#999] text-[11px] font-medium mb-5">
                 {post.category}
@@ -243,39 +279,22 @@ export default function GatheringPostDetailPage() {
 
         <div className="h-2 bg-[#0a0a0a]" />
 
+        {/* 댓글 목록 영역 */}
         <div className="px-5 py-6">
             <h3 className="text-[15px] font-bold mb-5 text-white">댓글</h3>
             <div className="space-y-6">
                 {comments.length === 0 ? (
                     <p className="text-center text-[#555] py-8 text-[13px]">첫 댓글을 남겨보세요.</p>
                 ) : (
-                    comments.map(comment => (
-                        <div key={comment.id} className="flex gap-3">
-                            <div className="w-8 h-8 rounded-full bg-[#222] overflow-hidden flex-shrink-0 mt-0.5">
-                                {comment.author_avatar ? (
-                                    <img src={comment.author_avatar} className="w-full h-full object-cover" alt="" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-[#555]"><UserIcon className="w-4 h-4" /></div>
-                                )}
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center justify-between mb-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[13px] font-semibold text-[#ddd]">{comment.author_name}</span>
-                                        <span className="text-[11px] text-[#555]">{getTimeAgo(comment.created_at)}</span>
-                                    </div>
-                                    {user?.id === comment.author_id && (
-                                        <button 
-                                            onClick={() => setCommentToDelete(comment.id)} 
-                                            className="text-[11px] text-[#555] hover:text-[#FF203A]"
-                                        >
-                                            삭제
-                                        </button>
-                                    )}
-                                </div>
-                                <p className="text-[14px] text-[#bbb] leading-relaxed break-all">{comment.content}</p>
-                            </div>
-                        </div>
+                    rootComments.map(comment => (
+                        <CommentItem
+                            key={comment.id}
+                            comment={comment}
+                            user={user}
+                            replies={getReplies(comment.id)}
+                            onReply={() => onClickReply(comment)}
+                            onDelete={(id) => setCommentToDelete(id)}
+                        />
                     ))
                 )}
             </div>
@@ -283,35 +302,57 @@ export default function GatheringPostDetailPage() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 w-full bg-[#111] border-t border-white/5 px-4 pt-3 pb-safe z-50">
-        <div className="flex items-end gap-2 pb-3">
-            <motion.button 
-                whileTap={{ scale: 0.9 }} 
-                onClick={handleToggleLike}
-                className="w-10 h-10 rounded-full flex items-center justify-center text-[#888] hover:bg-[#222] transition-colors"
-            >
-                <Heart className={`w-6 h-6 ${isLiked ? 'text-[#FF203A] fill-[#FF203A]' : ''}`} />
-            </motion.button>
-            <div className="flex-1 bg-[#222] rounded-[20px] px-4 py-2.5 flex items-center">
-                <input 
-                    value={commentInput}
-                    onChange={e => setCommentInput(e.target.value)}
-                    placeholder="댓글을 입력하세요..."
-                    className="bg-transparent w-full text-[14px] text-white placeholder-[#555] focus:outline-none"
-                    onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleSendComment()}
-                />
-                <button 
-                    onClick={handleSendComment} 
-                    disabled={!commentInput.trim() || isSendingComment}
-                    className={`ml-2 p-1 rounded-full transition-colors ${commentInput.trim() ? 'text-[#FF203A]' : 'text-[#444]'}`}
+      <div className="fixed bottom-0 w-full bg-[#111] border-t border-white/5 z-50">
+        <AnimatePresence>
+            {replyingTo && (
+                <motion.div 
+                    initial={{ height: 0, opacity: 0 }} 
+                    animate={{ height: 'auto', opacity: 1 }} 
+                    exit={{ height: 0, opacity: 0 }}
+                    className="bg-[#1a1a1a] px-4 py-2 flex items-center justify-between text-[12px] border-b border-white/5"
                 >
-                    {isSendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                </button>
+                    <div className="flex items-center gap-2 text-[#aaa]">
+                        <CornerDownRight className="w-3.5 h-3.5" />
+                        <span className="font-bold text-[#FF203A]">{replyingTo.author_name}</span>
+                        <span>님에게 답글 작성 중...</span>
+                    </div>
+                    <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-[#333] rounded-full">
+                        <X className="w-4 h-4 text-[#666]" />
+                    </button>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+        <div className="px-4 pt-3 pb-safe">
+            <div className="flex items-end gap-2 pb-3">
+                <motion.button 
+                    whileTap={{ scale: 0.9 }} 
+                    onClick={handleToggleLike}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-[#888] hover:bg-[#222] transition-colors"
+                >
+                    <Heart className={`w-6 h-6 ${isLiked ? 'text-[#FF203A] fill-[#FF203A]' : ''}`} />
+                </motion.button>
+                <div className="flex-1 bg-[#222] rounded-[20px] px-4 py-2.5 flex items-center">
+                    <input 
+                        ref={inputRef}
+                        value={commentInput}
+                        onChange={e => setCommentInput(e.target.value)}
+                        placeholder={replyingTo ? "답글을 입력하세요..." : "댓글을 입력하세요..."}
+                        className="bg-transparent w-full text-[14px] text-white placeholder-[#555] focus:outline-none"
+                        onKeyDown={e => e.key === 'Enter' && !e.nativeEvent.isComposing && handleSendComment()}
+                    />
+                    <button 
+                        onClick={handleSendComment} 
+                        disabled={!commentInput.trim() || isSendingComment}
+                        className={`ml-2 p-1 rounded-full transition-colors ${commentInput.trim() ? 'text-[#FF203A]' : 'text-[#444]'}`}
+                    >
+                        {isSendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </button>
+                </div>
             </div>
         </div>
       </div>
 
-      {/* Author Menu (Bottom Sheet) */}
       <AnimatePresence>
         {showMenu && (
             <div className="fixed inset-0 z-[60] flex items-end justify-center">
@@ -326,8 +367,6 @@ export default function GatheringPostDetailPage() {
                     className="relative w-full max-w-md bg-[#1a1a1a] rounded-t-[20px] p-2 pb-8 overflow-hidden"
                 >
                     <div className="w-10 h-1 bg-[#333] rounded-full mx-auto my-3" />
-                    
-                    {/* 수정 버튼 */}
                     <button 
                         onClick={() => { setShowMenu(false); navigate(`/gathering/edit/${postId}`); }}
                         className="w-full p-4 flex items-center gap-3 text-white hover:bg-[#222] rounded-xl transition-colors"
@@ -335,7 +374,6 @@ export default function GatheringPostDetailPage() {
                         <Edit2 className="w-5 h-5 text-[#888]" />
                         <span className="text-[15px] font-medium">게시글 수정</span>
                     </button>
-
                     <button 
                         onClick={() => { setShowMenu(false); setShowDeletePostModal(true); }}
                         className="w-full p-4 flex items-center gap-3 text-[#FF203A] hover:bg-[#222] rounded-xl transition-colors"
@@ -348,7 +386,6 @@ export default function GatheringPostDetailPage() {
         )}
       </AnimatePresence>
 
-      {/* Post Delete Modal */}
       <AnimatePresence>
         {showDeletePostModal && (
             <div className="fixed inset-0 z-[70] flex items-center justify-center px-6">
@@ -380,7 +417,6 @@ export default function GatheringPostDetailPage() {
         )}
       </AnimatePresence>
 
-      {/* Comment Delete Modal */}
       <AnimatePresence>
         {commentToDelete && (
             <div className="fixed inset-0 z-[70] flex items-center justify-center px-6">
@@ -413,4 +449,101 @@ export default function GatheringPostDetailPage() {
       </AnimatePresence>
     </div>
   );
+}
+
+// ─── Comment Item Component (Enhanced with Toggle Logic) ───
+function CommentItem({ 
+    comment, 
+    user, 
+    onReply, 
+    onDelete, 
+    replies = [], 
+    isReply = false 
+}: { 
+    comment: Comment, 
+    user: any, 
+    onReply: () => void, 
+    onDelete: (id: string) => void,
+    replies?: Comment[],
+    isReply?: boolean 
+}) {
+    // 답글 보이기/숨기기 상태
+    const [showReplies, setShowReplies] = useState(false);
+
+    return (
+        <div className="relative">
+            {/* 댓글 내용 */}
+            <div className="flex gap-3">
+                <div className={`rounded-full bg-[#222] overflow-hidden flex-shrink-0 mt-0.5 ${isReply ? 'w-6 h-6' : 'w-8 h-8'}`}>
+                    {comment.author_avatar ? (
+                        <img src={comment.author_avatar} className="w-full h-full object-cover" alt="" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[#555]"><UserIcon className={isReply ? 'w-3 h-3' : 'w-4 h-4'} /></div>
+                    )}
+                </div>
+                <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-semibold text-[#ddd]">{comment.author_name}</span>
+                            <span className="text-[11px] text-[#555]">{getTimeAgo(comment.created_at)}</span>
+                        </div>
+                        <div className="flex gap-3">
+                            {!isReply && (
+                                <button 
+                                    onClick={onReply} 
+                                    className="text-[11px] text-[#666] hover:text-[#bbb]"
+                                >
+                                    답글
+                                </button>
+                            )}
+                            {user?.id === comment.author_id && (
+                                <button 
+                                    onClick={() => onDelete(comment.id)} 
+                                    className="text-[11px] text-[#555] hover:text-[#FF203A]"
+                                >
+                                    삭제
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <p className="text-[14px] text-[#bbb] leading-relaxed break-all">{comment.content}</p>
+                    
+                    {/* 답글 토글 버튼 (대댓글이 있을 때만 표시) */}
+                    {replies.length > 0 && (
+                        <button 
+                            onClick={() => setShowReplies(!showReplies)}
+                            className="flex items-center gap-1 mt-2 text-[12px] text-[#FF203A] hover:underline font-medium"
+                        >
+                            <div className="w-6 h-[1px] bg-[#FF203A]/50 mr-1"></div>
+                            {showReplies ? '답글 숨기기' : `답글 ${replies.length}개 보기`}
+                            {showReplies ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* 답글 드롭다운 리스트 */}
+            <AnimatePresence>
+                {showReplies && replies.length > 0 && (
+                    <motion.div 
+                        initial={{ height: 0, opacity: 0 }} 
+                        animate={{ height: 'auto', opacity: 1 }} 
+                        exit={{ height: 0, opacity: 0 }}
+                        className="pl-11 mt-4 space-y-4 overflow-hidden"
+                    >
+                        {replies.map(reply => (
+                            <CommentItem 
+                                key={reply.id} 
+                                comment={reply} 
+                                user={user} 
+                                onReply={onReply} // 대댓글에서 답글 누르면 원댓글에 답글 달림
+                                onDelete={onDelete}
+                                isReply
+                            />
+                        ))}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
 }

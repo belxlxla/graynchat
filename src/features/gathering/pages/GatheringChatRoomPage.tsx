@@ -139,16 +139,27 @@ export default function GatheringChatRoomPage() {
   // ── 초기 데이터 ─────────────────────────────────────────
   useEffect(() => {
     if (!roomId) return;
+    
     const loadInitialData = async () => {
       try {
+        // 1. 방 정보 로드
         const { data: roomData } = await supabase.from('gathering_rooms').select('*').eq('id', roomId).single();
         if (roomData) setRoom(roomData);
+
+        // 2. 참여자 수 로드
         const { count } = await supabase.from('gathering_room_members')
           .select('*', { count: 'exact', head: true }).eq('room_id', roomId);
         if (count !== null) setRealParticipantCount(count);
+
+        // 3. 메시지 로드
         const { data: msgData } = await supabase.from('gathering_messages').select('*')
-          .eq('room_id', roomId).order('created_at', { ascending: true }).limit(100);
-        if (msgData) { setMessages(msgData); msgData.forEach(m => messageIdsRef.current.add(m.id)); }
+          .eq('room_id', roomId).order('created_at', { ascending: true }); // limit 제거 또는 적절히 조정
+
+        if (msgData) { 
+          // 중복 방지를 위한 ID 초기화
+          messageIdsRef.current = new Set(msgData.map(m => m.id));
+          setMessages(msgData); 
+        }
       } catch {
         toast.error('채팅방 정보를 불러올 수 없습니다.');
         navigate('/main/gathering');
@@ -159,38 +170,80 @@ export default function GatheringChatRoomPage() {
     loadInitialData();
   }, [roomId, navigate]);
 
-  // ── 실시간 구독 ─────────────────────────────────────────
+  // ── 실시간 구독 (수정됨: Date.now() 제거) ────────────────
   useEffect(() => {
     if (!roomId) return;
-    const channel = supabase.channel(`gathering_room_${roomId}_${Date.now()}`)
+
+    // 기존 채널 정리
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    // ✅ 중요: 채널 이름을 고정해야 서로 통신이 됩니다. (Date.now() 제거)
+    const channelName = `gathering_room_${roomId}`;
+    const channel = supabase.channel(channelName)
       .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'gathering_messages', filter: `room_id=eq.${roomId}` },
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'gathering_messages', 
+          filter: `room_id=eq.${roomId}` 
+        },
         (payload) => {
           const newMsg = payload.new as ChatMessage;
+          
+          // 이미 존재하는 메시지인지 확인 (내가 보낸 메시지 중복 방지)
           if (messageIdsRef.current.has(newMsg.id)) return;
+          
           messageIdsRef.current.add(newMsg.id);
           setMessages(prev => [...prev, newMsg]);
         }
       )
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'gathering_room_members', filter: `room_id=eq.${roomId}` },
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'gathering_room_members', 
+          filter: `room_id=eq.${roomId}` 
+        },
         async () => {
+          // 멤버 변경 시 카운트 업데이트
           const { count } = await supabase.from('gathering_room_members')
             .select('*', { count: 'exact', head: true }).eq('room_id', roomId);
           if (count !== null) setRealParticipantCount(count);
         }
       )
       .on('postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'gathering_rooms', filter: `id=eq.${roomId}` },
-        () => { toast('방장이 채팅방을 종료했습니다.'); navigate('/main/gathering', { replace: true }); }
+        { 
+          event: 'DELETE', 
+          schema: 'public', 
+          table: 'gathering_rooms', 
+          filter: `id=eq.${roomId}` 
+        },
+        () => { 
+          toast('방장이 채팅방을 종료했습니다.'); 
+          navigate('/main/gathering', { replace: true }); 
+        }
       )
-      .subscribe(status => { if (status === 'SUBSCRIBED') console.log('✅ Chatroom subscribed'); });
+      .subscribe((status) => { 
+        if (status === 'SUBSCRIBED') {
+          console.log(`✅ Connected to chat: ${channelName}`); 
+        }
+      });
+
     channelRef.current = channel;
-    return () => { console.log('Cleaning up channel...'); supabase.removeChannel(channel); };
+
+    return () => { 
+      console.log('Cleaning up channel...'); 
+      supabase.removeChannel(channel); 
+    };
   }, [roomId, navigate]);
 
+  // 스크롤 자동 이동
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   // ── 메시지 전송 ─────────────────────────────────────────
@@ -200,28 +253,47 @@ export default function GatheringChatRoomPage() {
     setInput('');
     setIsSending(true);
     setIsMenuOpen(false);
+
+    // 낙관적 UI 업데이트를 위한 임시 ID 생성
+    // DB의 ID 타입(int vs uuid)에 따라 충돌 가능성이 있으므로 음수나 timestamp 사용
+    const tempId = Date.now(); 
+
     const optimisticMsg: ChatMessage = {
-      id: Date.now(), user_id: user.id, user_name: '나',
-      user_avatar: null, content, created_at: new Date().toISOString(),
+      id: tempId, 
+      user_id: user.id, 
+      user_name: '나',
+      user_avatar: null, 
+      content, 
+      created_at: new Date().toISOString(),
     };
+
     setMessages(prev => [...prev, optimisticMsg]);
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+
     try {
       const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
+      
       const { data: insertedMsg, error } = await supabase.from('gathering_messages').insert({
-        room_id: roomId, user_id: user.id,
+        room_id: roomId, 
+        user_id: user.id,
         user_name: userData?.name || '사용자',
-        user_avatar: userData?.avatar || null, content,
+        user_avatar: userData?.avatar || null, 
+        content,
       }).select().single();
+
       if (error) throw error;
+
       if (insertedMsg) {
+        // 실제 ID 등록
         messageIdsRef.current.add(insertedMsg.id);
-        setMessages(prev => prev.map(m => m.id === optimisticMsg.id ? insertedMsg : m));
+        // 낙관적 메시지를 실제 메시지로 교체
+        setMessages(prev => prev.map(m => m.id === tempId ? insertedMsg : m));
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       toast.error('메시지 전송 실패');
-      setInput(content);
-      setMessages(prev => prev.filter(m => m.content !== content));
+      setInput(content); // 실패 시 입력창 복구
+      setMessages(prev => prev.filter(m => m.id !== tempId)); // 낙관적 메시지 제거
     } finally {
       setIsSending(false);
     }
@@ -237,14 +309,25 @@ export default function GatheringChatRoomPage() {
       const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
       const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`;
       const filePath = `${roomId}/${fileName}`;
+      
       const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
       if (uploadError) throw uploadError;
+      
       const { data: { publicUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-      await supabase.from('gathering_messages').insert({
+      
+      const { data: insertedMsg, error: insertError } = await supabase.from('gathering_messages').insert({
         room_id: roomId, user_id: user.id,
         user_name: userData?.name || '사용자',
         user_avatar: userData?.avatar || null, content: publicUrl,
-      });
+      }).select().single();
+
+      if (insertError) throw insertError;
+      
+      if (insertedMsg) {
+        messageIdsRef.current.add(insertedMsg.id);
+        // 파일은 낙관적 업데이트 없이 바로 리얼타임/응답으로 처리
+      }
+
       toast.success('전송 완료', { id: uploadToast });
     } catch {
       toast.error('전송 실패', { id: uploadToast });
@@ -260,16 +343,18 @@ export default function GatheringChatRoomPage() {
     if (!user || !roomId) return;
     try {
       if (isHost) {
+        // 호스트는 방을 삭제
         await supabase.from('gathering_rooms').delete().eq('id', roomId);
         toast.success('게더링 챗을 삭제했습니다.');
       } else {
+        // 일반 멤버는 나가기
         await supabase.from('gathering_room_members').delete()
           .eq('room_id', roomId).eq('user_id', user.id);
         toast.success('게더링 챗을 나갔습니다.');
       }
       navigate('/main/gathering', { replace: true });
     } catch {
-      toast.error('요청 처리에 실패했습니다. (DB 설정 확인 필요)');
+      toast.error('요청 처리에 실패했습니다.');
     }
   };
 

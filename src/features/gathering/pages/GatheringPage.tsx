@@ -83,7 +83,7 @@ function PasswordModal({ room, onConfirm, onClose }: {
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-        className="relative z-10 w-full max-w-lg rounded-t-[28px] px-6 pt-5 pb-12"
+        className="relative z-10 w-full max-w-lg rounded-t-[28px] px-6 pt-5 pb-28"
         style={{ background: '#111111', borderTop: '1px solid rgba(255,255,255,0.07)' }}
       >
         <div className="w-9 h-[3px] rounded-full mx-auto mb-6" style={{ background: 'rgba(255,255,255,0.15)' }} />

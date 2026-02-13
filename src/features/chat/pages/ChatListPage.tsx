@@ -165,7 +165,6 @@ export default function ChatListPage() {
         };
       }).filter((c): c is ChatRoom => c !== null);
 
-      // ✅ 중복 제거
       const uniqueChats = formattedData.reduce((acc: ChatRoom[], chat) => {
         if (!acc.find(c => c.id === chat.id)) {
           acc.push(chat);
@@ -187,7 +186,7 @@ export default function ChatListPage() {
     fetchChats();
   }, [location.pathname, user?.id, fetchChats]);
 
-  // ✅ Realtime 구독
+  // ✅ Realtime 구독 (안 읽은 메시지 수 유지 로직 추가)
   useEffect(() => {
     if (!user?.id) return;
 
@@ -206,7 +205,12 @@ export default function ChatListPage() {
             const chat = { ...updated[idx] };
             chat.lastMessage = newMsg.content;
             chat.timestamp = new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            if (newMsg.sender_id !== user.id) chat.unreadCount = (chat.unreadCount || 0) + 1;
+            
+            // ✅ 상대방이 보낸 메시지인 경우 카운트 증가 (999+ 로직은 렌더링에서 처리)
+            if (newMsg.sender_id !== user.id) {
+              chat.unreadCount = (chat.unreadCount || 0) + 1;
+            }
+            
             updated.splice(idx, 1);
             updated.unshift(chat);
             return updated;
@@ -221,9 +225,27 @@ export default function ChatListPage() {
         { event: 'DELETE', schema: 'public', table: 'room_members', filter: `user_id=eq.${user.id}` }, 
         () => { fetchChats(); }
       )
+      // ✅ [중요 수정] chat_rooms 업데이트 시 fetchChats() 대신 로컬 상태 병합
+      // 이렇게 해야 INSERT 이벤트에서 올린 unreadCount가 초기화되지 않음
       .on('postgres_changes', 
         { event: 'UPDATE', schema: 'public', table: 'chat_rooms' }, 
-        () => fetchChats()
+        (payload) => {
+          const updatedRoom = payload.new as any;
+          setChats(prev => prev.map(chat => {
+            if (chat.id === updatedRoom.id) {
+              return {
+                ...chat,
+                title: updatedRoom.title,
+                // unreadCount는 건드리지 않고 유지함
+                lastMessage: updatedRoom.last_message || chat.lastMessage,
+                timestamp: updatedRoom.last_message_at 
+                  ? new Date(updatedRoom.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : chat.timestamp
+              };
+            }
+            return chat;
+          }));
+        }
       )
       .on('postgres_changes', 
         { event: 'UPDATE', schema: 'public', table: 'users' }, 
@@ -258,43 +280,28 @@ export default function ChatListPage() {
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
 
-  // ✅ [핵심 수정] 채팅방 나가기: 메시지 삭제 + AI 점수 초기화
+  // ✅ 채팅방 나가기: 메시지 삭제 + AI 점수 초기화 + 나가기
   const handleLeaveChatConfirm = async () => {
     if (!user?.id || !leaveChatTarget) return;
 
     const targetRoomId = leaveChatTarget.id;
     const isIndividual = leaveChatTarget.type === 'individual';
 
-    // UI에서 먼저 제거 (Optimistic UI)
     setChats(prev => prev.filter(c => c.id !== targetRoomId));
     setLeaveChatTarget(null);
     
     try {
-      // 1. [AI 점수 초기화] 1:1 채팅인 경우
       if (isIndividual) {
-        // roomId 형식 (uid_uid)에서 친구 ID 추출
         const friendId = targetRoomId.split('_').find(id => id !== user.id);
-        
         if (friendId) {
-          // AI 점수를 1로 초기화
-          const { error: scoreError } = await supabase
-            .from('friends')
-            .update({ friendly_score: 1 })
-            .match({ user_id: user.id, friend_user_id: friendId });
-
-          if (scoreError) console.error('점수 초기화 실패:', scoreError);
+           await supabase.from('friends')
+             .update({ friendly_score: 1 })
+             .match({ user_id: user.id, friend_user_id: friendId });
         }
       }
 
-      // 2. [대화 내용 삭제] 해당 방의 모든 메시지 삭제
-      const { error: msgDeleteError } = await supabase
-        .from('messages')
-        .delete()
-        .eq('room_id', targetRoomId);
+      await supabase.from('messages').delete().eq('room_id', targetRoomId);
 
-      if (msgDeleteError) console.error('메시지 삭제 실패:', msgDeleteError);
-      
-      // 3. [멤버 삭제] 나를 멤버에서 제외
       const { error: deleteMemberError } = await supabase
         .from('room_members')
         .delete()
@@ -302,7 +309,6 @@ export default function ChatListPage() {
       
       if (deleteMemberError) throw deleteMemberError;
       
-      // 4. [방 청소] 남은 멤버가 없으면 방 삭제
       const { count } = await supabase
         .from('room_members')
         .select('count(*)', { count: 'exact', head: true })
@@ -310,18 +316,16 @@ export default function ChatListPage() {
       
       if (count === 0) {
         await supabase.from('chat_rooms').delete().eq('id', targetRoomId);
-      } else if (isIndividual) {
-        // 1:1 방은 한 명만 나가도 사실상 폭파 개념이므로 정리 가능하면 정리
-        // (단, 상대방 화면에서도 사라지게 하려면 여기서 방을 지워도 되지만, 
-        //  보통은 상대방 기록은 남겨두므로 멤버만 나감 처리)
+      } else {
+        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', targetRoomId);
       }
       
-      toast.success('채팅방이 초기화되었습니다.');
+      toast.success('채팅방을 나갔습니다.');
       
     } catch (error) {
       console.error('나가기 실패:', error);
       toast.error('나가기에 실패했습니다.');
-      fetchChats(); // 실패 시 목록 원복
+      fetchChats(); 
     }
   };
 
@@ -369,12 +373,13 @@ export default function ChatListPage() {
               initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
               className="text-[13px] font-bold text-[#FF203A] bg-[#FF203A]/12 px-2 py-0.5 rounded-full tabular-nums"
             >
-              {totalUnread}
+              {totalUnread > 999 ? '+999' : totalUnread}
             </motion.span>
           )}
         </div>
 
         <div className="flex items-center gap-1 relative">
+          {/* 검색 */}
           <button
             onClick={() => setIsSearching(v => !v)}
             className={`w-9 h-9 flex items-center justify-center rounded-[12px] transition-colors ${
@@ -383,12 +388,16 @@ export default function ChatListPage() {
           >
             <Search className="w-[19px] h-[19px]" />
           </button>
+
+          {/* 새 채팅 */}
           <button
             onClick={() => setIsCreateChatOpen(true)}
             className="w-9 h-9 flex items-center justify-center rounded-[12px] text-white/60 hover:bg-white/[0.06] hover:text-white transition-colors"
           >
             <Plus className="w-[19px] h-[19px]" />
           </button>
+
+          {/* 설정 */}
           <button
             onClick={() => setIsSettingsOpen(v => !v)}
             className={`w-9 h-9 flex items-center justify-center rounded-[12px] transition-colors ${
@@ -398,6 +407,7 @@ export default function ChatListPage() {
             <Settings className="w-[19px] h-[19px]" />
           </button>
 
+          {/* 설정 드롭다운 */}
           <AnimatePresence>
             {isSettingsOpen && (
               <>
@@ -611,8 +621,9 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
                 transition={{ type: 'spring', damping: 20, stiffness: 400 }}
                 className="bg-[#FF203A] min-w-[19px] h-[19px] px-[5px] rounded-full flex items-center justify-center shrink-0"
               >
+                {/* ✅ 요구사항: 999 넘으면 +999 로 표기 */}
                 <span className="text-[10px] font-bold text-white leading-none tabular-nums">
-                  {data.unreadCount > 999 ? '999+' : data.unreadCount}
+                  {data.unreadCount > 999 ? '+999' : data.unreadCount}
                 </span>
               </motion.div>
             )}
@@ -844,7 +855,7 @@ function EditTitleModal({ isOpen, onClose, currentTitle, onSave }: {
   isOpen: boolean; onClose: () => void; currentTitle: string; onSave: (v: string) => void;
 }) {
   const [text, setText] = useState(currentTitle);
-  const inputRef = useRef<HTMLInputElement>(null); // ✅ useRef 정상 동작
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
