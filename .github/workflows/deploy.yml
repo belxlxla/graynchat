@@ -1,4 +1,4 @@
-name: Deploy to AWS
+name: Deploy to AWS with GHCR
 
 on:
   push:
@@ -6,7 +6,38 @@ on:
       - main
 
 jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 도커 이미지 주소는 대문자를 허용하지 않으므로 소문자로 변환 작업 추가
+      - name: Set up Image Name to Lowercase
+        run: echo "IMAGE_ID=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_ID }}:latest
+            ghcr.io/${{ env.IMAGE_ID }}:${{ github.sha }}
+
   deploy:
+    needs: build-and-push
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to EC2
@@ -15,19 +46,22 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_KEY }}
-          port: 22
           script: |
+            # 1. 이미지 이름을 소문자로 정의 (빌드 시 이름과 동일해야 함)
+            IMAGE_ID=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')
+            
+            # 2. GHCR 로그인
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # 3. 프로젝트 경로 이동
             cd ~/graynserver
-            
-            # 1. 최신 코드 가져오기
-            git fetch --all
-            git reset --hard origin/main
-            
-            # 2. 안전하게 기존 서버 내리기 (꼬임 방지)
-            sudo docker-compose down --remove-orphans
-            
-            # 3. 청소 (선택사항, 용량 부족하면 사용)
-            sudo docker system prune -f
-            
-            # 4. 새로 빌드해서 올리기
-            sudo docker-compose up -d --build
+
+            # 4. 최신 이미지 가져오기
+            sudo docker pull ghcr.io/$IMAGE_ID:latest
+
+            # 5. docker-compose 재시작 (새 이미지가 반영되도록 함)
+            # 주의: docker-compose.yml 파일 내의 image 이름도 ghcr.io/계정/레포:latest 형식이어야 합니다.
+            sudo docker-compose up -d --remove-orphans
+
+            # 6. 불필요한 이미지 정리
+            sudo docker image prune -f

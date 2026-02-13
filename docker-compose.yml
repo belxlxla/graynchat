@@ -2,7 +2,7 @@ version: '3'
 
 services:
   app:
-    build: .
+    image: ghcr.io/belxlxla/graynchat:latest # 실제 소문자 계정명/레포명 입력
     container_name: grayn-app
     ports:
       - "3000:3000"
@@ -21,10 +21,3 @@ services:
     depends_on:
       - app
     restart: always
-
-  certbot:
-    image: certbot/certbot
-    container_name: grayn-certbot
-    volumes:
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
