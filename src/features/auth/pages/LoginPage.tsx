@@ -598,7 +598,7 @@ export default function LoginPage() {
           <button onClick={() => navigate('/auth/signup')} className="text-white font-bold hover:underline ml-1">그레인 회원가입</button>
         </p>
         <button onClick={() => navigate('/auth/recovery')} className="text-[#636366] text-xs mt-4 hover:text-[#8E8E93] transition-colors">
-          로그인에 문제가 있나요???
+          로그인에 문제가 있나요?
         </button>
       </motion.div>
 
