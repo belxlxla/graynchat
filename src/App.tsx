@@ -21,10 +21,6 @@ function App() {
         <button onClick={() => setCount((count) => count + 1)}>
           count is {count}
         </button>
-        // 23번 줄 근처 수정
-        <p>
-          도커 GHCR 배포 성공! 수정된 화면입니다 🚀
-        </p>
         <p>
           Edit <code>src/App.tsx</code> and save to test HMR
         </p>
