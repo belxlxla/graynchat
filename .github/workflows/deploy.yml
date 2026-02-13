@@ -16,10 +16,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 도커 이미지 주소는 대문자를 허용하지 않으므로 소문자로 변환 작업 추가
+      # 1. 🆕 Node.js 환경 설정 (GitHub 서버에 노드 설치)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm' # npm 캐시를 사용하여 속도 업!
+
+      # 2. 🆕 의존성 패키지 설치
+      - name: Install dependencies
+        run: npm install
+
+      # 3. 🆕 프로젝트 빌드 (여기서 최신 dist 폴더가 생성됩니다)
+      - name: Build project
+        run: npm run build
+
+      # 4. 이미지 주소 소문자 변환
       - name: Set up Image Name to Lowercase
         run: echo "IMAGE_ID=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
+      # 5. GHCR 로그인
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -27,6 +43,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 6. 도커 이미지 빌드 및 푸시
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
