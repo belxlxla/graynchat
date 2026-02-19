@@ -150,6 +150,8 @@ export default function ChatRoomSettingsPage() {
           .select('*', { count: 'exact', head: true }).eq('room_id', chatId);
         memberCount = realCount || memberCount;
 
+        let statusMessage: string | null = null;
+
         if (chatId.includes('_') && !chatId.startsWith('group_')) {
           const friendId = chatId.split('_').find(id => id !== myId);
           if (friendId) {
@@ -158,10 +160,11 @@ export default function ChatRoomSettingsPage() {
             const { data: upProfile } = await supabase.from('user_profiles')
               .select('avatar_url, status_message').eq('user_id', friendId).maybeSingle();
             if (up) { title = up.name; avatar = upProfile?.avatar_url || null; }
+            statusMessage = upProfile?.status_message || null;
           }
         }
 
-        setRoomInfo({ title, count: memberCount, avatar, status: upProfile?.status_message || null });
+        setRoomInfo({ title, count: memberCount, avatar, status: statusMessage });
 
         const { data: messages } = await supabase.from('messages').select('id, content, created_at')
           .eq('room_id', chatId).order('created_at', { ascending: false }).limit(300);
