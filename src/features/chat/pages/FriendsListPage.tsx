@@ -181,15 +181,18 @@ export default function FriendsListPage() {
       if (!contacts.length) return;
       const tasks = contacts.map(async c => {
         if (!c.phone) return;
-        const { data: u } = await supabase.from('users')
-          .select('id,name,avatar,phone,status_message')
-          .eq('phone', c.phone).neq('id', session.user.id).maybeSingle();
-        if (!u) return;
+          const { data: u } = await supabase.from('users')
+            .select('id,name,phone')
+            .eq('phone', c.phone).neq('id', session.user.id).maybeSingle();
+          if (!u) return;
+          const { data: uProfile } = await supabase.from('user_profiles')
+            .select('avatar_url,status_message').eq('user_id', u.id).maybeSingle();
         const { data: ex } = await supabase.from('friends').select('id')
           .eq('user_id', session.user.id).eq('friend_user_id', u.id).maybeSingle();
         if (!ex) await supabase.from('friends').insert({
           user_id: session.user.id, friend_user_id: u.id, name: u.name, phone: u.phone,
-          avatar: u.avatar, status: u.status_message, friendly_score: 10, is_favorite: false, is_blocked: false,
+          avatar: uProfile?.avatar_url || null, status: uProfile?.status_message || null,
+          friendly_score: 10, is_favorite: false, is_blocked: false,
         });
       });
       await Promise.all(tasks);
@@ -200,14 +203,16 @@ export default function FriendsListPage() {
   const fetchMyProfile = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user?.id) return;
-    const { data } = await supabase.from('users')
-      .select('name,avatar,bg_image,status_message').eq('id', session.user.id).maybeSingle();
-    setMyProfile({
-      name:   data?.name || session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
-      status: data?.status_message || '',
-      avatar: data?.avatar || null,
-      bg:     data?.bg_image || null,
-    });
+      const { data } = await supabase.from('users')
+        .select('name').eq('id', session.user.id).maybeSingle();
+      const { data: profile } = await supabase.from('user_profiles')
+        .select('avatar_url,bg_image,status_message').eq('user_id', session.user.id).maybeSingle();
+      setMyProfile({
+        name:   data?.name || session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
+        status: profile?.status_message || '',
+        avatar: profile?.avatar_url || null,
+        bg:     profile?.bg_image || null,
+      });
   }, []);
 
   const fetchFriends = useCallback(async () => {
@@ -215,17 +220,25 @@ export default function FriendsListPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
-      const { data, error } = await supabase.from('friends').select('*')
-        .eq('user_id', session.user.id)
-        .or('is_blocked.eq.false,is_blocked.is.null')
-        .order('name', { ascending: true });
-      if (error) throw error;
-      setFriends((data || []).map((item: any) => ({
-        id: item.id, friend_user_id: item.friend_user_id || '',
-        name: item.name, phone: item.phone, status: item.status,
-        avatar: item.avatar, bg: item.bg,
-        isFavorite: item.is_favorite || false, friendlyScore: item.friendly_score || 10,
-      })));
+        const { data, error } = await supabase.from('friends').select('*')
+          .eq('user_id', session.user.id)
+          .or('is_blocked.eq.false,is_blocked.is.null')
+          .order('name', { ascending: true });
+        if (error) throw error;
+
+        const uuids = (data || []).map((item: any) => item.friend_user_id).filter(Boolean);
+        const { data: profileImages } = uuids.length > 0
+          ? await supabase.from('user_profiles').select('user_id, avatar_url, bg_image').in('user_id', uuids)
+          : { data: [] };
+        const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p]) || []);
+
+        setFriends((data || []).map((item: any) => ({
+          id: item.id, friend_user_id: item.friend_user_id || '',
+          name: item.name, phone: item.phone, status: item.status,
+          avatar: profileMap.get(item.friend_user_id)?.avatar_url || null,
+          bg: profileMap.get(item.friend_user_id)?.bg_image || null,
+          isFavorite: item.is_favorite || false, friendlyScore: item.friendly_score || 10,
+        })));
     } catch { toast.error('친구 목록을 불러오는데 실패했습니다.'); }
     finally { setIsLoading(false); }
   }, []);
@@ -239,9 +252,16 @@ export default function FriendsListPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
-      await supabase.from('users').update({
-        name: p.name, status_message: p.status, avatar: p.avatar, bg_image: p.bg,
-      }).eq('id', session.user.id);
+        await supabase.from('users').update({
+          name: p.name,
+        }).eq('id', session.user.id);
+
+        await supabase.from('user_profiles').upsert({
+          user_id: session.user.id,
+          status_message: p.status,
+          avatar_url: p.avatar,
+          bg_image: p.bg,
+        });
       setMyProfile(p); setShowEditProfileModal(false); toast.success('프로필 업데이트 완료');
     } catch { toast.error('수정에 실패했습니다.'); }
   }, []);
@@ -1199,14 +1219,25 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) { toast.dismiss(t); return; }
       const clean = phone.replace(/[^0-9]/g, '');
-      let q = supabase.from('users').select('id,name,avatar,status_message,phone').eq('phone', clean);
+      let q = supabase.from('users').select('id,name,phone').eq('phone', clean);
       if (name.trim()) q = q.ilike('name', `%${name.trim()}%`);
       const { data, error } = await q;
       if (error) throw error;
       toast.dismiss(t);
       const filtered = (data || []).filter((u: any) => u.id !== session.user.id);
       if (!filtered.length) { toast.error('사용자를 찾을 수 없습니다.'); return; }
-      setResults(filtered); setShowResults(true);
+
+      const uuids = filtered.map((u: any) => u.id);
+      const { data: profileData } = await supabase.from('user_profiles')
+        .select('user_id, avatar_url, status_message').in('user_id', uuids);
+      const profileMap = new Map(profileData?.map((p: any) => [p.user_id, p]) || []);
+
+      const enriched = filtered.map((u: any) => ({
+        ...u,
+        avatar: profileMap.get(u.id)?.avatar_url || null,
+        status_message: profileMap.get(u.id)?.status_message || null,
+      }));
+      setResults(enriched); setShowResults(true);
     } catch { toast.dismiss(t); toast.error('검색에 실패했습니다.'); }
     finally { setIsBusy(false); }
   };

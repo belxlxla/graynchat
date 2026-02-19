@@ -117,38 +117,46 @@ export const useNaverLogin = () => {
               provider: 'naver',
               full_name: name,
               avatar_url: avatar,
-            }
+            },
           });
+
+          // ✅ 기존 유저: users + user_profiles 업데이트
+          await supabase
+            .from('users')
+            .update({
+              name: name,
+              phone: phone || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', userId);
+
+          await supabase
+            .from('user_profiles')
+            .upsert({ user_id: userId, avatar_url: avatar });
         }
       } else {
         userId = signUpData?.user?.id || null;
         isNewUser = true;
       }
 
-      // 3. users 테이블에 저장
-      if (userId) {
-        if (isNewUser) {
-          await supabase.from('users').insert({
-            id: userId,
-            email: email,
-            name: name,
-            avatar: avatar,
-            phone: phone || null,
-          });
-        } else {
-          await supabase.from('users').update({
-            name: name,
-            avatar: avatar,
-            phone: phone || null,
-            updated_at: new Date().toISOString(),
-          }).eq('id', userId);
-        }
+      // 3. 신규 유저: users + user_profiles insert
+      if (userId && isNewUser) {
+        await supabase.from('users').insert({
+          id: userId,
+          email: email,
+          name: name,
+          phone: phone || null,
+        });
+
+        await supabase.from('user_profiles').insert({
+          user_id: userId,
+          avatar_url: avatar,
+        });
       }
 
       toast.success(`${name}님 환영합니다!`);
       window.history.replaceState({}, '', '/auth/login');
       navigate('/main/friends');
-
     } catch (error: any) {
       console.error('Naver Auth Error:', error);
       toast.error('로그인 처리 중 오류가 발생했습니다.');

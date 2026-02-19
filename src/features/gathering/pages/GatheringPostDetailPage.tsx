@@ -129,13 +129,14 @@ export default function GatheringPostDetailPage() {
     if (!commentInput.trim() || !user || !postId) return;
     setIsSendingComment(true);
     try {
-      const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
+      const { data: userData } = await supabase.from('users').select('name').eq('id', user.id).single();
+const { data: userProfile } = await supabase.from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
       
       const { data: newComment } = await supabase.from('gathering_comments').insert({
         post_id: postId, 
         author_id: user.id, 
-        author_name: userData?.name || '익명', 
-        author_avatar: userData?.avatar,
+        author_name: userData?.name || '익명',
+        author_avatar: userProfile?.avatar_url || null,
         content: commentInput.trim(),
         parent_id: replyingTo ? replyingTo.id : null
       }).select().single();

@@ -40,20 +40,27 @@ export default function TimeCapsuleInboxPage() {
         if (data && data.length > 0) {
           const senderIds = data.map(c => c.sender_id);
 
-          const { data: usersData } = await supabase
-            .from('users')
-            .select('id, name, avatar')
-            .in('id', senderIds);
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', senderIds);
 
-          const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+        const { data: profilesData } = await supabase
+          .from('user_profiles')
+          .select('user_id, avatar_url')
+          .in('user_id', senderIds);
+
+        const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
 
           const formatted = data.map(capsule => {
-            const sender = usersMap.get(capsule.sender_id);
+          const sender = usersMap.get(capsule.sender_id);
+          const profile = profilesMap.get(capsule.sender_id);
             return {
               id: capsule.id,
               sender_id: capsule.sender_id,
               sender_name: sender?.name || '알 수 없는 사용자',
-              sender_avatar: sender?.avatar || null,
+              sender_avatar: profile?.avatar_url || null,
               message: capsule.message,
               unlock_at: capsule.unlock_at,
               created_at: capsule.created_at,

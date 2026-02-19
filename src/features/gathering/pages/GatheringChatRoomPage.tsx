@@ -271,13 +271,14 @@ export default function GatheringChatRoomPage() {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
 
     try {
-      const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
+      const { data: userData } = await supabase.from('users').select('name').eq('id', user.id).single();
+      const { data: userProfile } = await supabase.from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
       
       const { data: insertedMsg, error } = await supabase.from('gathering_messages').insert({
         room_id: roomId, 
         user_id: user.id,
         user_name: userData?.name || '사용자',
-        user_avatar: userData?.avatar || null, 
+        user_avatar: userProfile?.avatar_url || null,
         content,
       }).select().single();
 
@@ -306,7 +307,8 @@ export default function GatheringChatRoomPage() {
     const uploadToast = toast.loading('파일 업로드 중...');
     setIsMenuOpen(false);
     try {
-      const { data: userData } = await supabase.from('users').select('name, avatar').eq('id', user.id).single();
+const { data: userData } = await supabase.from('users').select('name').eq('id', user.id).single();
+const { data: userProfile } = await supabase.from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
       const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`;
       const filePath = `${roomId}/${fileName}`;
       
@@ -318,7 +320,8 @@ export default function GatheringChatRoomPage() {
       const { data: insertedMsg, error: insertError } = await supabase.from('gathering_messages').insert({
         room_id: roomId, user_id: user.id,
         user_name: userData?.name || '사용자',
-        user_avatar: userData?.avatar || null, content: publicUrl,
+        user_avatar: userProfile?.avatar_url || null,
+        content: publicUrl,
       }).select().single();
 
       if (insertError) throw insertError;
@@ -363,8 +366,13 @@ export default function GatheringChatRoomPage() {
     const { data } = await supabase.from('gathering_room_members').select('user_id').eq('room_id', roomId);
     if (data) {
       const ids = data.map(m => m.user_id);
-      const { data: usersData } = await supabase.from('users').select('id, name, avatar').in('id', ids);
-      setMembers(usersData || []);
+      const { data: usersData } = await supabase.from('users').select('id, name').in('id', ids);
+      const { data: profileImages } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', ids);
+      const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p.avatar_url]) || []);
+      setMembers((usersData || []).map((u: any) => ({
+        ...u,
+        avatar: profileMap.get(u.id) || null,
+      })));
     }
     setShowMembers(true);
   };

@@ -119,18 +119,25 @@ export default function AccountInfoPage() {
   const fetchUserData = useCallback(async () => {
     if (!user) return;
     try {
-      const { data: dbData, error: dbError } = await supabase
-        .from('users').select('*').eq('id', user.id).single();
+    const { data: dbData, error: dbError } = await supabase
+      .from('users').select('id, name, phone').eq('id', user.id).single();
+    if (dbError) throw dbError;
+
+    const { data: profileData } = await supabase
+      .from('user_profiles').select('avatar_url, bg_image').eq('user_id', user.id).single();
+
+    const { data: securityData } = await supabase
+      .from('user_security').select('blocked_countries').eq('user_id', user.id).single();
       if (dbError) throw dbError;
-      setProfile({
-        name: dbData?.name || user.user_metadata?.full_name || '사용자',
-        avatar: dbData?.avatar || null,
-        bg: dbData?.bg_image || null,
-        provider: user.app_metadata?.provider || 'email',
-        email: user.email || '이메일 없음',
-        phone: formatPhoneNumber(dbData?.phone || '번호 없음')
-      });
-      setBlockedCountries(dbData?.blocked_countries || []);
+    setProfile({
+      name: dbData?.name || user.user_metadata?.full_name || '사용자',
+      avatar: profileData?.avatar_url || null,
+      bg: profileData?.bg_image || null,
+      provider: user.app_metadata?.provider || 'email',
+      email: user.email || '이메일 없음',
+      phone: formatPhoneNumber(dbData?.phone || '번호 없음')
+    });
+    setBlockedCountries(securityData?.blocked_countries || []);
     } catch (err) { console.error('Data load error:', err); }
   }, [user]);
 
@@ -161,8 +168,8 @@ export default function AccountInfoPage() {
       const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, blob, { upsert: true });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
-      const dbField = currentImageType === 'avatar' ? 'avatar' : 'bg_image';
-      await supabase.from('users').update({ [dbField]: publicUrl }).eq('id', user.id);
+      const dbField = currentImageType === 'avatar' ? 'avatar_url' : 'bg_image';
+      await supabase.from('user_profiles').upsert({ user_id: user.id, [dbField]: publicUrl });
       setProfile(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
       toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
       setIsCropOpen(false);
@@ -176,8 +183,8 @@ export default function AccountInfoPage() {
     if (!user) return;
     const loadingToast = toast.loading('이미지 초기화 중...');
     try {
-      const dbField = type === 'avatar' ? 'avatar' : 'bg_image';
-      await supabase.from('users').update({ [dbField]: null }).eq('id', user.id);
+      const dbField = type === 'avatar' ? 'avatar_url' : 'bg_image';
+      await supabase.from('user_profiles').upsert({ user_id: user.id, [dbField]: null });
       setProfile(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: null }));
       toast.success('기본 이미지로 변경되었습니다.', { id: loadingToast });
     } catch (err) { toast.error('초기화 실패', { id: loadingToast }); }
@@ -188,7 +195,7 @@ export default function AccountInfoPage() {
     if (!user) return;
     const loadingToast = toast.loading('보안 설정 적용 중...');
     try {
-      const { error } = await supabase.from('users').update({ blocked_countries: list }).eq('id', user.id);
+      const { error } = await supabase.from('user_security').upsert({ user_id: user.id, blocked_countries: list });
       if (error) throw error;
       setBlockedCountries(list);
       toast.success('국가별 접근 제한 설정이 완료되었습니다.', { id: loadingToast });

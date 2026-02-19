@@ -216,12 +216,19 @@ export default function ChatRoomPage() {
       if (memberIds.length > 0) {
         const { data: profiles } = await supabase
           .from('users')
-          .select('id, name, avatar')
+          .select('id, name')
           .in('id', memberIds);
+
+        const { data: profileImages } = await supabase
+          .from('user_profiles')
+          .select('user_id, avatar_url')
+          .in('user_id', memberIds);
+
+        const profileImagesMap = new Map(profileImages?.map(p => [p.user_id, p.avatar_url]) || []);
 
         const profileMap: Record<string, MemberProfile> = {};
         profiles?.forEach(p => {
-          profileMap[p.id] = { id: p.id, name: p.name, avatar: p.avatar };
+          profileMap[p.id] = { id: p.id, name: p.name, avatar: profileImagesMap.get(p.id) || null };
         });
         setMemberProfiles(profileMap);
 
@@ -376,10 +383,15 @@ export default function ChatRoomPage() {
         }
       );
 
-      channel.on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'users' },
-        () => fetchInitialData()
-      );
+        channel.on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'users' },
+          () => fetchInitialData()
+        );
+
+        channel.on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'user_profiles' },
+          () => fetchInitialData()
+        );
 
       channel.subscribe((status) => {
         console.log('[Realtime] 상태:', status);
@@ -646,16 +658,22 @@ export default function ChatRoomPage() {
     try {
       const { data: friendUser } = await supabase
         .from('users')
-        .select('name, avatar, status_message')
+        .select('name')
         .eq('id', friendId)
+        .maybeSingle();
+
+      const { data: friendProfile } = await supabase
+        .from('user_profiles')
+        .select('avatar_url, status_message')
+        .eq('user_id', friendId)
         .maybeSingle();
 
       await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendId,
         name: friendUser?.name || roomTitle,
-        avatar: friendUser?.avatar || roomAvatar,
-        status: friendUser?.status_message || null,
+        avatar: friendProfile?.avatar_url || roomAvatar,
+        status: friendProfile?.status_message || null,
         friendly_score: 10,
         is_blocked: false,
       });

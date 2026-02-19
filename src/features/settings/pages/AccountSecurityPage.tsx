@@ -22,11 +22,11 @@ export default function AccountSecurityPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const { data } = await supabase
-          .from('users')
+          .from('user_security')
           .select('is_2fa_enabled')
-          .eq('id', session.user.id)
+          .eq('user_id', session.user.id)
           .single();
-        
+
         if (data) {
           setIs2FAEnabled(data.is_2fa_enabled);
           setSecurityScore(data.is_2fa_enabled ? 85 : 65);

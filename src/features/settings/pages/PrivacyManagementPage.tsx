@@ -29,9 +29,9 @@ export default function PrivacyManagementPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       const { data, error } = await supabase
-        .from('users')
+        .from('user_settings')
         .select('allow_contact_add, allow_recommend')
-        .eq('id', session.user.id)
+        .eq('user_id', session.user.id)
         .single();
 
       if (!error && data) {
@@ -63,7 +63,7 @@ export default function PrivacyManagementPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       const dbField = key === 'idSearch' ? 'allow_contact_add' : 'allow_recommend';
-      await supabase.from('users').update({ [dbField]: newValue }).eq('id', session.user.id);
+      await supabase.from('user_settings').upsert({ user_id: session.user.id, [dbField]: newValue });
       toast.success('설정이 저장되었습니다.');
     }
   };

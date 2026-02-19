@@ -154,12 +154,14 @@ export default function ChatRoomSettingsPage() {
           const friendId = chatId.split('_').find(id => id !== myId);
           if (friendId) {
             const { data: up } = await supabase.from('users')
-              .select('name, avatar, status_message').eq('id', friendId).maybeSingle();
-            if (up) { title = up.name; avatar = up.avatar; }
+              .select('name').eq('id', friendId).maybeSingle();
+            const { data: upProfile } = await supabase.from('user_profiles')
+              .select('avatar_url, status_message').eq('user_id', friendId).maybeSingle();
+            if (up) { title = up.name; avatar = upProfile?.avatar_url || null; }
           }
         }
 
-        setRoomInfo({ title, count: memberCount, avatar, status: null });
+        setRoomInfo({ title, count: memberCount, avatar, status: upProfile?.status_message || null });
 
         const { data: messages } = await supabase.from('messages').select('id, content, created_at')
           .eq('room_id', chatId).order('created_at', { ascending: false }).limit(300);
@@ -181,8 +183,19 @@ export default function ChatRoomSettingsPage() {
           setMediaList(medias); setFileList(files); setLinkList(links);
         }
 
-        const { data: friends } = await supabase.from('friends').select('*').eq('user_id', myId);
-        if (friends) setFriendsList(friends);
+          const { data: friends } = await supabase.from('friends').select('id, friend_user_id, name, status').eq('user_id', myId);
+          if (friends && friends.length > 0) {
+            const uuids = friends.map(f => f.friend_user_id).filter(Boolean);
+            const { data: profileImages } = await supabase.from('user_profiles')
+              .select('user_id, avatar_url').in('user_id', uuids);
+            const profileMap = new Map(profileImages?.map(p => [p.user_id, p.avatar_url]) || []);
+            setFriendsList(friends.map(f => ({
+              ...f,
+              avatar: profileMap.get(f.friend_user_id) || null,
+            })));
+          } else {
+            setFriendsList([]);
+          }
       } catch (error) {
         console.error('Settings Load Error:', error);
         toast.error('채팅방 정보를 불러오지 못했습니다.');

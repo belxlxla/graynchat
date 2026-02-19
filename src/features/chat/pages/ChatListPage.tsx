@@ -133,8 +133,14 @@ export default function ChatListPage() {
 
       let usersMap = new Map<string, UserProfile>();
       if (friendUUIDs.length > 0) {
-        const { data: usersData } = await supabase.from('users').select('id, name, avatar').in('id', friendUUIDs);
-        usersData?.forEach(u => usersMap.set(u.id, u));
+        const { data: usersData } = await supabase.from('users').select('id, name').in('id', friendUUIDs);
+        const { data: profilesData } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', friendUUIDs);
+        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+        usersData?.forEach(u => usersMap.set(u.id, {
+          id: u.id,
+          name: u.name,
+          avatar: profilesMap.get(u.id)?.avatar_url || null,
+        }));
       }
 
       const formattedData = (roomsData || []).map((room): ChatRoom | null => {
@@ -247,8 +253,12 @@ export default function ChatListPage() {
           }));
         }
       )
-      .on('postgres_changes', 
-        { event: 'UPDATE', schema: 'public', table: 'users' }, 
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'users' },
+        () => fetchChats()
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'user_profiles' },
         () => fetchChats()
       )
       .subscribe();
@@ -259,19 +269,23 @@ export default function ChatListPage() {
   const fetchFriends = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const { data: friendsData, error } = await supabase
-        .from('friends').select('id, friend_user_id, name, avatar')
-        .eq('user_id', user.id).order('name', { ascending: true });
+const { data: friendsData, error } = await supabase
+  .from('friends').select('id, friend_user_id, name')
+  .eq('user_id', user.id).order('name', { ascending: true });
       if (error) throw error;
 
       if (friendsData && friendsData.length > 0) {
         const uuids = friendsData.map(f => f.friend_user_id).filter(Boolean);
-        const { data: usersData } = await supabase.from('users').select('id, name, avatar').in('id', uuids);
+        const { data: usersData } = await supabase.from('users').select('id, name').in('id', uuids);
+        const { data: profilesData } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', uuids);
         const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
-        setFriendsList(friendsData.map(f => {
-          const u = usersMap.get(f.friend_user_id);
-          return { id: f.id, friend_user_id: f.friend_user_id, name: u?.name || f.name, avatar: u?.avatar || f.avatar };
-        }));
+        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+        setFriendsList(friendsData.map(f => ({
+          id: f.id,
+          friend_user_id: f.friend_user_id,
+          name: usersMap.get(f.friend_user_id)?.name || f.name,
+          avatar: profilesMap.get(f.friend_user_id)?.avatar_url || null,
+        })));
       } else {
         setFriendsList([]);
       }

@@ -4,10 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import BottomNavigation from './BottomNavigation';
 
 const MAIN_TAB_PATHS = [
-  '/main/home',
-  '/main/chat',
-  '/main/gathering',
+  '/main/friends',   // home → friends
+  '/main/chats',     // chat → chats
   '/main/contents',
+  '/main/gathering',
   '/main/settings',
 ];
 

@@ -37,9 +37,15 @@ export default function TimeCapsuleViewPage() {
 
         const { data: senderData } = await supabase
           .from('users')
-          .select('id, name, avatar')
+          .select('id, name')
           .eq('id', data.sender_id)
           .single();
+
+        const { data: senderProfile } = await supabase
+          .from('user_profiles')
+          .select('avatar_url')
+          .eq('user_id', data.sender_id)
+          .maybeSingle();
 
         // 처음 열었을 때만 unlocked_at 업데이트
         if (!data.is_unlocked) {
@@ -78,8 +84,8 @@ export default function TimeCapsuleViewPage() {
 
         setCapsule({
           ...data,
-          sender_name: senderData?.name || '알 수 없는 사용자',
-          sender_avatar: senderData?.avatar || null
+        sender_name: senderData?.name || '알 수 없는 사용자',
+        sender_avatar: senderProfile?.avatar_url || null
         });
       } catch (error) {
         console.error('캡슐 로드 실패:', error);

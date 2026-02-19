@@ -181,9 +181,9 @@ export default function NotificationSettingsPage() {
     }
 
     const { data, error } = await supabase
-      .from('users')
+      .from('user_settings')
       .select('notify_all, notify_preview, notify_mention, notify_sound, notify_vibrate, dnd_enabled, dnd_start, dnd_end, fcm_token')
-      .eq('id', session.user.id)
+      .eq('user_id', session.user.id)
       .maybeSingle();
 
     if (error) {
@@ -295,10 +295,7 @@ export default function NotificationSettingsPage() {
         if (token) {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
-            await supabase
-              .from('users')
-              .update({ fcm_token: token })
-              .eq('id', session.user.id);
+          await supabase.from('user_settings').upsert({ user_id: session.user.id, fcm_token: token });
           }
         }
 
@@ -339,17 +336,15 @@ export default function NotificationSettingsPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
 
-    const { error } = await supabase
-      .from('users')
-      .update({
-        notify_all: newSettings.all,
-        notify_preview: newSettings.preview,
-        notify_mention: newSettings.mention,
-        notify_sound: newSettings.sound,
-        notify_vibrate: newSettings.vibrate,
-        dnd_enabled: newSettings.dnd
-      })
-      .eq('id', session.user.id);
+    const { error } = await supabase.from('user_settings').upsert({
+      user_id: session.user.id,
+      notify_all: newSettings.all,
+      notify_preview: newSettings.preview,
+      notify_mention: newSettings.mention,
+      notify_sound: newSettings.sound,
+      notify_vibrate: newSettings.vibrate,
+      dnd_enabled: newSettings.dnd
+    });
 
     if (error) {
       console.error('Settings update error:', error);
@@ -365,13 +360,11 @@ export default function NotificationSettingsPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
 
-    const { error } = await supabase
-      .from('users')
-      .update({
-        dnd_start: `${newTime.start}:00`,
-        dnd_end: `${newTime.end}:00`
-      })
-      .eq('id', session.user.id);
+    const { error } = await supabase.from('user_settings').upsert({
+      user_id: session.user.id,
+      dnd_start: `${newTime.start}:00`,
+      dnd_end: `${newTime.end}:00`
+    });
 
     if (!error) {
       setDndTime(newTime);

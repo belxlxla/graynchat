@@ -21,9 +21,9 @@ export default function FriendsSettingsPage() {
     if (!session?.user) return;
 
     const { data, error } = await supabase
-      .from('users')
+      .from('user_settings')
       .select('auto_add_friends, use_contact_names, last_friends_sync')
-      .eq('id', session.user.id)
+      .eq('user_id', session.user.id)
       .single();
 
     if (!error && data) {
@@ -71,10 +71,7 @@ export default function FriendsSettingsPage() {
       // 1. 내 연락처 번호들을 서버로 보내서 그레인 가입자 필터링
       // 2. 나를 친추했거나 내가 친추한 사람 리스트 업데이트
       const now = new Date().toISOString();
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ last_friends_sync: now })
-        .eq('id', session.user.id);
+      const { error: updateError } = await supabase.from('user_settings').upsert({ user_id: session.user.id, last_friends_sync: now });
 
       if (updateError) throw updateError;
 
@@ -97,10 +94,7 @@ export default function FriendsSettingsPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
 
-    const { error } = await supabase
-      .from('users')
-      .update({ auto_add_friends: newState })
-      .eq('id', session.user.id);
+    const { error } = await supabase.from('user_settings').upsert({ user_id: session.user.id, auto_add_friends: newState });
 
     if (!error) {
       setAutoAdd(newState);
@@ -113,10 +107,7 @@ export default function FriendsSettingsPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) return;
 
-    const { error } = await supabase
-      .from('users')
-      .update({ use_contact_names: newState })
-      .eq('id', session.user.id);
+    const { error } = await supabase.from('user_settings').upsert({ user_id: session.user.id, use_contact_names: newState });
 
     if (!error) {
       setUseContactNames(newState);

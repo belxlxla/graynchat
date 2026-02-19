@@ -89,17 +89,27 @@ export default function ProfileSetupPage() {
 
       if (signupUserId || user?.id) {
         try {
-          const { data, error } = await supabase
+        // ✅ user_profiles에서 nickname 먼저 조회, 없으면 users.name으로 폴백
+        const { data: profileData } = await supabase
+          .from('user_profiles')
+          .select('nickname')
+          .eq('user_id', signupUserId || user?.id)
+          .maybeSingle();
+
+        if (profileData?.nickname) {
+          setNickname(profileData.nickname);
+        } else {
+          // 폴백: users.name (실명)
+          const { data: userData } = await supabase
             .from('users')
-            .select('name, email')
+            .select('name')
             .eq('id', signupUserId || user?.id)
             .maybeSingle();
 
-          if (data && !error) {
-            if (data.name && data.name !== '사용자') {
-              setNickname(data.name);
-            }
+          if (userData?.name && userData.name !== '사용자') {
+            setNickname(userData.name);
           }
+        }
         } catch (err) {
           console.error('Fetch user data error:', err);
         }
@@ -227,28 +237,41 @@ export default function ProfileSetupPage() {
       // [핵심] 전화번호가 metadata에는 있는데 DB에 없다면 DB로 복사
       const metaPhone = user?.user_metadata?.phone || user?.user_metadata?.mobile;
       
-      const updateData: any = {
-        name: nickname.trim(),
-        status_message: statusMessage.trim() || '그레인을 시작했어요!',
-        updated_at: new Date().toISOString()
-      };
+        // ✅ users 테이블: name, phone만 업데이트
+        const usersUpdateData: any = {
+          name: nickname.trim(),
+          updated_at: new Date().toISOString(),
+        };
 
-      // 메타데이터에 번호가 있다면 DB에도 저장 (이미 있으면 덮어쓰기)
-      if (metaPhone) {
-        updateData.phone = metaPhone;
-      } else if (user?.phone) {
-        updateData.phone = user.phone;
-      }
+        if (metaPhone) {
+          usersUpdateData.phone = metaPhone;
+        } else if (user?.phone) {
+          usersUpdateData.phone = user.phone;
+        }
 
-      if (finalAvatar) updateData.avatar = finalAvatar;
-      if (finalBg) updateData.bg_image = finalBg;
+        const { error: updateError } = await supabase
+          .from('users')
+          .update(usersUpdateData)
+          .eq('id', userId);
 
-      const { error: updateError } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', userId);
+        if (updateError) throw updateError;
 
-      if (updateError) throw updateError;
+        // ✅ user_profiles 테이블: nickname, status_message, avatar_url, bg_image
+        const profilesUpdateData: any = {
+          user_id: userId,
+          nickname: nickname.trim(),
+          status_message: statusMessage.trim() || '그레인을 시작했어요!',
+          profile_updated_at: new Date().toISOString(),
+        };
+
+        if (finalAvatar) profilesUpdateData.avatar_url = finalAvatar;
+        if (finalBg) profilesUpdateData.bg_image = finalBg;
+
+        const { error: profileError } = await supabase
+          .from('user_profiles')
+          .upsert(profilesUpdateData, { onConflict: 'user_id' });
+
+        if (profileError) throw profileError;
 
       sessionStorage.removeItem('signup_email');
       sessionStorage.removeItem('signup_password');

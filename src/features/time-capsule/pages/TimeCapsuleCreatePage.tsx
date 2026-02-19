@@ -52,22 +52,29 @@ export default function TimeCapsuleCreatePage() {
         if (friendsData && friendsData.length > 0) {
           const friendUUIDs = friendsData.map(f => f.friend_user_id).filter(Boolean);
 
-          const { data: usersData } = await supabase
-            .from('users')
-            .select('id, name, avatar')
-            .in('id', friendUUIDs);
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', friendUUIDs);
 
-          const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+        const { data: profilesData } = await supabase
+          .from('user_profiles')
+          .select('user_id, avatar_url')
+          .in('user_id', friendUUIDs);
 
-          const mergedFriends = friendsData.map(friend => {
-            const userInfo = usersMap.get(friend.friend_user_id);
-            return {
-              id: friend.id,
-              friend_user_id: friend.friend_user_id,
-              name: userInfo?.name || friend.name,
-              avatar: userInfo?.avatar || friend.avatar
-            };
-          });
+        const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+
+        const mergedFriends = friendsData.map(friend => {
+          const userInfo = usersMap.get(friend.friend_user_id);
+          const profileInfo = profilesMap.get(friend.friend_user_id);
+          return {
+            id: friend.id,
+            friend_user_id: friend.friend_user_id,
+            name: userInfo?.name || friend.name,
+            avatar: profileInfo?.avatar_url || friend.avatar
+          };
+        });
 
           setFriends(mergedFriends);
           setDisplayedFriends(mergedFriends.slice(0, LOAD_COUNT));

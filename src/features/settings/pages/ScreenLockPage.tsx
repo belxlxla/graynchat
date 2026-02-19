@@ -86,9 +86,10 @@ export default function ScreenLockPage() {
   const saveSettings = async (lock: boolean, pin?: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-      await supabase.from('users').update({ 
-        is_lock_enabled: lock
-      }).eq('id', session.user.id);
+    await supabase.from('user_security').upsert({ 
+      user_id: session.user.id,
+      is_lock_enabled: lock
+    });
     }
     localStorage.setItem('grayn_lock_enabled', String(lock));
     if (pin) localStorage.setItem('grayn_lock_pin', pin);

@@ -21,7 +21,7 @@ export default function AppLockOverlay() {
   const unlockApp = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
-      await supabase.from('users').update({ fail_count: 0 }).eq('id', session.user.id);
+      await supabase.from('user_security').update({ fail_count: 0 }).eq('user_id', session.user.id);
     }
     setIsLocked(false);
     setPin('');
@@ -97,7 +97,7 @@ export default function AppLockOverlay() {
           localStorage.setItem('grayn_fail_count', String(newFails));
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
-            await supabase.from('users').update({ fail_count: newFails }).eq('id', session.user.id);
+            await supabase.from('user_security').update({ fail_count: newFails }).eq('user_id', session.user.id);
           }
           if (newFails >= 10) setShowBlockedModal(true);
           setTimeout(() => { setPin(''); setIsError(false); }, 500);

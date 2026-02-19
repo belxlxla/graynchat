@@ -69,13 +69,24 @@ export default function ReportResultPage() {
         setLoadingFriends(true);
         const { data, error } = await supabase
           .from('friends')
-          .select('id, friend_user_id, name, avatar')
+          .select('id, friend_user_id, name')
           .eq('user_id', user.id);
 
         if (error) throw error;
 
-        if (data) {
-          setFriends(data);
+        if (data && data.length > 0) {
+          const uuids = data.map((f: any) => f.friend_user_id).filter(Boolean);
+          const { data: profileImages } = await supabase
+            .from('user_profiles')
+            .select('user_id, avatar_url')
+            .in('user_id', uuids);
+          const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p.avatar_url]) || []);
+          setFriends(data.map((f: any) => ({
+            ...f,
+            avatar: profileMap.get(f.friend_user_id) || null,
+          })));
+        } else {
+          setFriends([]);
         }
       } catch (error) {
         console.error('친구 로딩 실패:', error);

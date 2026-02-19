@@ -210,12 +210,14 @@ export default function CreateGatheringPostPage() {
     try {
       const imageUrls = await uploadImages();
       const { data: userData } = await supabase
-        .from('users').select('name, avatar').eq('id', user.id).single();
+        .from('users').select('name').eq('id', user.id).single();
+      const { data: userProfile } = await supabase
+        .from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
 
       const insertData: Record<string, any> = {
         author_id: user.id,
         author_name: isAnonymous ? '익명' : (userData?.name || '사용자'),
-        author_avatar: isAnonymous ? null : (userData?.avatar || null),
+        author_avatar: isAnonymous ? null : (userProfile?.avatar_url || null),
         title: title.trim(),
         content: content.trim(),
         category,

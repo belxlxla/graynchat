@@ -12,60 +12,39 @@ type Provider = 'google' | 'apple';
 // ✅ 실제 기기 알림 권한 요청 함수
 const requestNotificationPermission = async (): Promise<'granted' | 'denied' | 'default'> => {
   try {
-    // ✅ 웹 브라우저 (PWA)
     if ('Notification' in window) {
-      // 이미 권한이 부여되어 있는 경우
-      if (Notification.permission === 'granted') {
-        return 'granted';
-      }
-      
-      // 이미 거부된 경우
-      if (Notification.permission === 'denied') {
-        return 'denied';
-      }
-
-      // 권한 요청
+      if (Notification.permission === 'granted') return 'granted';
+      if (Notification.permission === 'denied') return 'denied';
       const permission = await Notification.requestPermission();
       return permission as 'granted' | 'denied' | 'default';
     }
-    
-    // ✅ iOS (Capacitor)
     // @ts-ignore
     if (window.Capacitor?.isNativePlatform?.()) {
       // @ts-ignore
       const { LocalNotifications } = await import('@capacitor/local-notifications');
       const result = await LocalNotifications.requestPermissions();
-      
-      if (result.display === 'granted') {
-        return 'granted';
-      } else if (result.display === 'denied') {
-        return 'denied';
-      }
+      if (result.display === 'granted') return 'granted';
+      if (result.display === 'denied') return 'denied';
       return 'default';
     }
-
-    // ✅ Android (Capacitor)
     // @ts-ignore
     if (window.Android?.requestNotifications) {
       // @ts-ignore
       const result = await window.Android.requestNotifications();
       return result === 'granted' ? 'granted' : 'denied';
     }
-
-    // 지원하지 않는 환경
     console.warn('Notifications not supported in this environment');
     return 'default';
-    
   } catch (error) {
     console.error('Notification permission error:', error);
     return 'denied';
   }
 };
 
-// ✅ FCM 토큰 가져오기 (나중에 푸시 알림용)
+// ✅ FCM 토큰 가져오기
 const getFCMToken = async (): Promise<string | null> => {
   try {
-    // @ts-ignore - Firebase Messaging은 추후 구현
+    // @ts-ignore
     if (window.firebase && window.firebase.messaging) {
       // @ts-ignore
       const messaging = window.firebase.messaging();
@@ -95,7 +74,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberEmail, setRememberEmail] = useState(false);
 
-  // ✅ 알림 권한 모달
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [isRequestingNotification, setIsRequestingNotification] = useState(false);
 
@@ -107,17 +85,15 @@ export default function LoginPage() {
     }
   }, []);
 
-  // ✅ OAuth 콜백 및 알림 권한 처리
+  // ✅ OAuth 콜백 처리
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
           const user = session.user;
-          const provider = user.app_metadata?.provider || 
-                          user.app_metadata?.providers?.[0] || 
+          const provider = user.app_metadata?.provider ||
+                          user.app_metadata?.providers?.[0] ||
                           'email';
-
-          console.log('✅ Sign in detected:', provider);
 
           if (provider !== 'email') {
             setIsOAuthProcessing(true);
@@ -125,49 +101,43 @@ export default function LoginPage() {
             try {
               const userId = user.id;
               const userEmail = user.email;
-              
-              let userName = user.user_metadata?.full_name || 
-                             user.user_metadata?.name || 
-                             userEmail?.split('@')[0] || '사용자';
+              const userName = user.user_metadata?.full_name ||
+                               user.user_metadata?.name ||
+                               userEmail?.split('@')[0] || '사용자';
+              const userAvatar = user.user_metadata?.avatar_url ||
+                                user.user_metadata?.picture || null;
+              const userPhone = user.user_metadata?.phone ||
+                               user.user_metadata?.mobile ||
+                               user.phone || null;
 
-              const userAvatar = user.user_metadata?.avatar_url || 
-                                user.user_metadata?.picture || 
-                                null;
-
-              const userPhone = user.user_metadata?.phone || 
-                               user.user_metadata?.mobile || 
-                               user.phone || 
-                               null;
-
+              // ✅ users 테이블: avatar 없이 저장
               const { error: upsertError } = await supabase
                 .from('users')
                 .upsert({
                   id: userId,
                   email: userEmail,
                   name: userName,
-                  avatar: userAvatar,
                   ...(userPhone && { phone: userPhone }),
                   updated_at: new Date().toISOString(),
-                }, { 
-                  onConflict: 'id',
-                  ignoreDuplicates: false 
-                });
+                }, { onConflict: 'id', ignoreDuplicates: false });
 
               if (upsertError) throw upsertError;
+
+              // ✅ user_profiles 테이블: avatar_url 저장
+              await supabase
+                .from('user_profiles')
+                .upsert({ user_id: userId, avatar_url: userAvatar }, { onConflict: 'user_id' });
 
               await supabase.auth.updateUser({
                 data: {
                   provider: provider,
                   full_name: userName,
-                  ...(userPhone && { phone: userPhone })
-                }
+                  ...(userPhone && { phone: userPhone }),
+                },
               });
 
               toast.success(`${userName}님 환영합니다!`);
-              
-              // ✅ OAuth 로그인 후에도 알림 권한 확인
               await checkAndRequestNotificationPermission(userId);
-              
             } catch (error) {
               console.error('Sync error:', error);
               navigate('/main/friends', { replace: true });
@@ -182,36 +152,26 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // ✅ 알림 권한 확인 및 요청 함수
+  // ✅ 알림 권한 확인: user_settings 테이블 기준
   const checkAndRequestNotificationPermission = async (userId: string) => {
     try {
-      // DB에서 사용자의 알림 권한 상태 확인
-      const { data: userData } = await supabase
-        .from('users')
+      const { data: settingsData } = await supabase
+        .from('user_settings')
         .select('notification_permission')
-        .eq('id', userId)
+        .eq('user_id', userId)
         .maybeSingle();
 
-      const notificationPermission = userData?.notification_permission;
+      const notificationPermission = settingsData?.notification_permission;
 
-      if (notificationPermission === 'granted') {
-        // 이미 허용됨 - 바로 이동
+      if (notificationPermission === 'granted' || notificationPermission === 'denied') {
         navigate('/main/friends', { replace: true });
         return;
       }
 
-      if (notificationPermission === 'denied') {
-        // 이전에 거부함 - 바로 이동 (다시 묻지 않음)
-        navigate('/main/friends', { replace: true });
-        return;
-      }
-
-      // ✅ 아직 물어보지 않았거나 pending 상태 - 모달 표시
+      // pending 또는 미설정 → 모달 표시
       setShowNotificationModal(true);
-
     } catch (error) {
       console.error('Notification permission check error:', error);
-      // 에러 발생 시에도 메인으로 이동
       navigate('/main/friends', { replace: true });
     }
   };
@@ -249,9 +209,7 @@ export default function LoginPage() {
         setMfaMethod(method === 'phone' ? 'phone' : 'email');
 
         if (method === 'email') {
-          const { error: otpError } = await supabase.auth.signInWithOtp({
-            email: targetEmail,
-          });
+          const { error: otpError } = await supabase.auth.signInWithOtp({ email: targetEmail });
           if (otpError) throw otpError;
           toast.success('이메일로 인증 코드가 발송되었습니다.');
         } else {
@@ -290,12 +248,9 @@ export default function LoginPage() {
     }
 
     if (data.user) {
-      const userName = data.user.user_metadata?.name || 
-                      data.user.user_metadata?.full_name || 
-                      '회원';
+      const userName = data.user.user_metadata?.name ||
+                      data.user.user_metadata?.full_name || '회원';
       toast.success(`${userName}님 환영합니다!`);
-      
-      // ✅ 이메일 로그인 후 알림 권한 확인
       await checkAndRequestNotificationPermission(data.user.id);
     }
   };
@@ -307,18 +262,11 @@ export default function LoginPage() {
 
     if (otpCode === '000000') {
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-
         if (data.user) {
           setShow2FAModal(false);
           toast.success('인증되었습니다. (테스트 모드)');
-          
-          // ✅ 2FA 후에도 알림 권한 확인
           await checkAndRequestNotificationPermission(data.user.id);
         }
       } catch (error) {
@@ -342,8 +290,6 @@ export default function LoginPage() {
       if (data.session) {
         setShow2FAModal(false);
         toast.success('인증되었습니다.');
-        
-        // ✅ 2FA 후에도 알림 권한 확인
         if (data.user) {
           await checkAndRequestNotificationPermission(data.user.id);
         }
@@ -362,13 +308,9 @@ export default function LoginPage() {
         provider: provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        }
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+        },
       });
-
       if (error) throw error;
     } catch (error: any) {
       console.error('OAuth Error:', error);
@@ -376,7 +318,7 @@ export default function LoginPage() {
     }
   };
 
-  // ✅ 알림 허용 핸들러
+  // ✅ 알림 허용 핸들러 - user_settings 테이블 기준
   const handleAllowNotifications = async () => {
     if (isRequestingNotification) return;
 
@@ -385,56 +327,45 @@ export default function LoginPage() {
 
     try {
       const permission = await requestNotificationPermission();
-      
       toast.dismiss(loadingToast);
 
       if (permission === 'granted') {
-        // ✅ FCM 토큰 가져오기 (선택적)
         const fcmToken = await getFCMToken();
-
-        // ✅ DB에 권한 상태 저장
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user?.id) {
           await supabase
-            .from('users')
-            .update({ 
+            .from('user_settings')
+            .update({
               notification_permission: 'granted',
-              ...(fcmToken && { fcm_token: fcmToken })
+              ...(fcmToken && { fcm_token: fcmToken }),
             })
-            .eq('id', session.user.id);
+            .eq('user_id', session.user.id);
         }
-
         toast.success('알림이 활성화되었습니다! 🔔');
         setShowNotificationModal(false);
         navigate('/main/friends', { replace: true });
 
       } else if (permission === 'denied') {
-        // ✅ 거부 시 DB에 저장
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user?.id) {
           await supabase
-            .from('users')
+            .from('user_settings')
             .update({ notification_permission: 'denied' })
-            .eq('id', session.user.id);
+            .eq('user_id', session.user.id);
         }
-
         toast.error('알림이 차단되었습니다. 설정에서 변경할 수 있습니다.');
         setShowNotificationModal(false);
         navigate('/main/friends', { replace: true });
 
       } else {
-        // default 상태 (사용자가 선택 안 함)
         toast('알림 설정을 나중에 할 수 있습니다.', { icon: 'ℹ️' });
         setShowNotificationModal(false);
         navigate('/main/friends', { replace: true });
       }
-
     } catch (error) {
       console.error('Notification allow error:', error);
       toast.dismiss(loadingToast);
       toast.error('알림 권한 요청에 실패했습니다.');
-      
-      // 에러 발생 시에도 메인으로 이동
       setShowNotificationModal(false);
       navigate('/main/friends', { replace: true });
     } finally {
@@ -442,18 +373,16 @@ export default function LoginPage() {
     }
   };
 
-  // ✅ 알림 나중에 하기 핸들러
+  // ✅ 알림 나중에 하기 핸들러 - user_settings 테이블 기준
   const handleSkipNotifications = async () => {
     try {
-      // ✅ DB에 pending 상태로 저장 (나중에 다시 물어볼 수 있음)
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user?.id) {
         await supabase
-          .from('users')
+          .from('user_settings')
           .update({ notification_permission: 'pending' })
-          .eq('id', session.user.id);
+          .eq('user_id', session.user.id);
       }
-
       setShowNotificationModal(false);
       navigate('/main/friends', { replace: true });
     } catch (error) {
@@ -471,7 +400,7 @@ export default function LoginPage() {
       </div>
     );
   }
- 
+
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6 justify-center relative">
       <div id="naverIdLogin" style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}/>
@@ -493,11 +422,11 @@ export default function LoginPage() {
           <label className="text-xs font-bold text-[#8E8E93] ml-1">아이디 (이메일 주소)</label>
           <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
             <Mail className="w-5 h-5 text-[#636366] mr-3"/>
-            <input 
-              type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              placeholder="example@grayn.com" 
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="example@grayn.com"
               className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]"
             />
           </div>
@@ -507,28 +436,20 @@ export default function LoginPage() {
           <label className="text-xs font-bold text-[#8E8E93] ml-1">비밀번호</label>
           <div className="flex items-center bg-[#2C2C2E] rounded-2xl px-4 py-3.5 border border-[#3A3A3C] focus-within:border-brand-DEFAULT transition-colors">
             <Lock className="w-5 h-5 text-[#636366] mr-3"/>
-            <input 
-              type={showPassword ? 'text' : 'password'} 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              placeholder="비밀번호 입력" 
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="비밀번호 입력"
               className="bg-transparent text-white text-sm w-full focus:outline-none placeholder-[#636366]"
             />
             <div className="flex items-center gap-2 ml-2">
               {password && (
-                <button
-                  type="button"
-                  onClick={() => setPassword('')}
-                  className="text-[#636366] hover:text-white transition-colors"
-                >
+                <button type="button" onClick={() => setPassword('')} className="text-[#636366] hover:text-white transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="text-[#636366] hover:text-white transition-colors"
-              >
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-[#636366] hover:text-white transition-colors">
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
@@ -536,27 +457,19 @@ export default function LoginPage() {
         </div>
 
         <div className="flex items-center gap-2 px-1">
-          <button
-            type="button"
-            onClick={() => setRememberEmail(!rememberEmail)}
-            className="flex items-center gap-2 group"
-          >
+          <button type="button" onClick={() => setRememberEmail(!rememberEmail)} className="flex items-center gap-2 group">
             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-              rememberEmail 
-                ? 'bg-brand-DEFAULT border-brand-DEFAULT' 
-                : 'border-[#636366] group-hover:border-[#8E8E93]'
+              rememberEmail ? 'bg-brand-DEFAULT border-brand-DEFAULT' : 'border-[#636366] group-hover:border-[#8E8E93]'
             }`}>
               {rememberEmail && <ArrowRight className="w-3 h-3 text-white rotate-[-45deg]" />}
             </div>
-            <span className="text-sm text-[#8E8E93] group-hover:text-white transition-colors">
-              아이디 저장
-            </span>
+            <span className="text-sm text-[#8E8E93] group-hover:text-white transition-colors">아이디 저장</span>
           </button>
         </div>
 
-        <button 
-          type="submit" 
-          disabled={isLoading} 
+        <button
+          type="submit"
+          disabled={isLoading}
           className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mt-6 hover:bg-brand-hover transition-colors shadow-lg shadow-brand-DEFAULT/20 flex items-center justify-center gap-2"
         >
           {isLoading && !show2FAModal ? <Loader2 className="w-5 h-5 animate-spin"/> : '이메일로 로그인'}
@@ -633,28 +546,25 @@ export default function LoginPage() {
       <AnimatePresence>
         {showNotificationModal && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center px-6">
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/95 backdrop-blur-md"
             />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
-              animate={{ scale: 1, opacity: 1, y: 0 }} 
-              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="relative z-10 w-full max-w-[340px] bg-[#1C1C1E] border border-[#2C2C2E] rounded-[32px] p-8 text-center shadow-2xl"
             >
               <div className="w-20 h-20 bg-brand-DEFAULT/10 rounded-full flex items-center justify-center mx-auto mb-6">
                 <Bell className="w-10 h-10 text-brand-DEFAULT" />
               </div>
-              
               <h3 className="text-2xl font-bold text-white mb-3">알림 허용</h3>
               <p className="text-[13px] text-[#8E8E93] leading-relaxed mb-8">
-                새로운 메시지와 중요한 소식을<br/>
-                실시간으로 받아보세요.
+                새로운 메시지와 중요한 소식을<br/>실시간으로 받아보세요.
               </p>
-
               <div className="space-y-3 mb-8">
                 <div className="flex items-center gap-3 text-left p-3 bg-[#2C2C2E] rounded-xl">
                   <div className="w-10 h-10 bg-green-500/10 rounded-full flex items-center justify-center shrink-0">
@@ -665,7 +575,6 @@ export default function LoginPage() {
                     <p className="text-xs text-[#8E8E93]">놓치지 않고 확인하세요</p>
                   </div>
                 </div>
-                
                 <div className="flex items-center gap-3 text-left p-3 bg-[#2C2C2E] rounded-xl">
                   <div className="w-10 h-10 bg-blue-500/10 rounded-full flex items-center justify-center shrink-0">
                     <BellOff className="w-5 h-5 text-blue-500" />
@@ -676,8 +585,7 @@ export default function LoginPage() {
                   </div>
                 </div>
               </div>
-
-              <button 
+              <button
                 onClick={handleAllowNotifications}
                 disabled={isRequestingNotification}
                 className="w-full py-4 bg-brand-DEFAULT text-white font-bold rounded-2xl mb-3 hover:bg-brand-hover transition-all flex items-center justify-center gap-2 disabled:opacity-50"
@@ -685,14 +593,10 @@ export default function LoginPage() {
                 {isRequestingNotification ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
-                  <>
-                    <Bell className="w-5 h-5" />
-                    허용하기
-                  </>
+                  <><Bell className="w-5 h-5" />허용하기</>
                 )}
               </button>
-
-              <button 
+              <button
                 onClick={handleSkipNotifications}
                 disabled={isRequestingNotification}
                 className="w-full text-[#8E8E93] text-sm hover:text-white transition-colors disabled:opacity-50"
