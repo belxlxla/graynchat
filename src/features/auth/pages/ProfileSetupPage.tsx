@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
-type ImageType = 'avatar' | 'background';
+type ImageType = 'avatar_url' | 'background';
 
 async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<Blob> {
   return new Promise((resolve, reject) => {
@@ -68,7 +68,7 @@ export default function ProfileSetupPage() {
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [currentImageType, setCurrentImageType] = useState<ImageType>('avatar');
+  const [currentImageType, setCurrentImageType] = useState<ImageType>('avatar_url');
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -160,7 +160,7 @@ export default function ProfileSetupPage() {
       const blob = await getCroppedImg(tempImageSrc, croppedAreaPixels);
       const url = URL.createObjectURL(blob);
 
-      if (currentImageType === 'avatar') {
+      if (currentImageType === 'avatar_url') {
         if (avatarUrl) URL.revokeObjectURL(avatarUrl);
         setAvatarUrl(url);
         setAvatarBlob(blob);
@@ -227,7 +227,7 @@ export default function ProfileSetupPage() {
       let finalBg: string | null = null;
 
       if (avatarBlob) {
-        finalAvatar = await uploadImage(avatarBlob, 'avatar');
+        finalAvatar = await uploadImage(avatarBlob, 'avatar_url');
       }
 
       if (bgBlob) {
@@ -423,7 +423,7 @@ export default function ProfileSetupPage() {
         ref={avatarInputRef} 
         className="hidden" 
         accept="image/*" 
-        onChange={e => onFileChange(e, 'avatar')} 
+        onChange={e => onFileChange(e, 'avatavatar_urlar')} 
       />
       <input 
         type="file" 
@@ -514,11 +514,11 @@ export default function ProfileSetupPage() {
                 image={tempImageSrc} 
                 crop={crop} 
                 zoom={zoom} 
-                aspect={currentImageType === 'avatar' ? 1 : 16/9} 
+                aspect={currentImageType === 'avatar_url' ? 1 : 16/9} 
                 onCropChange={setCrop} 
                 onCropComplete={(_, p) => setCroppedAreaPixels(p)} 
                 onZoomChange={setZoom} 
-                cropShape={currentImageType === 'avatar' ? 'round' : 'rect'}
+                cropShape={currentImageType === 'avatar_url' ? 'round' : 'rect'}
                 showGrid={false}
               />
             </div>

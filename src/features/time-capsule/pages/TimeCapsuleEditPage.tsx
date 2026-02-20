@@ -37,7 +37,7 @@ export default function TimeCapsuleEditPage() {
           return;
         }
 
-        if (new Date(data.unlock_at) <= new Date()) {
+        if (new Date(data.scheduled_at) <= new Date()) {
           toast.error('잠금 해제된 타임캡슐은 수정할 수 없습니다.');
           navigate(-1);
           return;
@@ -46,7 +46,7 @@ export default function TimeCapsuleEditPage() {
         setCanEdit(true);
         setMessage(data.message);
 
-        const unlockDateTime = new Date(data.unlock_at);
+        const unlockDateTime = new Date(data.scheduled_at);
         const year = unlockDateTime.getFullYear();
         const month = String(unlockDateTime.getMonth() + 1).padStart(2, '0');
         const day = String(unlockDateTime.getDate()).padStart(2, '0');
@@ -94,7 +94,7 @@ export default function TimeCapsuleEditPage() {
         .from('time_capsules')
         .update({
           message: message.trim(),
-          unlock_at: unlockDateTime.toISOString(),
+          scheduled_at: unlockDateTime.toISOString(),
           is_edited: true
         })
         .eq('id', id)

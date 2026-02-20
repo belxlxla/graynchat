@@ -12,10 +12,10 @@ interface TimeCapsule {
   receiver_name: string;
   receiver_avatar: string | null;
   message: string;
-  unlock_at: string;
+  scheduled_at: string;
   created_at: string;
   is_edited: boolean;
-  is_unlocked: boolean;
+  is_opened: boolean;
 }
 
 export default function TimeCapsuleSentPage() {
@@ -63,10 +63,10 @@ export default function TimeCapsuleSentPage() {
               receiver_name: receiver?.name || '알 수 없는 사용자',
               receiver_avatar: profile?.avatar_url || null, 
               message: capsule.message,
-              unlock_at: capsule.unlock_at,
+              scheduled_at: capsule.scheduled_at,
               created_at: capsule.created_at,
               is_edited: capsule.is_edited,
-              is_unlocked: capsule.is_unlocked
+              is_opened: capsule.is_opened
             };
           });
 
@@ -139,7 +139,7 @@ export default function TimeCapsuleSentPage() {
                     {new Date(capsule.created_at).toLocaleDateString('ko-KR')}
                   </p>
                 </div>
-                {!capsule.is_edited && !capsule.is_unlocked && new Date(capsule.unlock_at) > new Date() && (
+                {!capsule.is_edited && !capsule.is_opened && new Date(capsule.scheduled_at) > new Date() && (
                   <button
                     onClick={() => navigate(`/time-capsule/edit/${capsule.id}`)}
                     className="p-2 bg-[#3A3A3C] rounded-lg hover:bg-[#48484A] transition-colors"
@@ -156,7 +156,7 @@ export default function TimeCapsuleSentPage() {
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-1 text-red-400">
                   <Clock className="w-3 h-3" />
-                  <span>{getTimeRemaining(capsule.unlock_at)}</span>
+                  <span>{getTimeRemaining(capsule.scheduled_at)}</span>
                 </div>
                 {capsule.is_edited && (
                   <span className="text-[#8E8E93]">수정됨</span>

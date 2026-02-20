@@ -13,7 +13,7 @@ interface Friend {
   id: number;
   friend_user_id: string;
   name: string;
-  avatar: string | null;
+  avatar_url: string | null;
 }
 
 type Step = 'select-friend' | 'write-message' | 'set-time' | 'confirm';
@@ -38,25 +38,30 @@ export default function TimeCapsuleCreatePage() {
 
   // 친구 목록 불러오기
   useEffect(() => {
-    const fetchFriends = async () => {
-      if (!user?.id) return;
+  const fetchFriends = async () => {
+    if (!user?.id) return;
 
-      try {
-        const { data: friendsData } = await supabase
-          .from('friends')
-          .select('id, friend_user_id, name, avatar')
-          .eq('user_id', user.id)
-          .or('is_blocked.eq.false,is_blocked.is.null')
-          .order('name', { ascending: true });
+    try {
+      // ✅ 1. friends 테이블에서 필수 데이터만 조회 (명세서 NO.9 기준)
+      const { data: friendsData, error: friendsError } = await supabase
+        .from('friends')
+        .select('id, friend_user_id, alias_name') // name, avatar_url 제거 / alias_name 추가
+        .eq('user_id', user.id)
+        .or('is_blocked.eq.false,is_blocked.is.null')
+        .order('created_at', { ascending: false }); // name이 없으므로 생성일순 정렬
 
-        if (friendsData && friendsData.length > 0) {
-          const friendUUIDs = friendsData.map(f => f.friend_user_id).filter(Boolean);
+      if (friendsError) throw friendsError;
 
+      if (friendsData && friendsData.length > 0) {
+        const friendUUIDs = friendsData.map(f => f.friend_user_id).filter(Boolean);
+
+        // ✅ 2. 실제 이름 조회 (users 테이블)
         const { data: usersData } = await supabase
           .from('users')
           .select('id, name')
           .in('id', friendUUIDs);
 
+        // ✅ 3. 프로필 이미지 조회 (user_profiles 테이블)
         const { data: profilesData } = await supabase
           .from('user_profiles')
           .select('user_id, avatar_url')
@@ -71,20 +76,21 @@ export default function TimeCapsuleCreatePage() {
           return {
             id: friend.id,
             friend_user_id: friend.friend_user_id,
-            name: userInfo?.name || friend.name,
-            avatar: profileInfo?.avatar_url || friend.avatar
+            // ✅ 실명 우선, 없으면 별명(alias_name) 사용
+            name: userInfo?.name || friend.alias_name || '이름 없음',
+            avatar_url: profileInfo?.avatar_url || null
           };
         });
 
-          setFriends(mergedFriends);
-          setDisplayedFriends(mergedFriends.slice(0, LOAD_COUNT));
-          setHasMore(mergedFriends.length > LOAD_COUNT);
-        }
-      } catch (error) {
-        console.error('친구 목록 로드 실패:', error);
-        toast.error('친구 목록을 불러올 수 없습니다.');
+        setFriends(mergedFriends);
+        setDisplayedFriends(mergedFriends.slice(0, LOAD_COUNT));
+        setHasMore(mergedFriends.length > LOAD_COUNT);
       }
-    };
+    } catch (error) {
+      console.error('친구 목록 로드 실패:', error);
+      toast.error('친구 목록을 불러올 수 없습니다.');
+    }
+  };
 
     fetchFriends();
   }, [user]);
@@ -150,6 +156,7 @@ export default function TimeCapsuleCreatePage() {
     setIsSending(true);
 
     try {
+      // 날짜 포맷팅 (ISO String)
       const unlockDateTime = new Date(`${unlockDate}T${unlockTime}:00`);
 
       if (unlockDateTime <= new Date()) {
@@ -158,26 +165,25 @@ export default function TimeCapsuleCreatePage() {
         return;
       }
 
+      // ✅ 명세서 NO.19: scheduled_at 컬럼 사용
       const { error } = await supabase
         .from('time_capsules')
         .insert([{
           sender_id: user.id,
           receiver_id: selectedFriend.friend_user_id,
           message: message.trim(),
-          unlock_at: unlockDateTime.toISOString()
+          scheduled_at: unlockDateTime.toISOString(), // TIMESTAMPTZ 타입
+          is_edited: false,
+          is_opened: false // 명세서 기준 기본값 명시
         }]);
 
       if (error) throw error;
 
-      toast.success('타임캡슐이 성공적으로 전송되었습니다! ⏰', {
-        duration: 3000,
-        style: { background: '#333', color: '#fff' }
-      });
-
-      navigate('/time-capsule/sent');
+      toast.success('타임캡슐이 성공적으로 전송되었습니다! ⏰');
+      navigate('/time-capsule/sent'); // 또는 목록 페이지
     } catch (error: any) {
       console.error('타임캡슐 전송 실패:', error);
-      toast.error('전송에 실패했습니다. 다시 시도해주세요.');
+      toast.error('전송에 실패했습니다.');
     } finally {
       setIsSending(false);
     }
@@ -234,8 +240,8 @@ export default function TimeCapsuleCreatePage() {
                       className="w-full flex items-center gap-3 p-4 bg-[#2C2C2E] rounded-2xl hover:bg-[#3A3A3C] active:scale-[0.98] transition-all"
                     >
                       <div className="w-12 h-12 rounded-full bg-[#3A3A3C] overflow-hidden border border-white/5">
-                        {friend.avatar ? (
-                          <img src={friend.avatar} className="w-full h-full object-cover" alt="" />
+                        {friend.avatar_url ? (
+                          <img src={friend.avatar_url} className="w-full h-full object-cover" alt="" />
                         ) : (
                           <UserIcon className="w-6 h-6 m-auto mt-3 text-[#8E8E93] opacity-50" />
                         )}
@@ -265,8 +271,8 @@ export default function TimeCapsuleCreatePage() {
           <div className="flex-1 flex flex-col p-6 overflow-y-auto">
             <div className="mb-6 text-center">
               <div className="w-20 h-20 rounded-full bg-gradient-to-br from-red-500/20 to-red-600/20 mx-auto mb-4 overflow-hidden border-2 border-red-500/30 flex items-center justify-center">
-                {selectedFriend?.avatar ? (
-                  <img src={selectedFriend.avatar} className="w-full h-full object-cover" alt="" />
+                {selectedFriend?.avatar_url ? (
+                  <img src={selectedFriend.avatar_url} className="w-full h-full object-cover" alt="" />
                 ) : (
                   <UserIcon className="w-10 h-10 text-red-500" />
                 )}
@@ -380,8 +386,8 @@ export default function TimeCapsuleCreatePage() {
                 <p className="text-xs text-[#8E8E93] mb-2 font-medium">받는 사람</p>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-[#3A3A3C] overflow-hidden">
-                    {selectedFriend?.avatar ? (
-                      <img src={selectedFriend.avatar} className="w-full h-full object-cover" alt="" />
+                    {selectedFriend?.avatar_url ? (
+                      <img src={selectedFriend.avatar_url} className="w-full h-full object-cover" alt="" />
                     ) : (
                       <UserIcon className="w-5 h-5 m-auto mt-2.5 text-[#8E8E93] opacity-50" />
                     )}

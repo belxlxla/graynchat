@@ -22,10 +22,10 @@ interface TimeCapsule {
   receiver_name?: string;
   sender_name?: string;
   message: string;
-  unlock_at: string;
+  scheduled_at: string;
   created_at: string;
   is_edited: boolean;
-  is_unlocked: boolean;
+  is_opened: boolean;
 }
 
 export default function ContentsPage() {
@@ -42,40 +42,43 @@ export default function ContentsPage() {
 
   // ── 타임캡슐 데이터 로드 ──────────────────────────────
   useEffect(() => {
-    if (!user?.id) { setIsDataLoading(false); return; }
+  if (!user?.id) { setIsDataLoading(false); return; }
 
-    const fetchCapsules = async () => {
-      try {
-        const { data: sentData } = await supabase
-          .from('time_capsules').select('*')
-          .eq('sender_id', user.id).order('created_at', { ascending: false });
+  const fetchCapsules = async () => {
+    try {
+      // 보낸 캡슐 조회
+      const { data: sentData } = await supabase
+        .from('time_capsules').select('*')
+        .eq('sender_id', user.id).order('created_at', { ascending: false });
 
-        if (sentData) {
-          const receiverIds = sentData.map(c => c.receiver_id);
-          const { data: users } = await supabase.from('users').select('id, name').in('id', receiverIds);
-          const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
-          setSentCapsules(sentData.map(c => ({ ...c, receiver_name: userMap.get(c.receiver_id) || '알 수 없음' })));
-        }
-
-        const { data: receivedData } = await supabase
-          .from('time_capsules').select('*')
-          .eq('receiver_id', user.id).order('unlock_at', { ascending: true });
-
-        if (receivedData) {
-          const senderIds = receivedData.map(c => c.sender_id);
-          const { data: users } = await supabase.from('users').select('id, name').in('id', senderIds);
-          const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
-          setReceivedCapsules(receivedData.map(c => ({ ...c, sender_name: userMap.get(c.sender_id) || '알 수 없음' })));
-        }
-      } catch (error) {
-        console.error('Data load error:', error);
-      } finally {
-        setIsDataLoading(false);
+      if (sentData) {
+        const receiverIds = sentData.map(c => c.receiver_id);
+        const { data: users } = await supabase.from('users').select('id, name').in('id', receiverIds);
+        const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
+        setSentCapsules(sentData.map(c => ({ ...c, receiver_name: userMap.get(c.receiver_id) || '알 수 없음' })));
       }
-    };
 
-    fetchCapsules();
-  }, [user]);
+      // 받은 캡슐 조회 (해결 포인트: scheduled_at -> scheduled_at)
+      const { data: receivedData } = await supabase
+        .from('time_capsules').select('*')
+        .eq('receiver_id', user.id)
+        .order('scheduled_at', { ascending: true }); // ✅ 명세서 컬럼명으로 수정
+
+      if (receivedData) {
+        const senderIds = receivedData.map(c => c.sender_id);
+        const { data: users } = await supabase.from('users').select('id, name').in('id', senderIds);
+        const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
+        setReceivedCapsules(receivedData.map(c => ({ ...c, sender_name: userMap.get(c.sender_id) || '알 수 없음' })));
+      }
+    } catch (error) {
+      console.error('Data load error:', error);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
+  fetchCapsules();
+}, [user]);
 
   // ── 결제 및 페이지 이동 ───────────────────────────────
   const handlePaymentAndNavigate = async (type: 'capsule' | 'report') => {
@@ -100,16 +103,16 @@ export default function ContentsPage() {
   };
 
   // ── Helper Functions ──────────────────────────────────
-  const getTimeRemaining = (unlockAt: string) => {
-    const diff = new Date(unlockAt).getTime() - new Date().getTime();
+  const getTimeRemaining = (scheduledAt: string) => {
+    const diff = new Date(scheduledAt).getTime() - new Date().getTime();
     if (diff <= 0) return '잠금 해제됨';
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     return days > 0 ? `${days}일 ${hours}시간 남음` : `${hours}시간 남음`;
   };
 
-  const canEdit = (c: TimeCapsule) => !c.is_edited && !c.is_unlocked && new Date(c.unlock_at) > new Date();
-  const canView = (c: TimeCapsule) => new Date(c.unlock_at) <= new Date();
+  const canEdit = (c: TimeCapsule) => !c.is_edited && !c.is_opened && new Date(c.scheduled_at) > new Date();
+  const canView = (c: TimeCapsule) => new Date(c.scheduled_at) <= new Date();
 
   return (
     <div className="h-full w-full flex flex-col text-white" style={{ background: '#0d0d0d' }}>
@@ -284,7 +287,7 @@ export default function ContentsPage() {
                             <div className="flex items-center gap-1 mt-0.5">
                               <Clock className="w-2.5 h-2.5" style={{ color: 'rgba(255,255,255,0.2)' }} />
                               <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                                {getTimeRemaining(c.unlock_at)}
+                                {getTimeRemaining(c.scheduled_at)}
                               </p>
                             </div>
                           </div>

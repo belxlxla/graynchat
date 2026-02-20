@@ -36,7 +36,7 @@ interface Friend {
   id: number;
   friend_user_id: string;
   name: string;
-  avatar: string | null;
+  avatar_url: string | null;
   status: string | null;
 }
 
@@ -117,8 +117,8 @@ export default function ChatRoomSettingsPage() {
 
   const [currentView, setCurrentView]     = useState<ViewState>('main');
   const [isNotificationsOn, setIsNotificationsOn] = useState(true);
-  const [roomInfo, setRoomInfo]           = useState<{ title: string; count: number; avatar: string | null; status: string | null }>({
-    title: '로딩 중...', count: 0, avatar: null, status: null
+  const [roomInfo, setRoomInfo]           = useState<{ title: string; count: number; avatar_url: string | null; status: string | null }>({
+    title: '로딩 중...', count: 0, avatar_url: null, status: null
   });
   const [mediaList, setMediaList]         = useState<MediaItem[]>([]);
   const [fileList, setFileList]           = useState<FileItem[]>([]);
@@ -138,13 +138,13 @@ export default function ChatRoomSettingsPage() {
         if (!myId) return;
 
         const { data: room } = await supabase.from('chat_rooms')
-          .select('id, type, title, avatar, members_count').eq('id', chatId).maybeSingle();
+          .select('id, type, title, avatar_url, members_count').eq('id', chatId).maybeSingle();
 
         let title = '알 수 없는 대화방';
-        let avatar: string | null = null;
+        let avatar_url: string | null = null;
         let memberCount = 0;
 
-        if (room) { title = room.title || title; avatar = room.avatar; memberCount = room.members_count || 0; }
+        if (room) { title = room.title || title; avatar_url = room.avatar_url; memberCount = room.members_count || 0; }
 
         const { count: realCount } = await supabase.from('room_members')
           .select('*', { count: 'exact', head: true }).eq('room_id', chatId);
@@ -159,12 +159,12 @@ export default function ChatRoomSettingsPage() {
               .select('name').eq('id', friendId).maybeSingle();
             const { data: upProfile } = await supabase.from('user_profiles')
               .select('avatar_url, status_message').eq('user_id', friendId).maybeSingle();
-            if (up) { title = up.name; avatar = upProfile?.avatar_url || null; }
+            if (up) { title = up.name; avatar_url = upProfile?.avatar_url || null; }
             statusMessage = upProfile?.status_message || null;
           }
         }
 
-        setRoomInfo({ title, count: memberCount, avatar, status: statusMessage });
+        setRoomInfo({ title, count: memberCount, avatar_url, status: statusMessage });
 
         const { data: messages } = await supabase.from('messages').select('id, content, created_at')
           .eq('room_id', chatId).order('created_at', { ascending: false }).limit(300);
@@ -194,7 +194,7 @@ export default function ChatRoomSettingsPage() {
             const profileMap = new Map(profileImages?.map(p => [p.user_id, p.avatar_url]) || []);
             setFriendsList(friends.map(f => ({
               ...f,
-              avatar: profileMap.get(f.friend_user_id) || null,
+              avatar_url: profileMap.get(f.friend_user_id) || null,
             })));
           } else {
             setFriendsList([]);
@@ -533,8 +533,8 @@ export default function ChatRoomSettingsPage() {
         {/* ── 프로필 섹션 ─ */}
         <div className="flex flex-col items-center pt-7 pb-6 px-6 border-b border-white/[0.05]">
           <div className="w-[84px] h-[84px] rounded-[26px] bg-[#2a2a2a] border border-white/[0.07] mb-4 flex items-center justify-center overflow-hidden shadow-xl">
-            {roomInfo.avatar
-              ? <img src={roomInfo.avatar} className="w-full h-full object-cover" alt="" />
+            {roomInfo.avatar_url
+              ? <img src={roomInfo.avatar_url} className="w-full h-full object-cover" alt="" />
               : <Users className="w-9 h-9 text-white/20" />
             }
           </div>
@@ -846,8 +846,8 @@ function InviteMemberModal({ isOpen, onClose, friends, onInvite }: {
                       }`}
                     >
                       <div className="w-[42px] h-[42px] rounded-[14px] bg-[#2e2e2e] border border-white/[0.06] overflow-hidden shrink-0">
-                        {f.avatar
-                          ? <img src={f.avatar} className="w-full h-full object-cover" alt="" />
+                        {f.avatar_url
+                          ? <img src={f.avatar_url} className="w-full h-full object-cover" alt="" />
                           : <UserPlus className="w-4 h-4 m-auto mt-[11px] text-white/22" />
                         }
                       </div>

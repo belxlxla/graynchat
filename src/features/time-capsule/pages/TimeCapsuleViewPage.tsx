@@ -29,7 +29,7 @@ export default function TimeCapsuleViewPage() {
 
         if (error) throw error;
 
-        if (new Date(data.unlock_at) > new Date()) {
+        if (new Date(data.scheduled_at) > new Date()) {
           toast.error('아직 열 수 없습니다!');
           navigate(-1);
           return;
@@ -47,14 +47,14 @@ export default function TimeCapsuleViewPage() {
           .eq('user_id', data.sender_id)
           .maybeSingle();
 
-        // 처음 열었을 때만 unlocked_at 업데이트
-        if (!data.is_unlocked) {
+        // 처음 열었을 때만 opened_at 업데이트
+        if (!data.is_opened) {
           const now = new Date();
           await supabase
             .from('time_capsules')
             .update({ 
-              is_unlocked: true, 
-              unlocked_at: now.toISOString() 
+              is_opened: true, 
+              opened_at: now.toISOString() 
             })
             .eq('id', id);
 
@@ -68,9 +68,9 @@ export default function TimeCapsuleViewPage() {
             hour: '2-digit',
             minute: '2-digit'
           }));
-        } else if (data.unlocked_at) {
-          // 이미 열렸던 경우 기존 unlocked_at 기준으로 계산
-          const unlockedDate = new Date(data.unlocked_at);
+        } else if (data.opened_at) {
+          // 이미 열렸던 경우 기존 opened_at 기준으로 계산
+          const unlockedDate = new Date(data.opened_at);
           const deletionDate = new Date(unlockedDate);
           deletionDate.setDate(deletionDate.getDate() + 1);
           setDeleteDate(deletionDate.toLocaleString('ko-KR', {
@@ -167,7 +167,7 @@ export default function TimeCapsuleViewPage() {
           >
             <p className="text-xs text-[#8E8E93] mb-2">잠금 해제</p>
             <p className="text-sm text-red-400 font-medium">
-              {new Date(capsule.unlock_at).toLocaleString('ko-KR', {
+              {new Date(capsule.scheduled_at).toLocaleString('ko-KR', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',

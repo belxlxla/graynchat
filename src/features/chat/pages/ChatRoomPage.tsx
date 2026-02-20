@@ -30,12 +30,12 @@ interface Message {
 interface MemberProfile {
   id: string;
   name: string;
-  avatar: string | null;
+  avatar_url: string | null;
 }
 
 interface TimeCapsuleNotice {
   id: string;
-  unlock_at: string;
+  scheduled_at: string;
   receiver_name: string;
 }
 
@@ -191,12 +191,12 @@ export default function ChatRoomPage() {
 
       const { data: myMember } = await supabase
         .from('room_members')
-        .select('wallpaper')
+        .select('wallpaper_url')
         .eq('room_id', chatId)
         .eq('user_id', user.id)
         .maybeSingle();
 
-      setBackground(myMember?.wallpaper || '');
+      setBackground(myMember?.wallpaper_url || '');
 
       const { data: members } = await supabase
         .from('room_members')
@@ -228,13 +228,13 @@ export default function ChatRoomPage() {
 
         const profileMap: Record<string, MemberProfile> = {};
         profiles?.forEach(p => {
-          profileMap[p.id] = { id: p.id, name: p.name, avatar: profileImagesMap.get(p.id) || null };
+          profileMap[p.id] = { id: p.id, name: p.name, avatar_url: profileImagesMap.get(p.id) || null };
         });
         setMemberProfiles(profileMap);
 
         if (isGroupChat) {
           setRoomTitle(room?.title || `그룹 채팅 (${memberIds.length}명)`);
-          setRoomAvatar(room?.avatar || null);
+          setRoomAvatar(room?.avatar_url || null);
         } else {
           const friendId = memberIds.find(id => id !== user.id);
           if (friendId) {
@@ -249,12 +249,12 @@ export default function ChatRoomPage() {
 
             if (friendRecord) {
               setRoomTitle(friendRecord.name || friendProfile?.name || '알 수 없는 사용자');
-              setRoomAvatar(friendProfile?.avatar || null);
+              setRoomAvatar(friendProfile?.avatar_url || null);
               setIsFriend(true);
               setIsBlocked(!!friendRecord.is_blocked);
             } else {
               setRoomTitle(friendProfile?.name || '알 수 없는 사용자');
-              setRoomAvatar(friendProfile?.avatar || null);
+              setRoomAvatar(friendProfile?.avatar_url || null);
               setIsFriend(false);
               setIsBlocked(false);
             }
@@ -285,7 +285,7 @@ export default function ChatRoomPage() {
 
   const getTimeUntilUnlock = useCallback(() => {
     if (!timeCapsuleNotice) return '';
-    const diff = new Date(timeCapsuleNotice.unlock_at).getTime() - Date.now();
+    const diff = new Date(timeCapsuleNotice.scheduled_at).getTime() - Date.now();
     if (diff <= 0) return '잠금 해제됨!';
     const d = Math.floor(diff / 86400000);
     const h = Math.floor((diff % 86400000) / 3600000);
@@ -377,8 +377,8 @@ export default function ChatRoomPage() {
         { event: 'UPDATE', schema: 'public', table: 'room_members', filter: `room_id=eq.${chatId}` },
         (payload) => {
           const updated = payload.new as any;
-          if (updated.user_id === user.id && updated.wallpaper !== undefined) {
-            setBackground(updated.wallpaper || '');
+          if (updated.user_id === user.id && updated.wallpaper_url !== undefined) {
+            setBackground(updated.wallpaper_url || '');
           }
         }
       );
@@ -441,11 +441,11 @@ export default function ChatRoomPage() {
     try {
       const { data } = await supabase
         .from('time_capsules')
-        .select('id, unlock_at, receiver_id')
+        .select('id, scheduled_at, receiver_id')
         .eq('sender_id', user.id)
         .eq('receiver_id', friendId)
-        .eq('is_unlocked', false)
-        .gte('unlock_at', new Date().toISOString())
+        .eq('is_opened', false)
+        .gte('scheduled_at', new Date().toISOString())
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -459,7 +459,7 @@ export default function ChatRoomPage() {
 
         setTimeCapsuleNotice({
           id: data.id,
-          unlock_at: data.unlock_at,
+          scheduled_at: data.scheduled_at,
           receiver_name: rv?.name || '친구'
         });
       } else {
@@ -475,7 +475,7 @@ export default function ChatRoomPage() {
   useEffect(() => {
     if (!timeCapsuleNotice) return;
     const interval = setInterval(() => {
-      if (new Date() >= new Date(timeCapsuleNotice.unlock_at)) {
+      if (new Date() >= new Date(timeCapsuleNotice.scheduled_at)) {
         setTimeCapsuleNotice(null);
         toast.success('타임캡슐이 잠금 해제되었습니다! 🎉');
         checkTimeCapsule();
@@ -672,7 +672,7 @@ export default function ChatRoomPage() {
         user_id: user.id,
         friend_user_id: friendId,
         name: friendUser?.name || roomTitle,
-        avatar: friendProfile?.avatar_url || roomAvatar,
+        avatar_url: friendProfile?.avatar_url || roomAvatar,
         status: friendProfile?.status_message || null,
         friendly_score: 10,
         is_blocked: false,
@@ -1103,7 +1103,7 @@ export default function ChatRoomPage() {
                 </p>
               </div>
               <div className="text-xs text-orange-400 font-mono bg-orange-500/10 px-3 py-1 rounded-full">
-                {new Date(timeCapsuleNotice.unlock_at).toLocaleDateString('ko-KR', {
+                {new Date(timeCapsuleNotice.scheduled_at).toLocaleDateString('ko-KR', {
                   month: 'short',
                   day: 'numeric',
                   hour: '2-digit',
@@ -1147,8 +1147,8 @@ export default function ChatRoomPage() {
                 >
                   {!isMe && (
                     <div className="w-[30px] h-[30px] rounded-[10px] bg-[#2e2e2e] overflow-hidden border border-white/[0.06] shrink-0 mb-[18px]">
-                      {sender?.avatar ? (
-                        <img src={sender.avatar} className="w-full h-full object-cover" alt="" />
+                      {sender?.avatar_url ? (
+                        <img src={sender.avatar_url} className="w-full h-full object-cover" alt="" />
                       ) : (
                         <UserIcon className="w-3.5 h-3.5 m-auto mt-[8px] text-white/22" />
                       )}

@@ -29,12 +29,12 @@ interface Friend {
   name: string;
   phone: string;
   status: string | null;
-  avatar: string | null;
+  avatar_url: string | null;
   bg: string | null;
   isFavorite: boolean;
   friendlyScore: number;
 }
-interface MyProfile { name: string; status: string; avatar: string | null; bg: string | null; }
+interface MyProfile { name: string; status: string; avatar_url: string | null; bg: string | null; }
 interface ScoreBreakdown {
   total: number;
   messageCount: number;
@@ -120,7 +120,7 @@ export default function FriendsListPage() {
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
   const [friends, setFriends]                         = useState<Friend[]>([]);
   const [isLoading, setIsLoading]                     = useState(true);
-  const [myProfile, setMyProfile]                     = useState<MyProfile>({ name: '사용자', status: '', avatar: null, bg: null });
+  const [myProfile, setMyProfile]                     = useState<MyProfile>({ name: '사용자', status: '', avatar_url: null, bg: null });
   const [selectedFriend, setSelectedFriend]           = useState<Friend | null>(null);
   const [showAddFriendModal, setShowAddFriendModal]   = useState(false);
   const [showCreateChatModal, setShowCreateChatModal] = useState(false);
@@ -139,12 +139,20 @@ export default function FriendsListPage() {
     if (!user?.id) { setIsCheckingPermission(false); return; }
     const check = async () => {
       try {
-        const { data } = await supabase.from('users').select('contact_permission')
-          .eq('id', user.id).maybeSingle();
+        // ✅ users가 아니라 user_settings 테이블을 조회해야 함
+        const { data } = await supabase
+          .from('user_settings')
+          .select('contact_permission')
+          .eq('user_id', user.id) // 컬럼명도 id가 아니라 user_id
+          .maybeSingle();
+        
         const p = data?.contact_permission;
         setStep(p === 'granted' || p === 'denied' ? 'list' : 'permission');
-      } catch { setStep('list'); }
-      finally { setIsCheckingPermission(false); }
+      } catch { 
+        setStep('list'); 
+      } finally { 
+        setIsCheckingPermission(false); 
+      }
     };
     check();
   }, [user?.id]);
@@ -154,14 +162,22 @@ export default function FriendsListPage() {
     const t = toast.loading('연락처 권한 요청 중...');
     const granted = await requestContactsPermission();
     toast.dismiss(t);
+
+    // 공통으로 사용할 상태 값
+    const permissionStatus = granted ? 'granted' : 'denied';
+
+    // ✅ 성공/실패 모두 user_settings 테이블을 업데이트해야 합니다.
+    await supabase
+      .from('user_settings')
+      .update({ contact_permission: permissionStatus })
+      .eq('user_id', user.id);
+
     if (granted) {
-      await supabase.from('users').update({ contact_permission: 'granted' }).eq('id', user.id);
       toast.success('연락처 동기화 완료!');
       setStep('complete');
       await syncContactsToFriends();
       setTimeout(() => setStep('list'), 1500);
     } else {
-      await supabase.from('users').update({ contact_permission: 'denied' }).eq('id', user.id);
       toast.error('연락처 권한이 거부되었습니다.');
       setStep('list');
     }
@@ -169,7 +185,13 @@ export default function FriendsListPage() {
 
   const handleSkipContacts = useCallback(async () => {
     if (!user?.id) return;
-    await supabase.from('users').update({ contact_permission: 'denied' }).eq('id', user.id);
+    
+    // users -> user_settings로 변경, id -> user_id로 변경
+    await supabase
+      .from('user_settings')
+      .update({ contact_permission: 'denied' })
+      .eq('user_id', user.id);
+
     setStep('list');
   }, [user?.id]);
 
@@ -191,7 +213,7 @@ export default function FriendsListPage() {
           .eq('user_id', session.user.id).eq('friend_user_id', u.id).maybeSingle();
         if (!ex) await supabase.from('friends').insert({
           user_id: session.user.id, friend_user_id: u.id, name: u.name, phone: u.phone,
-          avatar: uProfile?.avatar_url || null, status: uProfile?.status_message || null,
+          avatar_url: uProfile?.avatar_url || null, status: uProfile?.status_message || null,
           friendly_score: 10, is_favorite: false, is_blocked: false,
         });
       });
@@ -210,7 +232,7 @@ export default function FriendsListPage() {
       setMyProfile({
         name:   data?.name || session.user.user_metadata?.name || session.user.user_metadata?.full_name || '사용자',
         status: profile?.status_message || '',
-        avatar: profile?.avatar_url || null,
+        avatar_url: profile?.avatar_url || null,
         bg:     profile?.bg_image || null,
       });
   }, []);
@@ -220,27 +242,45 @@ export default function FriendsListPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
-        const { data, error } = await supabase.from('friends').select('*')
-          .eq('user_id', session.user.id)
-          .or('is_blocked.eq.false,is_blocked.is.null')
-          .order('name', { ascending: true });
-        if (error) throw error;
 
-        const uuids = (data || []).map((item: any) => item.friend_user_id).filter(Boolean);
-        const { data: profileImages } = uuids.length > 0
-          ? await supabase.from('user_profiles').select('user_id, avatar_url, bg_image').in('user_id', uuids)
-          : { data: [] };
-        const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p]) || []);
+      // 1. friends 테이블에서 내 친구 목록 가져오기
+      // 컬럼명 주의: is_blocked, is_favorite (명세서 기준)
+      const { data, error } = await supabase
+        .from('friends')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .eq('is_blocked', false) // 차단되지 않은 친구만
+        .order('created_at', { ascending: false });
 
-        setFriends((data || []).map((item: any) => ({
-          id: item.id, friend_user_id: item.friend_user_id || '',
-          name: item.name, phone: item.phone, status: item.status,
-          avatar: profileMap.get(item.friend_user_id)?.avatar_url || null,
-          bg: profileMap.get(item.friend_user_id)?.bg_image || null,
-          isFavorite: item.is_favorite || false, friendlyScore: item.friendly_score || 10,
-        })));
-    } catch { toast.error('친구 목록을 불러오는데 실패했습니다.'); }
-    finally { setIsLoading(false); }
+      if (error) throw error;
+
+      const uuids = (data || []).map((item: any) => item.friend_user_id).filter(Boolean);
+
+      // 2. 상대방의 최신 프로필(아바타, 배경) 정보 가져오기
+      const { data: profileImages } = uuids.length > 0
+        ? await supabase.from('user_profiles').select('user_id, avatar_url, bg_image').in('user_id', uuids)
+        : { data: [] };
+      
+      const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p]) || []);
+
+      // 3. 데이터 매핑 (DB 컬럼 -> FE 상태 변수)
+      setFriends((data || []).map((item: any) => ({
+        id: item.id,
+        friend_user_id: item.friend_user_id,
+        name: item.alias_name || item.name, // 별명이 있으면 별명 우선 (명세서 4번 컬럼)
+        phone: item.phone,
+        status: item.status, 
+        avatar_url: profileMap.get(item.friend_user_id)?.avatar_url || null,
+        bg: profileMap.get(item.friend_user_id)?.bg_image || null,
+        isFavorite: item.is_favorite || false, // is_favorite 확인
+        friendlyScore: item.friendly_score || 0,
+      })));
+    } catch (err) {
+      console.error(err);
+      toast.error('친구 목록을 불러오는데 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -248,22 +288,46 @@ export default function FriendsListPage() {
     if (step === 'list' && !isCheckingPermission) fetchFriends();
   }, [step, isCheckingPermission, fetchFriends, fetchMyProfile]);
 
+  // ✅ 214번 라인 근처: handleSaveMyProfile 함수 수정
   const handleSaveMyProfile = useCallback(async (p: MyProfile) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
-        await supabase.from('users').update({
-          name: p.name,
-        }).eq('id', session.user.id);
 
-        await supabase.from('user_profiles').upsert({
-          user_id: session.user.id,
+      const userId = session.user.id;
+
+      // 1. [users] 테이블은 'name'만 업데이트 (명세서 NO.1 준수)
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ 
+          name: p.name,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', userId);
+
+      if (userError) throw userError;
+
+      // 2. [user_profiles] 테이블에 나머지 정보 저장 (명세서 NO.2 준수)
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .upsert({
+          user_id: userId,
+          nickname: p.name,          // 명세서 상 nickname 컬럼
           status_message: p.status,
-          avatar_url: p.avatar,
+          avatar_url: p.avatar_url,
           bg_image: p.bg,
-        });
-      setMyProfile(p); setShowEditProfileModal(false); toast.success('프로필 업데이트 완료');
-    } catch { toast.error('수정에 실패했습니다.'); }
+          profile_updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+      if (profileError) throw profileError;
+
+      setMyProfile(p);
+      setShowEditProfileModal(false);
+      toast.success('프로필 업데이트 완료');
+    } catch (error: any) {
+      console.error('Update Error:', error);
+      toast.error('수정에 실패했습니다.');
+    }
   }, []);
 
   const toggleFavorite = useCallback(async (id: number) => {
@@ -515,7 +579,7 @@ export default function FriendsListPage() {
                     <div onClick={() => setShowEditProfileModal(true)}
                       className="flex items-center gap-3.5 px-3 py-3 rounded-2xl cursor-pointer transition-colors hover:bg-white/[0.06] active:bg-white/[0.08]">
                       <div className="relative shrink-0">
-                        <Av src={myProfile.avatar} size={56} r={20} ring={{ w: 2, c: 'rgba(255,255,255,0.1)' }} />
+                        <Av src={myProfile.avatar_url} size={56} r={20} ring={{ w: 2, c: 'rgba(255,255,255,0.1)' }} />
                         <span className="absolute -bottom-0.5 -right-0.5 w-[13px] h-[13px] rounded-full bg-green-500"
                           style={{ border: `2.5px solid ${T.bg}` }} />
                       </div>
@@ -593,7 +657,7 @@ export default function FriendsListPage() {
             {/* Info */}
             <div className="px-5 pt-0 pb-28 flex flex-col items-center text-center -mt-10 relative z-10">
               <div className="mb-3.5" style={{ filter: 'drop-shadow(0 4px 20px rgba(0,0,0,0.6))' }}>
-                <Av src={selectedFriend.avatar} size={76} r={22} ring={{ w: 3, c: T.sheet }} />
+                <Av src={selectedFriend.avatar_url} size={76} r={22} ring={{ w: 3, c: T.sheet }} />
               </div>
               <h3 className="text-[19px] font-bold mb-0.5">{selectedFriend.name}</h3>
               {selectedFriend.status && (
@@ -778,7 +842,7 @@ function FriendRow({ friend, onClick, onBlock, onDelete }: {
         onClick={onClick}
         className="absolute inset-0 flex items-center px-4 cursor-pointer transition-colors active:bg-white/[0.04]"
         style={{ background: T.bg, touchAction: 'pan-y', zIndex: 10 }}>
-        <Av src={friend.avatar} size={44} r={15} />
+        <Av src={friend.avatar_url} size={44} r={15} />
         <div className="flex-1 min-w-0 ml-3.5">
           <div className="flex items-center gap-1.5">
             <span className="text-[14px] font-semibold truncate text-white/90">{friend.name}</span>
@@ -987,7 +1051,7 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
   // ── States for editing
   const [p, setP] = useState(initialProfile);
   const [isCropOpen, setIsCropOpen] = useState(false);
-  const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
+  const [currentImageType, setCurrentImageType] = useState<'avatar_url' | 'bg'>('avatar_url');
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -999,7 +1063,7 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
 
   useEffect(() => { if (isOpen) setP(initialProfile); }, [isOpen, initialProfile]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar_url' | 'bg') => {
     if (e.target.files && e.target.files.length > 0) {
       const reader = new FileReader();
       reader.onload = () => {
@@ -1025,7 +1089,7 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
 
-      setP(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
+      setP(prev => ({ ...prev, [currentImageType === 'avatar_url' ? 'avatar_url' : 'bg']: publicUrl }));
       setIsCropOpen(false);
     } catch (e) {
       console.error(e);
@@ -1033,8 +1097,8 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
     }
   };
 
-  const handleResetImage = async (type: 'avatar' | 'bg') => {
-    setP(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: null }));
+  const handleResetImage = async (type: 'avatar_url' | 'bg') => {
+    setP(prev => ({ ...prev, [type === 'avatar_url' ? 'avatar_url' : 'bg']: null }));
     toast.success('기본 이미지로 설정되었습니다.');
   };
 
@@ -1067,11 +1131,11 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
                 image={tempImageSrc}
                 crop={crop}
                 zoom={zoom}
-                aspect={currentImageType === 'avatar' ? 1 : 16 / 9}
+                aspect={currentImageType === 'avatar_url' ? 1 : 16 / 9}
                 onCropChange={setCrop}
                 onCropComplete={(_, p) => setCroppedAreaPixels(p)}
                 onZoomChange={setZoom}
-                cropShape={currentImageType === 'avatar' ? 'round' : 'rect'}
+                cropShape={currentImageType === 'avatar_url' ? 'round' : 'rect'}
                 showGrid={false}
               />
             </div>
@@ -1146,7 +1210,7 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
         <div className="flex justify-center -mt-10 mb-7 relative z-10">
           <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
             <div className="transition-transform group-hover:scale-[1.02]" style={{ filter: 'drop-shadow(0 6px 24px rgba(0,0,0,0.55))' }}>
-              <Av src={p.avatar} size={88} r={28} ring={{ w: 3, c: T.bg }} />
+              <Av src={p.avatar_url} size={88} r={28} ring={{ w: 3, c: T.bg }} />
             </div>
             
             {/* Avatar Edit Controls */}
@@ -1159,17 +1223,17 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
                         <Camera className="w-4 h-4 text-[#FF203A]" />
                      </button>
                      
-                     {p.avatar && (
+                     {p.avatar_url && (
                        <>
                          <div className="w-[1px] h-4 bg-white/20" />
-                         <button onClick={() => handleResetImage('avatar')} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                         <button onClick={() => handleResetImage('avatar_url')} className="p-2 hover:bg-white/10 rounded-full transition-colors">
                             <X className="w-4 h-4 text-white/80" />
                          </button>
                        </>
                      )}
                  </div>
             </div>
-            <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar')} onClick={e => e.stopPropagation()} />
+            <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileChange(e, 'avatar_url')} onClick={e => e.stopPropagation()} />
           </div>
         </div>
 
@@ -1234,7 +1298,7 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
 
       const enriched = filtered.map((u: any) => ({
         ...u,
-        avatar: profileMap.get(u.id)?.avatar_url || null,
+        avatar_url: profileMap.get(u.id)?.avatar_url || null,
         status_message: profileMap.get(u.id)?.status_message || null,
       }));
       setResults(enriched); setShowResults(true);
@@ -1252,7 +1316,7 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
       if (dup) { toast.dismiss(t); toast.error('이미 등록된 친구입니다.'); return; }
       await supabase.from('friends').insert([{
         user_id: session.user.id, friend_user_id: u.id, name: u.name, phone: u.phone,
-        avatar: u.avatar, status: u.status_message, friendly_score: 10, is_favorite: false, is_blocked: false,
+        avatar_url: u.avatar_url, status: u.status_message, friendly_score: 10, is_favorite: false, is_blocked: false,
       }]);
       toast.dismiss(t); toast.success(`${u.name}님을 추가했습니다.`);
       onFriendAdded?.(); onClose();
@@ -1311,7 +1375,7 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
               {results.map(u => (
                 <div key={u.id} className="flex items-center gap-3 p-3 rounded-2xl"
                   style={{ background: T.surface, border: `1px solid ${T.border}` }}>
-                  <Av src={u.avatar} size={42} r={14} />
+                  <Av src={u.avatar_url} size={42} r={14} />
                   <div className="flex-1 min-w-0">
                     <p className="text-[14px] font-semibold truncate">{u.name}</p>
                     <p className="text-[11px] truncate" style={{ color: T.muted }}>{u.phone}</p>
@@ -1480,7 +1544,7 @@ function CreateChatModal({ isOpen, onClose, friends }: {
                           background: sel ? `${T.red}10` : 'transparent',
                           border: `1px solid ${sel ? `${T.red}22` : 'transparent'}`,
                         }}>
-                        <Av src={f.avatar} size={40} r={13} />
+                        <Av src={f.avatar_url} size={40} r={13} />
                         <span className="flex-1 text-[14px] font-medium truncate"
                           style={{ color: sel ? T.red : 'rgba(255,255,255,0.8)' }}>
                           {f.name}

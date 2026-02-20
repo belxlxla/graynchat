@@ -113,7 +113,7 @@ export default function GatheringChatRoomPage() {
   const [showEmojiModal, setShowEmojiModal]         = useState(false);
   const [isViewerOpen, setIsViewerOpen]             = useState(false);
   const [initialImageIndex, setInitialImageIndex]   = useState(0);
-  const [members, setMembers]                       = useState<{ id: string; name: string; avatar: string | null }[]>([]);
+  const [members, setMembers]                       = useState<{ id: string; name: string; avatar_url: string | null }[]>([]);
 
   const bottomRef      = useRef<HTMLDivElement>(null);
   const textareaRef    = useRef<HTMLTextAreaElement>(null);
@@ -371,7 +371,7 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
       const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p.avatar_url]) || []);
       setMembers((usersData || []).map((u: any) => ({
         ...u,
-        avatar: profileMap.get(u.id) || null,
+        avatar_url: profileMap.get(u.id) || null,
       })));
     }
     setShowMembers(true);
@@ -759,8 +759,8 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
                 className="flex items-center gap-3 px-2 py-3 rounded-[16px] hover:bg-white/[0.03] transition-colors"
               >
                 <div className="w-[42px] h-[42px] rounded-[14px] bg-[#2e2e2e] border border-white/[0.06] overflow-hidden flex items-center justify-center text-[14px] font-medium text-white/38 shrink-0">
-                  {m.avatar
-                    ? <img src={m.avatar} className="w-full h-full object-cover" alt="" />
+                  {m.avatar_url
+                    ? <img src={m.avatar_url} className="w-full h-full object-cover" alt="" />
                     : m.name?.charAt(0)
                   }
                 </div>

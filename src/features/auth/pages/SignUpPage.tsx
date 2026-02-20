@@ -309,24 +309,29 @@ export default function SignUpPage() {
 
       if (signUpError) throw signUpError;
 
+      // ✅ handleCreateAccount 함수 내부 수정
       if (authData.user) {
-        // ✅ 2. users 테이블: 명세서 허용 컬럼만 저장
-        const { error: updateError } = await supabase
+        const userId = authData.user.id;
+
+        // 1. users (계정 마스터) 저장
+        const { error: usersError } = await supabase
           .from('users')
           .upsert({
-            id: authData.user.id,
+            id: userId,
             email: accountData.email.trim(),
             name: accountData.name.trim(),
-            birthdate: accountData.birthdate,
+            birthdate: accountData.birthdate, // YYYYMMDD 형식
+            // phone은 추후 핸드폰 인증 페이지(/auth/phone)에서 업데이트하거나 
+            // 현재 단계에서 빈 값으로 생성
             updated_at: new Date().toISOString(),
           }, { onConflict: 'id' });
 
-        if (updateError) console.error('User Update Error (Non-fatal):', updateError);
+        if (usersError) console.error('Users 테이블 저장 실패:', usersError);
 
-        // ✅ 3. user_legal 테이블: 약관 및 보호자 정보 저장
+        // 2. user_legal (약관 및 미성년자 보호) 저장
         const legalData: any = {
-          user_id: authData.user.id,
-          is_terms_agreed: true,
+          user_id: userId,
+          is_terms_agreed: true, // 필수 약관 동의 상태
           is_marketing_agreed: agreedTerms.marketing,
           is_minor: isMinor,
         };
@@ -335,19 +340,45 @@ export default function SignUpPage() {
           legalData.guardian_name = guardianConsent.guardianName;
           legalData.guardian_phone = guardianConsent.guardianPhone.replace(/-/g, '');
           legalData.guardian_relationship = guardianConsent.relationship;
-          legalData.guardian_verified = isGuardianVerified;
+          legalData.guardian_verified = isGuardianVerified; // 명세서 기반 추가
         }
 
         const { error: legalError } = await supabase
           .from('user_legal')
           .upsert(legalData, { onConflict: 'user_id' });
 
-        if (legalError) console.error('User Legal Error (Non-fatal):', legalError);
+        if (legalError) console.error('User Legal 테이블 저장 실패:', legalError);
 
-        // 4. 임시 세션 저장 후 전화번호 인증 페이지 이동
+        // 3. user_profiles (프로필) 초기화
+        // 기본적으로 nickname은 가입 시 없으므로, 필요 시 email 앞자리나 임시 닉네임 할당 가능
+        await supabase.from('user_profiles').upsert({
+          user_id: userId,
+          is_profile_complete: false,
+          is_anonymous: false,
+        }, { onConflict: 'user_id' });
+
+        // 4. user_security (보안 설정) 초기화
+        await supabase.from('user_security').upsert({
+          user_id: userId,
+          is_lock_enabled: false,
+          is_biometric_enabled: false,
+          fail_count: 0,
+        }, { onConflict: 'user_id' });
+
+        // 5. user_settings (알림 및 환경 설정) 초기화
+        await supabase.from('user_settings').upsert({
+          user_id: userId,
+          notification_permission: 'pending',
+          notify_all: true,
+          allow_contact_add: true,
+          use_contact_names: false,
+          contact_permission: 'pending',
+        }, { onConflict: 'user_id' });
+
+        // 세션 정보 저장 및 페이지 이동
         sessionStorage.setItem('signup_email', accountData.email.trim());
         sessionStorage.setItem('signup_password', accountData.password);
-        sessionStorage.setItem('signup_user_id', authData.user.id);
+        sessionStorage.setItem('signup_user_id', userId);
 
         toast.success('계정이 생성되었습니다.');
         navigate('/auth/phone', { replace: true });
