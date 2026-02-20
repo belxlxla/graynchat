@@ -237,29 +237,23 @@ export default function ProfileSetupPage() {
       // [핵심] 전화번호가 metadata에는 있는데 DB에 없다면 DB로 복사
       const metaPhone = user?.user_metadata?.phone || user?.user_metadata?.mobile;
       
-        // ✅ users 테이블: name, phone만 업데이트
-        const usersUpdateData: any = {
-          name: nickname.trim(),
-          updated_at: new Date().toISOString(),
-        };
+        // 전화번호가 새로 들어온 경우에만 업데이트하도록 변경합니다.
+        if (metaPhone || user?.phone) {
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({
+              phone: metaPhone || user?.phone,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', userId);
 
-        if (metaPhone) {
-          usersUpdateData.phone = metaPhone;
-        } else if (user?.phone) {
-          usersUpdateData.phone = user.phone;
+          if (updateError) throw updateError;
         }
 
-        const { error: updateError } = await supabase
-          .from('users')
-          .update(usersUpdateData)
-          .eq('id', userId);
-
-        if (updateError) throw updateError;
-
-        // ✅ user_profiles 테이블: nickname, status_message, avatar_url, bg_image
+        // 2. user_profiles 테이블: 여기서만 닉네임을 처리합니다.
         const profilesUpdateData: any = {
           user_id: userId,
-          nickname: nickname.trim(),
+          nickname: nickname.trim(), // 앱에서 표시될 이름
           status_message: statusMessage.trim() || '그레인을 시작했어요!',
           profile_updated_at: new Date().toISOString(),
         };

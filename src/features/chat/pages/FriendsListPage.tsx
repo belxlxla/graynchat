@@ -1269,48 +1269,109 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
     if (!phone.trim()) { toast.error('전화번호를 입력해주세요.'); return; }
     setIsBusy(true);
     const t = toast.loading('사용자 검색 중...');
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) { toast.dismiss(t); return; }
-      const clean = phone.replace(/[^0-9]/g, '');
-      let q = supabase.from('users').select('id,name,phone').eq('phone', clean);
-      if (name.trim()) q = q.ilike('name', `%${name.trim()}%`);
-      const { data, error } = await q;
-      if (error) throw error;
+
+      // 입력한 번호에서 숫자만 추출
+      const cleanInput = phone.replace(/[^0-9]/g, '');
+
+      // ✅ 1. users 테이블 검색 (like를 써서 하이픈이 섞여있어도 찾도록 함)
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, name, phone')
+        .ilike('phone', `%${cleanInput}%`) // 번호가 일부만 맞아도 검색
+        .neq('id', session.user.id);
+
+      if (usersError) throw usersError;
+
+      // 로그가 안 뜬다고 하셨으니 콘솔에 직접 찍어서 확인해봅니다.
+      console.log('검색된 유저 데이터:', usersData);
+
+      if (!usersData || usersData.length === 0) {
+        toast.dismiss(t);
+        toast.error('사용자를 찾을 수 없습니다.');
+        return;
+      }
+
+      // 2. 프로필 이미지 정보 가져오기
+      const uuids = usersData.map(u => u.id);
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('user_id, nickname, avatar_url, status_message')
+        .in('user_id', uuids);
+
+      const profileMap = new Map(profileData?.map(p => [p.user_id, p]) || []);
+
+      const enriched = usersData.map(u => {
+        const profile = profileMap.get(u.id);
+        return {
+          ...u,
+          name: profile?.nickname || u.name, // 닉네임 있으면 닉네임 우선
+          avatar_url: profile?.avatar_url || null,
+          status_message: profile?.status_message || null,
+        };
+      });
+
       toast.dismiss(t);
-      const filtered = (data || []).filter((u: any) => u.id !== session.user.id);
-      if (!filtered.length) { toast.error('사용자를 찾을 수 없습니다.'); return; }
-
-      const uuids = filtered.map((u: any) => u.id);
-      const { data: profileData } = await supabase.from('user_profiles')
-        .select('user_id, avatar_url, status_message').in('user_id', uuids);
-      const profileMap = new Map(profileData?.map((p: any) => [p.user_id, p]) || []);
-
-      const enriched = filtered.map((u: any) => ({
-        ...u,
-        avatar_url: profileMap.get(u.id)?.avatar_url || null,
-        status_message: profileMap.get(u.id)?.status_message || null,
-      }));
-      setResults(enriched); setShowResults(true);
-    } catch { toast.dismiss(t); toast.error('검색에 실패했습니다.'); }
-    finally { setIsBusy(false); }
+      setResults(enriched);
+      setShowResults(true);
+    } catch (err) {
+      console.error('검색 중 발생한 에러:', err);
+      toast.dismiss(t);
+      toast.error('검색에 실패했습니다.');
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const handleAdd = async (u: any) => {
     const t = toast.loading('친구 추가 중...');
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) { toast.dismiss(t); return; }
-      const { data: dup } = await supabase.from('friends').select('id')
-        .eq('user_id', session.user.id).eq('friend_user_id', u.id).maybeSingle();
-      if (dup) { toast.dismiss(t); toast.error('이미 등록된 친구입니다.'); return; }
-      await supabase.from('friends').insert([{
-        user_id: session.user.id, friend_user_id: u.id, name: u.name, phone: u.phone,
-        avatar_url: u.avatar_url, status: u.status_message, friendly_score: 10, is_favorite: false, is_blocked: false,
+      if (!session?.user?.id) { 
+        toast.dismiss(t); 
+        return; 
+      }
+
+      // 1. 중복 체크 (나와 상대방의 ID 조합)
+      const { data: dup } = await supabase.from('friends')
+        .select('id')
+        .eq('user_id', session.user.id)
+        .eq('friend_user_id', u.id)
+        .maybeSingle();
+
+      if (dup) { 
+        toast.dismiss(t); 
+        toast.error('이미 등록된 친구입니다.'); 
+        return; 
+      }
+
+      // 2. 명세서 NO.9 컬럼만 사용하여 INSERT
+      const { error: insertError } = await supabase.from('friends').insert([{
+        user_id: session.user.id,     // 요청 사용자 ID (FK)
+        friend_user_id: u.id,        // 대상 사용자 ID (FK)
+        alias_name: u.name,          // 설정된 별명 (검색 시 가져온 이름 저장)
+        is_favorite: false,          // 즐겨찾기 여부
+        is_blocked: false,           // 차단 여부
+        hide_profile: false,         // 프로필 숨김
+        friendly_score: 0            // 친밀도 점수 (기본값)
       }]);
-      toast.dismiss(t); toast.success(`${u.name}님을 추가했습니다.`);
-      onFriendAdded?.(); onClose();
-    } catch { toast.dismiss(t); toast.error('친구 추가에 실패했습니다.'); }
+
+      if (insertError) throw insertError;
+
+      toast.dismiss(t); 
+      toast.success(`${u.name}님을 추가했습니다.`);
+      
+      // 목록 새로고침 및 모달 닫기
+      if (onFriendAdded) onFriendAdded(); 
+      onClose();
+    } catch (error: any) {
+      console.error('친구 추가 실패 상세:', error);
+      toast.dismiss(t);
+      toast.error('친구 추가에 실패했습니다. (필드 구성 오류)');
+    }
   };
 
   if (!isOpen) return null;
