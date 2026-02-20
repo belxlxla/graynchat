@@ -82,15 +82,16 @@ export default function ScreenLockPage() {
   }, [checkBiometricRegistration]);
 
   // DB 및 로컬 저장 로직
-  const saveSettings = async (lock: boolean, biometric?: boolean) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    await supabase.from('user_security').upsert({ 
-      user_id: session.user.id,
-      is_lock_enabled: lock,
-      is_biometric_enabled: biometric ?? isBiometricEnabled 
-    });
-  }
+  const saveSettings = async (lock: boolean, pin?: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await supabase.from('user_security').upsert({ 
+        user_id: session.user.id,
+        is_lock_enabled: lock,
+        // 명세서에 따라 pin 값도 저장 로직이 있다면 추가
+        lock_pin: pin || null 
+      });
+    }
     localStorage.setItem('grayn_lock_enabled', String(lock));
     if (pin) localStorage.setItem('grayn_lock_pin', pin);
     if (!lock) {
@@ -127,10 +128,10 @@ export default function ScreenLockPage() {
         setShowPinModal(false);
         if (pinMode === 'setup') {
           setIsLockEnabled(true);
-          await saveSettings(true, pin);
+          await saveSettings(true, pin); // 두 번째 인자는 string인 pin입니다.
           setSuccessText({ title: '설정 완료', content: '보안 잠금이 성공적으로 활성화되었습니다.' });
         } else {
-          await saveSettings(true, pin);
+          await saveSettings(true, pin); // 여기도 마찬가지입니다.
           setSuccessText({ title: '변경 완료', content: '비밀번호가 안전하게 변경되었습니다.' });
         }
         setShowSuccessModal(true);
