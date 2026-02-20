@@ -678,7 +678,7 @@ export default function ChatRoomPage() {
       await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendId,
-        name: friendUser?.name || roomTitle,
+        alias_name: friendUser?.name || roomTitle,
         avatar_url: friendProfile?.avatar_url || roomAvatar,
         status: friendProfile?.status_message || null,
         friendly_score: 10,
@@ -710,7 +710,7 @@ export default function ChatRoomPage() {
       await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendId,
-        name: friendUser?.name || roomTitle,
+        alias_name: friendUser?.name || roomTitle,
         is_blocked: true,
       });
 

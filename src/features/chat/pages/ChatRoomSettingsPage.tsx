@@ -37,7 +37,6 @@ interface Friend {
   friend_user_id: string;
   name: string;
   avatar_url: string | null;
-  status: string | null;
 }
 
 type ViewState = 'main' | 'media' | 'files' | 'links';
@@ -186,7 +185,7 @@ export default function ChatRoomSettingsPage() {
           setMediaList(medias); setFileList(files); setLinkList(links);
         }
 
-          const { data: friends } = await supabase.from('friends').select('id, friend_user_id, name, status').eq('user_id', myId);
+          const { data: friends } = await supabase.from('friends').select('id, friend_user_id, alias_name').eq('user_id', myId);
           if (friends && friends.length > 0) {
             const uuids = friends.map(f => f.friend_user_id).filter(Boolean);
             const { data: profileImages } = await supabase.from('user_profiles')
@@ -763,7 +762,11 @@ function InviteMemberModal({ isOpen, onClose, friends, onInvite }: {
     setSelectedIds([]);
   };
 
-  const filtered = friends.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = friends.filter(f => {
+    // alias_name이 없을 경우를 대비해 빈 문자열('')을 기본값으로 사용
+    const targetName = f.alias_name || ''; 
+    return targetName.toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
     <AnimatePresence>
