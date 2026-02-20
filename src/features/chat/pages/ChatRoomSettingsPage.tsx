@@ -856,7 +856,7 @@ function InviteMemberModal({ isOpen, onClose, friends, onInvite }: {
                         }
                       </div>
                       <span className={`flex-1 text-[14.5px] font-medium ${selected ? 'text-[#FF203A]' : 'text-white/85'}`}>
-                        {f.name}
+                        {f.alias_name}
                       </span>
                       {selected
                         ? <CheckCircle2 className="w-[22px] h-[22px] text-[#FF203A] shrink-0" />
