@@ -291,7 +291,7 @@ export default function ChatRoomSettingsPage() {
 
       if (alreadyMembers.length > 0) {
         const alreadyMemberNames = alreadyMembers
-          .map(uid => friendsList.find(f => f.friend_user_id === uid)?.name)
+          .map(uid => friendsList.find(f => f.friend_user_id === uid)?.alias_name)
           .filter(Boolean);
         toast.error(`${alreadyMemberNames.join(', ')}님은 이미 채팅방에 있습니다.`);
       }
