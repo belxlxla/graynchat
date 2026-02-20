@@ -423,7 +423,7 @@ export default function ProfileSetupPage() {
         ref={avatarInputRef} 
         className="hidden" 
         accept="image/*" 
-        onChange={e => onFileChange(e, 'avatavatar_urlar')} 
+        onChange={e => onFileChange(e, 'avatar_url')} 
       />
       <input 
         type="file" 
