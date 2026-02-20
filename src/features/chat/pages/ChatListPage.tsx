@@ -16,7 +16,7 @@ interface ChatRoom {
   id: string;
   type: 'individual' | 'group';
   title: string;
-  avatar: string | null;
+  avatar_url: string | null;
   membersCount: number;
   lastMessage: string;
   timestamp: string;
@@ -28,13 +28,13 @@ interface Friend {
   id: number;
   friend_user_id: string;
   name: string;
-  avatar: string | null;
+  avatar_url: string | null;
 }
 
 interface UserProfile {
   id: string;
   name: string;
-  avatar: string | null;
+  avatar_url: string | null;
 }
 
 // ─── 공통 바텀시트 래퍼 ──────────────────────────────────────
@@ -139,7 +139,7 @@ export default function ChatListPage() {
         usersData?.forEach(u => usersMap.set(u.id, {
           id: u.id,
           name: u.name,
-          avatar: profilesMap.get(u.id)?.avatar_url || null,
+          avatar_url: profilesMap.get(u.id)?.avatar_url || null,
         }));
       }
 
@@ -147,21 +147,21 @@ export default function ChatListPage() {
         if (!room) return null;
         const isGroup = room.type === 'group';
         let title = '알 수 없는 사용자';
-        let avatar: string | null = null;
+        let avatar_url: string | null = null;
 
         if (isGroup) {
           title = room.title || '그룹 채팅';
-          avatar = room.avatar;
+          avatar_url = room.avatar_url;
         } else {
           const friendId = room.id.split('_').find((id: string) => id !== user.id);
           if (friendId) {
             const up = usersMap.get(friendId);
-            if (up) { title = up.name; avatar = up.avatar; }
+            if (up) { title = up.name; avatar_url = up.avatar_url; }
           }
         }
 
         return {
-          id: room.id.toString(), type: room.type || 'individual', title, avatar,
+          id: room.id.toString(), type: room.type || 'individual', title, avatar_url,
           membersCount: room.members_count || (isGroup ? 3 : 1),
           lastMessage: room.last_message || '대화를 시작해보세요!',
           timestamp: room.last_message_at
@@ -269,9 +269,11 @@ export default function ChatListPage() {
   const fetchFriends = useCallback(async () => {
     if (!user?.id) return;
     try {
-const { data: friendsData, error } = await supabase
-  .from('friends').select('id, friend_user_id, name')
-  .eq('user_id', user.id).order('name', { ascending: true });
+      const { data: friendsData, error } = await supabase
+        .from('friends')
+        .select('id, friend_user_id, alias_name') // name 대신 alias_name 사용
+        .eq('user_id', user.id);
+        
       if (error) throw error;
 
       if (friendsData && friendsData.length > 0) {
@@ -280,16 +282,20 @@ const { data: friendsData, error } = await supabase
         const { data: profilesData } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', uuids);
         const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
         const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+        
         setFriendsList(friendsData.map(f => ({
           id: f.id,
           friend_user_id: f.friend_user_id,
-          name: usersMap.get(f.friend_user_id)?.name || f.name,
-          avatar: profilesMap.get(f.friend_user_id)?.avatar_url || null,
+          // ✅ users 테이블의 실제 이름 우선, 없으면 친구 설정 별명(alias_name) 사용
+          name: usersMap.get(f.friend_user_id)?.name || f.alias_name || '이름 없음',
+          avatar_url: profilesMap.get(f.friend_user_id)?.avatar_url || null,
         })));
       } else {
         setFriendsList([]);
       }
-    } catch (error) { console.error('Fetch Friends Error:', error); }
+    } catch (error) { 
+      console.error('Fetch Friends Error:', error); 
+    }
   }, [user]);
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
@@ -611,7 +617,7 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
       >
         {/* 아바타 */}
         <div className="relative mr-3 shrink-0">
-          <Avatar src={data.avatar} isGroup={isGroup} size={50} radius={17} />
+          <Avatar src={data.avatar_url} isGroup={isGroup} size={50} radius={17} />
         </div>
 
         {/* 텍스트 */}
@@ -834,7 +840,7 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
                   selected ? 'bg-[#FF203A]/10' : 'hover:bg-white/[0.04]'
                 }`}
               >
-                <Avatar src={f.avatar} size={42} radius={14} />
+                <Avatar src={f.avatar_url} size={42} radius={14} />
                 <span className={`flex-1 text-[14.5px] font-medium ${selected ? 'text-[#FF203A]' : 'text-white/85'}`}>
                   {f.name}
                 </span>

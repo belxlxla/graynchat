@@ -110,7 +110,7 @@ export default function LoginPage() {
                                user.user_metadata?.mobile ||
                                user.phone || null;
 
-              // ✅ users 테이블: avatar 없이 저장
+              // ✅ users 테이블: avatar_url 없이 저장
               const { error: upsertError } = await supabase
                 .from('users')
                 .upsert({

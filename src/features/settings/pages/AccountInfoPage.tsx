@@ -15,7 +15,7 @@ import { useAuth } from '../../auth/contexts/AuthContext';
 
 interface UserProfile {
   name: string;
-  avatar: string | null;
+  avatar_url: string | null;
   bg: string | null;
   provider: string;
   email: string;
@@ -81,7 +81,7 @@ export default function AccountInfoPage() {
 
   const [profile, setProfile] = useState<UserProfile>({
     name: '사용자',
-    avatar: null,
+    avatar_url: null,
     bg: null,
     provider: 'email',
     email: '',
@@ -90,12 +90,12 @@ export default function AccountInfoPage() {
 
   const [blockedCountries, setBlockedCountries] = useState<string[]>([]);
   const [isCountryModalOpen, setIsCountryModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<'avatar' | 'bg' | null>(null);
+  const [editTarget, setEditTarget] = useState<'avatar_url' | 'bg' | null>(null);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [showVerifyConfirm, setShowVerifyConfirm] = useState<'phone' | 'name' | null>(null);
 
   const [isCropOpen, setIsCropOpen] = useState(false);
-  const [currentImageType, setCurrentImageType] = useState<'avatar' | 'bg'>('avatar');
+  const [currentImageType, setCurrentImageType] = useState<'avatar_url' | 'bg'>('avatar_url');
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -131,7 +131,7 @@ export default function AccountInfoPage() {
       if (dbError) throw dbError;
     setProfile({
       name: dbData?.name || user.user_metadata?.full_name || '사용자',
-      avatar: profileData?.avatar_url || null,
+      avatar_url: profileData?.avatar_url || null,
       bg: profileData?.bg_image || null,
       provider: user.app_metadata?.provider || 'email',
       email: user.email || '이메일 없음',
@@ -143,7 +143,7 @@ export default function AccountInfoPage() {
 
   useEffect(() => { fetchUserData(); }, [fetchUserData]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'bg') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar_url' | 'bg') => {
     if (e.target.files && e.target.files.length > 0) {
       const reader = new FileReader();
       reader.onload = () => {
@@ -168,9 +168,9 @@ export default function AccountInfoPage() {
       const { error: uploadError } = await supabase.storage.from('profiles').upload(filePath, blob, { upsert: true });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('profiles').getPublicUrl(filePath);
-      const dbField = currentImageType === 'avatar' ? 'avatar_url' : 'bg_image';
+      const dbField = currentImageType === 'avatar_url' ? 'avatar_url' : 'bg_image';
       await supabase.from('user_profiles').upsert({ user_id: user.id, [dbField]: publicUrl });
-      setProfile(prev => ({ ...prev, [currentImageType === 'avatar' ? 'avatar' : 'bg']: publicUrl }));
+      setProfile(prev => ({ ...prev, [currentImageType === 'avatar_url' ? 'avatar_url' : 'bg']: publicUrl }));
       toast.success('프로필이 업데이트되었습니다.', { id: loadingToast });
       setIsCropOpen(false);
       setEditTarget(null);
@@ -179,13 +179,13 @@ export default function AccountInfoPage() {
     }
   };
 
-  const handleResetImage = async (type: 'avatar' | 'bg') => {
+  const handleResetImage = async (type: 'avatar_url' | 'bg') => {
     if (!user) return;
     const loadingToast = toast.loading('이미지 초기화 중...');
     try {
-      const dbField = type === 'avatar' ? 'avatar_url' : 'bg_image';
+      const dbField = type === 'avatar_url' ? 'avatar_url' : 'bg_image';
       await supabase.from('user_profiles').upsert({ user_id: user.id, [dbField]: null });
-      setProfile(prev => ({ ...prev, [type === 'avatar' ? 'avatar' : 'bg']: null }));
+      setProfile(prev => ({ ...prev, [type === 'avatar_url' ? 'avatar_url' : 'bg']: null }));
       toast.success('기본 이미지로 변경되었습니다.', { id: loadingToast });
     } catch (err) { toast.error('초기화 실패', { id: loadingToast }); }
     finally { setEditTarget(null); }
@@ -263,14 +263,14 @@ export default function AccountInfoPage() {
           <div className="px-5 -mt-12 pb-5 relative z-10">
             <div className="flex items-end gap-4">
               {/* 아바타 */}
-              <div className="relative shrink-0" onClick={() => setEditTarget('avatar')}>
+              <div className="relative shrink-0" onClick={() => setEditTarget('avatar_url')}>
                 <div className="w-[72px] h-[72px] rounded-[20px] overflow-hidden cursor-pointer shadow-xl"
                   style={{
                     border: '2.5px solid rgba(255,255,255,0.12)',
                     background: '#2C2C2E',
                   }}>
-                  {profile.avatar ? (
-                    <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  {profile.avatar_url ? (
+                    <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center"
                       style={{ background: '#2C2C2E' }}>
@@ -475,7 +475,7 @@ export default function AccountInfoPage() {
       <input type="file" ref={bgInputRef} className="hidden" accept="image/*"
         onChange={(e) => handleFileChange(e, 'bg')} />
       <input type="file" ref={avatarInputRef} className="hidden" accept="image/*"
-        onChange={(e) => handleFileChange(e, 'avatar')} />
+        onChange={(e) => handleFileChange(e, 'avatar_url')} />
 
       {/* ── 이미지 편집 바텀시트 ──────────────────────── */}
       <AnimatePresence>
@@ -496,12 +496,12 @@ export default function AccountInfoPage() {
               <div className="w-9 h-[3px] rounded-full mx-auto mb-5"
                 style={{ background: 'rgba(255,255,255,0.12)' }} />
               <p className="text-[16px] font-bold text-center mb-5 text-white">
-                {editTarget === 'avatar' ? '프로필 사진 설정' : '배경 사진 설정'}
+                {editTarget === 'avatar_url' ? '프로필 사진 설정' : '배경 사진 설정'}
               </p>
               <div className="space-y-2">
                 <motion.button
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => (editTarget === 'avatar' ? avatarInputRef : bgInputRef).current?.click()}
+                  onClick={() => (editTarget === 'avatar_url' ? avatarInputRef : bgInputRef).current?.click()}
                   className="w-full py-3.5 rounded-2xl text-[14px] font-medium flex items-center justify-center gap-2.5"
                   style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)' }}
                 >
@@ -551,11 +551,11 @@ export default function AccountInfoPage() {
             <div className="relative flex-1 bg-black">
               <Cropper
                 image={tempImageSrc} crop={crop} zoom={zoom}
-                aspect={currentImageType === 'avatar' ? 1 : 16 / 9}
+                aspect={currentImageType === 'avatar_url' ? 1 : 16 / 9}
                 onCropChange={setCrop}
                 onCropComplete={(_, p) => setCroppedAreaPixels(p)}
                 onZoomChange={setZoom}
-                cropShape={currentImageType === 'avatar' ? 'round' : 'rect'}
+                cropShape={currentImageType === 'avatar_url' ? 'round' : 'rect'}
                 showGrid={false}
               />
             </div>

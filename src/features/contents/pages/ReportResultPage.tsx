@@ -27,7 +27,7 @@ interface Friend {
   id: number;
   friend_user_id: string;
   name: string;
-  avatar: string | null;
+  avatar_url: string | null;
 }
 
 interface AnalysisResult {
@@ -64,36 +64,57 @@ export default function ReportResultPage() {
   useEffect(() => {
     if (!user) return;
 
-    const fetchFriends = async () => {
-      try {
-        setLoadingFriends(true);
-        const { data, error } = await supabase
-          .from('friends')
-          .select('id, friend_user_id, name')
-          .eq('user_id', user.id);
+    // ✅ 75번 라인 fetchFriends 함수 수정
+  const fetchFriends = async () => {
+    try {
+      setLoadingFriends(true);
+      
+      // 1. friends 테이블에서 관계 정보만 가져옴 (명세서 NO.9 기준 name 컬럼 제외)
+      const { data: friendsData, error: friendsError } = await supabase
+        .from('friends')
+        .select('id, friend_user_id, alias_name') // name 대신 alias_name 사용
+        .eq('user_id', user.id);
 
-        if (error) throw error;
+      if (friendsError) throw friendsError;
 
-        if (data && data.length > 0) {
-          const uuids = data.map((f: any) => f.friend_user_id).filter(Boolean);
-          const { data: profileImages } = await supabase
-            .from('user_profiles')
-            .select('user_id, avatar_url')
-            .in('user_id', uuids);
-          const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p.avatar_url]) || []);
-          setFriends(data.map((f: any) => ({
-            ...f,
-            avatar: profileMap.get(f.friend_user_id) || null,
-          })));
-        } else {
-          setFriends([]);
-        }
-      } catch (error) {
-        console.error('친구 로딩 실패:', error);
-      } finally {
-        setLoadingFriends(false);
+      if (friendsData && friendsData.length > 0) {
+        const uuids = friendsData.map((f: any) => f.friend_user_id).filter(Boolean);
+
+        // 2. 실제 이름 정보 가져오기 (명세서 NO.1 users 테이블)
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', uuids);
+
+        // 3. 프로필 이미지 가져오기 (명세서 NO.2 user_profiles 테이블)
+        const { data: profileImages } = await supabase
+          .from('user_profiles')
+          .select('user_id, avatar_url')
+          .in('user_id', uuids);
+
+        const usersMap = new Map(usersData?.map((u: any) => [u.id, u.name]) || []);
+        const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p.avatar_url]) || []);
+
+        // 4. 데이터 병합 (FE에서 사용할 Friend 인터페이스 구조로 변환)
+        const mergedFriends = friendsData.map((f: any) => ({
+          id: f.id,
+          friend_user_id: f.friend_user_id,
+          // 실명 우선, 없으면 친구 설정 별명 사용
+          name: usersMap.get(f.friend_user_id) || f.alias_name || '이름 없음',
+          avatar_url: profileMap.get(f.friend_user_id) || null,
+        }));
+
+        setFriends(mergedFriends);
+      } else {
+        setFriends([]);
       }
-    };
+    } catch (error) {
+      console.error('친구 로딩 실패:', error);
+      toast.error('친구 목록을 불러오지 못했습니다.');
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
 
     fetchFriends();
   }, [user]);
@@ -390,8 +411,8 @@ export default function ReportResultPage() {
                 className="w-full flex items-center p-3 rounded-xl bg-[#1C1C1E] border border-transparent hover:border-white/20 transition-all active:scale-[0.98]"
               >
                 <div className="w-12 h-12 rounded-full bg-[#333] flex items-center justify-center overflow-hidden mr-4 border border-white/5">
-                  {friend.avatar ? (
-                    <img src={friend.avatar} alt={friend.name} className="w-full h-full object-cover" />
+                  {friend.avatar_url ? (
+                    <img src={friend.avatar_url} alt={friend.name} className="w-full h-full object-cover" />
                   ) : (
                     <UserIcon className="w-6 h-6 text-gray-500" />
                   )}

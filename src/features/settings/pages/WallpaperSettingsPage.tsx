@@ -45,13 +45,13 @@ export default function WallpaperSettingsPage() {
         try {
           const { data, error } = await supabase
             .from('room_members')
-            .select('wallpaper')
+            .select('wallpaper_url')
             .eq('room_id', targetChatId)
             .eq('user_id', user.id)
             .maybeSingle();
           
-          if (!error && data?.wallpaper) {
-            setBackground(data.wallpaper);
+          if (!error && data?.wallpaper_url) {
+            setBackground(data.wallpaper_url);
           }
         } catch (e) {
           console.error('배경 불러오기 실패:', e);
@@ -90,7 +90,7 @@ export default function WallpaperSettingsPage() {
       if (targetChatId) {
         const { error } = await supabase
           .from('room_members')
-          .update({ wallpaper: finalBackground } as any)
+          .update({ wallpaper_url: finalBackground } as any)
           .eq('room_id', targetChatId)
           .eq('user_id', user.id);
 
@@ -99,7 +99,7 @@ export default function WallpaperSettingsPage() {
       } else {
         const { error } = await supabase
           .from('room_members')
-          .update({ wallpaper: finalBackground } as any)
+          .update({ wallpaper_url: finalBackground } as any)
           .eq('user_id', user.id);
             
         if (error) throw error;
@@ -108,9 +108,9 @@ export default function WallpaperSettingsPage() {
       
       navigate(-1);
     } catch (error: any) {
-      console.error('Wallpaper Error:', error);
+      console.error('wallpaper_url Error:', error);
       if (error.code === '42703') {
-         toast.error('DB에 wallpaper 컬럼이 없습니다. 관리자에게 문의하세요.', { id: loadingToast });
+         toast.error('DB에 wallpaper_url 컬럼이 없습니다. 관리자에게 문의하세요.', { id: loadingToast });
       } else {
          toast.error('설정 저장에 실패했습니다.', { id: loadingToast });
       }

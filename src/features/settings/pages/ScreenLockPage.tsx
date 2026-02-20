@@ -61,14 +61,13 @@ export default function ScreenLockPage() {
       if (!session?.user) return;
 
       const { data, error } = await supabase
-        .from('biometric_credentials')
+        .from('user_credentials') 
         .select('id')
         .eq('user_id', session.user.id)
+        .eq('auth_type', 'BIOMETRIC') 
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Check biometric error:', error);
-      }
+      if (error) console.error('Check biometric error:', error);
 
       const hasCredential = !!data;
       setIsBiometricEnabled(hasCredential);
@@ -83,14 +82,15 @@ export default function ScreenLockPage() {
   }, [checkBiometricRegistration]);
 
   // DB 및 로컬 저장 로직
-  const saveSettings = async (lock: boolean, pin?: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
+  const saveSettings = async (lock: boolean, biometric?: boolean) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
     await supabase.from('user_security').upsert({ 
       user_id: session.user.id,
-      is_lock_enabled: lock
+      is_lock_enabled: lock,
+      is_biometric_enabled: biometric ?? isBiometricEnabled 
     });
-    }
+  }
     localStorage.setItem('grayn_lock_enabled', String(lock));
     if (pin) localStorage.setItem('grayn_lock_pin', pin);
     if (!lock) {
@@ -489,12 +489,13 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
 
       // DB에 저장
       const { error: insertError } = await supabase
-        .from('biometric_credentials')
+        .from('user_credentials') 
         .insert({
           user_id: session.user.id,
+          auth_type: 'BIOMETRIC', 
           credential_id: credential.id,
-          public_key: credential.response.publicKey, // 실제로는 base64 등으로 변환 필요할 수 있음
-          device_type: getDeviceType(),
+          public_key: credential.response.publicKey, 
+          device_name: getDeviceType(),
           counter: 0,
         });
 
@@ -538,9 +539,10 @@ function BiometricAuthModal({ isOpen, onClose, isEnabled, onSuccess }: any) {
       }
 
       const { error } = await supabase
-        .from('biometric_credentials')
+        .from('user_credentials') 
         .delete()
-        .eq('user_id', session.user.id);
+        .eq('user_id', session.user.id)
+        .eq('auth_type', 'BIOMETRIC');
 
       if (error) throw error;
 

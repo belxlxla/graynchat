@@ -12,9 +12,9 @@ interface ReceivedCapsule {
   sender_name: string;
   sender_avatar: string | null;
   message: string;
-  unlock_at: string;
+  scheduled_at: string;
   created_at: string;
-  is_unlocked: boolean;
+  is_opened: boolean;
 }
 
 export default function TimeCapsuleInboxPage() {
@@ -33,7 +33,7 @@ export default function TimeCapsuleInboxPage() {
           .from('time_capsules')
           .select('*')
           .eq('receiver_id', user.id)
-          .order('unlock_at', { ascending: true });
+          .order('scheduled_at', { ascending: true });
 
         if (error) throw error;
 
@@ -62,9 +62,9 @@ export default function TimeCapsuleInboxPage() {
               sender_name: sender?.name || '알 수 없는 사용자',
               sender_avatar: profile?.avatar_url || null,
               message: capsule.message,
-              unlock_at: capsule.unlock_at,
+              scheduled_at: capsule.scheduled_at,
               created_at: capsule.created_at,
-              is_unlocked: capsule.is_unlocked
+              is_opened: capsule.is_opened
             };
           });
 
@@ -102,16 +102,16 @@ export default function TimeCapsuleInboxPage() {
   };
 
   const handleOpenCapsule = async (capsule: ReceivedCapsule) => {
-    if (!isUnlocked(capsule.unlock_at)) {
+    if (!isUnlocked(capsule.scheduled_at)) {
       toast.error('아직 열 수 없습니다! ⏰');
       return;
     }
 
     // 잠금 해제 상태 업데이트
-    if (!capsule.is_unlocked) {
+    if (!capsule.is_opened) {
       await supabase
         .from('time_capsules')
-        .update({ is_unlocked: true, unlocked_at: new Date().toISOString() })
+        .update({ is_opened: true, opened_at: new Date().toISOString() })
         .eq('id', capsule.id);
     }
 
@@ -140,8 +140,8 @@ export default function TimeCapsuleInboxPage() {
           </div>
         ) : (
           capsules.map(capsule => {
-            const unlocked = isUnlocked(capsule.unlock_at);
-            const remaining = getTimeRemaining(capsule.unlock_at);
+            const unlocked = isUnlocked(capsule.scheduled_at);
+            const remaining = getTimeRemaining(capsule.scheduled_at);
 
             return (
               <motion.button

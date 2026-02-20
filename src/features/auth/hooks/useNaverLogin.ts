@@ -71,7 +71,7 @@ export const useNaverLogin = () => {
     naverId: string,
     email: string,
     name: string,
-    avatar: string,
+    avatar_url: string,
     phone: string | null
   ) => {
     try {
@@ -85,7 +85,7 @@ export const useNaverLogin = () => {
         options: {
           data: {
             full_name: name,
-            avatar_url: avatar,
+            avatar_url: avatar_url,
             provider: 'naver',
             real_email: email,
           },
@@ -116,7 +116,7 @@ export const useNaverLogin = () => {
             data: {
               provider: 'naver',
               full_name: name,
-              avatar_url: avatar,
+              avatar_url: avatar_url,
             },
           });
 
@@ -132,7 +132,7 @@ export const useNaverLogin = () => {
 
           await supabase
             .from('user_profiles')
-            .upsert({ user_id: userId, avatar_url: avatar });
+            .upsert({ user_id: userId, avatar_url: avatar_url });
         }
       } else {
         userId = signUpData?.user?.id || null;
@@ -150,7 +150,7 @@ export const useNaverLogin = () => {
 
         await supabase.from('user_profiles').insert({
           user_id: userId,
-          avatar_url: avatar,
+          avatar_url: avatar_url,
         });
       }
 

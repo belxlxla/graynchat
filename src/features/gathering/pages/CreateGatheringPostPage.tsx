@@ -230,7 +230,7 @@ export default function CreateGatheringPostPage() {
       }
       if (category === '정보' && hasLocation && location.trim()) {
         insertData.location = location.trim();
-        if (locationDetail.trim()) insertData.location_detail = locationDetail.trim();
+        if (locationDetail.trim()) insertData.location_addr = locationDetail.trim();
       }
       if (category === '유머' && humorTag) {
         insertData.humor_tag = humorTag;

@@ -11,7 +11,7 @@ interface BlockedUser {
   id: string;
   name: string;
   phone: string;
-  avatar: string | null;
+  avatar_url: string | null;
   isProfileHidden: boolean; 
 }
 
@@ -33,7 +33,7 @@ export default function BlockedFriendsPage() {
     try {
       const { data, error } = await supabase
         .from('friends')
-        .select('id, name, phone, avatar, hide_profile, is_blocked')
+        .select('id, name, phone, avatar_url, hide_profile, is_blocked')
         .eq('is_blocked', true) // SQL에서 업데이트를 완료했다면 이 쿼리가 정확히 작동합니다.
         .order('name', { ascending: true });
 
@@ -44,7 +44,7 @@ export default function BlockedFriendsPage() {
           id: item.id.toString(),
           name: item.name,
           phone: item.phone,
-          avatar: item.avatar,
+          avatar_url: item.avatar_url,
           isProfileHidden: item.hide_profile || false 
         }));
         setUsers(formattedData);
@@ -191,8 +191,8 @@ export default function BlockedFriendsPage() {
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-11 h-11 rounded-full bg-[#3A3A3C] overflow-hidden flex items-center justify-center border border-[#3A3A3C]">
-                            {user.avatar ? (
-                              <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                            {user.avatar_url ? (
+                              <img src={user.avatar_url} alt={user.name} className="w-full h-full object-cover" />
                             ) : (
                               <UserX className="w-5 h-5 text-[#8E8E93]" />
                             )}
