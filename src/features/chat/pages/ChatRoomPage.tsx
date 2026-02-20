@@ -253,7 +253,7 @@ export default function ChatRoomPage() {
             }
 
             if (friendRecord) {
-              setRoomTitle(friendRecord.name || friendProfile?.name || '알 수 없는 사용자');
+              setRoomTitle(friendRecord.alias_name || friendProfile?.name || '알 수 없는 사용자');
               setRoomAvatar(friendProfile?.avatar_url || null);
               setIsFriend(true);
               setIsBlocked(!!friendRecord.is_blocked);
