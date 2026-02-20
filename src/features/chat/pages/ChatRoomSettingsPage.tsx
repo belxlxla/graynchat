@@ -35,8 +35,9 @@ interface LinkItem {
 interface Friend {
   id: number;
   friend_user_id: string;
-  name: string;
+  alias_name: string;
   avatar_url: string | null;
+  status?: string | null;
 }
 
 type ViewState = 'main' | 'media' | 'files' | 'links';
