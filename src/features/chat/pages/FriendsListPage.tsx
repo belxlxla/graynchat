@@ -290,8 +290,7 @@ export default function FriendsListPage() {
       const { error: userError } = await supabase
         .from('users')
         .update({ 
-          name: p.name,
-          updated_at: new Date().toISOString() 
+            updated_at: new Date().toISOString() 
         })
         .eq('id', userId);
 
@@ -352,23 +351,50 @@ export default function FriendsListPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id || !friend.friend_user_id) {
-        toast.dismiss(t); toast.error('정보를 불러올 수 없습니다.'); return;
+        toast.dismiss(t); return;
       }
+
       const roomId = [session.user.id, friend.friend_user_id].sort().join('_');
-      const { data: ex } = await supabase.from('chat_rooms').select('id').eq('id', roomId).maybeSingle();
-      if (!ex) {
-        const { error: re } = await supabase.from('chat_rooms').insert([{
-          id: roomId, title: friend.name, type: 'individual',
-          created_by: session.user.id, last_message: '새로운 대화를 시작해보세요!', members_count: 2,
+
+      // 🚩 [중요] 1. 방이 있는지 먼저 '확실히' 조회합니다.
+      const { data: existingRoom, error: checkError } = await supabase
+        .from('chat_rooms')
+        .select('id')
+        .eq('id', roomId)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      // 🚩 [중요] 2. 'existingRoom'이 null일 때만 INSERT를 시도합니다.
+      if (!existingRoom) {
+        const { error: insertError } = await supabase.from('chat_rooms').insert([{
+          id: roomId,
+          title: friend.name || '채팅방',
+          type: 'individual',
+          created_by: session.user.id,
+          members_count: 2,
         }]);
-        if (re && re.code !== '23505') throw re;
-        await supabase.from('room_members').upsert([
-          { room_id: roomId, user_id: session.user.id, unread_count: 0 },
-          { room_id: roomId, user_id: friend.friend_user_id, unread_count: 0 },
-        ], { onConflict: 'room_id,user_id', ignoreDuplicates: true });
+        
+        // 이미 생성된 경우(23505)는 에러로 치지 않고 넘어갑니다.
+        if (insertError && insertError.code !== '23505') throw insertError;
       }
-      toast.dismiss(t); setSelectedFriend(null); navigate(`/chat/room/${roomId}`);
-    } catch { toast.dismiss(t); toast.error('채팅방 입장에 실패했습니다.'); }
+
+      // 3. 멤버 등록 (upsert 권한 에러 방지를 위해 SQL 정책 확인 필요)
+      const { error: memberError } = await supabase.from('room_members').upsert([
+        { room_id: roomId, user_id: session.user.id, unread_count: 0 },
+        { room_id: roomId, user_id: friend.friend_user_id, unread_count: 0 },
+      ], { onConflict: 'room_id,user_id' });
+
+      if (memberError) throw memberError;
+
+      toast.dismiss(t);
+      setSelectedFriend(null);
+      navigate(`/chat/room/${roomId}`);
+    } catch (err: any) {
+      console.error("채팅방 연결 실패:", err);
+      toast.dismiss(t);
+      toast.error('채팅방 입장에 실패했습니다.');
+    }
   }, [navigate]);
 
   const handleDeleteClick  = useCallback((id: number) => {

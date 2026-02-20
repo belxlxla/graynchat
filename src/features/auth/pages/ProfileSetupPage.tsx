@@ -234,42 +234,49 @@ export default function ProfileSetupPage() {
         finalBg = await uploadImage(bgBlob, 'background');
       }
 
-      // [핵심] 전화번호가 metadata에는 있는데 DB에 없다면 DB로 복사
+      // [핵심 수정] 1. users 테이블 업데이트: 'name'은 절대로 포함하지 않습니다.
       const metaPhone = user?.user_metadata?.phone || user?.user_metadata?.mobile;
       
-        // 전화번호가 새로 들어온 경우에만 업데이트하도록 변경합니다.
-        if (metaPhone || user?.phone) {
-          const { error: updateError } = await supabase
-            .from('users')
-            .update({
-              phone: metaPhone || user?.phone,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', userId);
+      // 업데이트할 마스터 정보 객체 생성 (name 제외)
+      const usersUpdateData: any = {
+        updated_at: new Date().toISOString(),
+      };
 
-          if (updateError) throw updateError;
-        }
+      // 전화번호 정보가 있을 경우에만 필드 추가
+      if (metaPhone || user?.phone) {
+        usersUpdateData.phone = metaPhone || user?.phone;
+      }
 
-        // 2. user_profiles 테이블: 여기서만 닉네임을 처리합니다.
-        const profilesUpdateData: any = {
-          user_id: userId,
-          nickname: nickname.trim(), // 앱에서 표시될 이름
-          status_message: statusMessage.trim() || '그레인을 시작했어요!',
-          profile_updated_at: new Date().toISOString(),
-        };
+      // users 테이블 업데이트 실행 (실명 name은 기존 값이 유지됨)
+      const { error: updateError } = await supabase
+        .from('users')
+        .update(usersUpdateData)
+        .eq('id', userId);
 
-        if (finalAvatar) profilesUpdateData.avatar_url = finalAvatar;
-        if (finalBg) profilesUpdateData.bg_image = finalBg;
+      if (updateError) throw updateError;
 
-        const { error: profileError } = await supabase
-          .from('user_profiles')
-          .upsert(profilesUpdateData, { onConflict: 'user_id' });
+      // 2. user_profiles 테이블: 사용자가 입력한 '닉네임'은 여기서만 처리합니다.
+      const profilesUpdateData: any = {
+        user_id: userId,
+        nickname: nickname.trim(), // 앱에서 표시될 활동명
+        status_message: statusMessage.trim() || '그레인을 시작했어요!',
+        profile_updated_at: new Date().toISOString(),
+      };
 
-        if (profileError) throw profileError;
+      if (finalAvatar) profilesUpdateData.avatar_url = finalAvatar;
+      if (finalBg) profilesUpdateData.bg_image = finalBg;
 
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .upsert(profilesUpdateData, { onConflict: 'user_id' });
+
+      if (profileError) throw profileError;
+
+      // 성공 시 세션 데이터 정리
       sessionStorage.removeItem('signup_email');
       sessionStorage.removeItem('signup_password');
       sessionStorage.removeItem('signup_user_id');
+      sessionStorage.removeItem('signup_name');
 
       toast.success('그레인 가입을 환영합니다! 🎉');
 

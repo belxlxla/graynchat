@@ -93,64 +93,62 @@ export default function WithdrawPage() {
   // 최종 탈퇴 처리
   const handleWithdraw = async () => {
     if (!isStep3Valid || isProcessing) return;
-    
     setIsProcessing(true);
 
     try {
-      // 1. 비밀번호 확인
+      // 0. 현재 세션 미리 확보
       const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.user?.email) {
-        throw new Error('로그인 세션을 찾을 수 없습니다.');
-      }
+      const userId = session?.user?.id;
+      const userEmail = session?.user?.email;
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: session.user.email,
+      if (!userId || !userEmail) throw new Error('로그인 세션이 만료되었습니다.');
+
+      // 1. 비밀번호 재인증 (삭제 직전 본인 확인)
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: userEmail,
         password: password,
       });
+      if (authError) throw new Error('비밀번호가 일치하지 않습니다.');
 
-      if (signInError) {
-        toast.error('비밀번호가 일치하지 않습니다.');
-        setIsProcessing(false);
-        setShowFinalConfirmModal(false);
-        return;
+      // 2. 탈퇴 사유 저장 (삭제 '전'에 수행)
+      // 403 에러 방지를 위해 에러가 나더라도 다음 단계로 넘어가도록 처리
+      try {
+        const reasonText = selectedReason === 'other' 
+          ? otherReason 
+          : WITHDRAW_REASONS.find(r => r.id === selectedReason)?.label || '';
+
+        await supabase.from('withdrawal_reasons').insert({
+          user_id: userId,
+          reason_code: selectedReason,
+          reason_text: reasonText,
+        });
+      } catch (e) {
+        console.warn('사유 저장 실패 (무시하고 진행):', e);
       }
 
-      // 2. 탈퇴 사유 저장
-      const reasonText = selectedReason === 'other' 
-        ? otherReason 
-        : WITHDRAW_REASONS.find(r => r.id === selectedReason)?.label || '';
-
-      await supabase.from('withdrawal_reasons').insert({
-        user_id: session.user.id,
-        reason_code: selectedReason,
-        reason_text: reasonText,
-        additional_feedback: selectedReason === 'other' ? otherReason : null,
-      });
-
-      // 3. 계정 삭제 RPC 호출
+      // 3. 계정 삭제 RPC 호출 (가장 중요)
       const { error: rpcError } = await supabase.rpc('delete_user_account');
-      
-      if (rpcError) {
-        console.error('RPC Error:', rpcError);
-        toast.error('탈퇴 처리 중 오류가 발생했습니다.');
-        setIsProcessing(false);
-        setShowFinalConfirmModal(false);
-        return;
+      if (rpcError) throw rpcError;
+
+      // 4. 세션 정리 및 종료
+      // RPC 성공 시 이미 유저가 없으므로 signOut 에러가 날 확률이 높습니다. 
+      // 이를 대비해 에러를 catch로 잡고 무조건 성공 화면으로 넘깁니다.
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.log('이미 세션이 종료되었습니다.');
       }
 
-      // 4. 로그아웃
-      await supabase.auth.signOut();
-      
-      // 5. 성공 모달 표시
+      // 모든 과정이 끝났으므로 모달 교체
       setShowFinalConfirmModal(false);
       setShowSuccessModal(true);
 
     } catch (err: any) {
       console.error('Withdraw Error:', err);
-      toast.error(err.message || '연결 상태를 확인해 주세요.');
-      setIsProcessing(false);
+      toast.error(err.message || '탈퇴 중 오류가 발생했습니다.');
       setShowFinalConfirmModal(false);
+    } finally {
+      setIsProcessing(false);
     }
   };
 

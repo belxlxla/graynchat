@@ -240,12 +240,17 @@ export default function ChatRoomPage() {
           if (friendId) {
             const friendProfile = profileMap[friendId];
 
-            const { data: friendRecord } = await supabase
+            // 🚩 기존 .eq() 대신 .filter()를 사용하여 타입을 명시적으로 비교
+            const { data: friendRecord, error: friendError } = await supabase
               .from('friends')
-              .select('name, is_blocked')
-              .eq('user_id', user.id)
-              .eq('friend_user_id', friendId)
+              .select('alias_name, is_blocked')
+              .filter('user_id', 'eq', user.id)
+              .filter('friend_user_id', 'eq', friendId) // friendId가 UUID 규격인지 확인
               .maybeSingle();
+
+            if (friendError) {
+              console.error("친구 확인 중 실제 에러 발생:", friendError);
+            }
 
             if (friendRecord) {
               setRoomTitle(friendRecord.name || friendProfile?.name || '알 수 없는 사용자');
@@ -253,9 +258,11 @@ export default function ChatRoomPage() {
               setIsFriend(true);
               setIsBlocked(!!friendRecord.is_blocked);
             } else {
+              // 🚩 데이터가 없거나 400 에러로 실패하면 여기로 빠짐
+              console.log("친구 기록을 찾을 수 없음. friendId:", friendId);
               setRoomTitle(friendProfile?.name || '알 수 없는 사용자');
               setRoomAvatar(friendProfile?.avatar_url || null);
-              setIsFriend(false);
+              setIsFriend(false); // 여기서 false가 되면 "미등록 사용자"가 뜸
               setIsBlocked(false);
             }
           }
