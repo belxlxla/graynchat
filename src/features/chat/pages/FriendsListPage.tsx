@@ -139,11 +139,10 @@ export default function FriendsListPage() {
     if (!user?.id) { setIsCheckingPermission(false); return; }
     const check = async () => {
       try {
-        // ✅ users가 아니라 user_settings 테이블을 조회해야 함
         const { data } = await supabase
           .from('user_settings')
           .select('contact_permission')
-          .eq('user_id', user.id) // 컬럼명도 id가 아니라 user_id
+          .eq('user_id', user.id)
           .maybeSingle();
         
         const p = data?.contact_permission;
@@ -163,10 +162,8 @@ export default function FriendsListPage() {
     const granted = await requestContactsPermission();
     toast.dismiss(t);
 
-    // 공통으로 사용할 상태 값
     const permissionStatus = granted ? 'granted' : 'denied';
 
-    // ✅ 성공/실패 모두 user_settings 테이블을 업데이트해야 합니다.
     await supabase
       .from('user_settings')
       .update({ contact_permission: permissionStatus })
@@ -186,7 +183,6 @@ export default function FriendsListPage() {
   const handleSkipContacts = useCallback(async () => {
     if (!user?.id) return;
     
-    // users -> user_settings로 변경, id -> user_id로 변경
     await supabase
       .from('user_settings')
       .update({ contact_permission: 'denied' })
@@ -243,36 +239,32 @@ export default function FriendsListPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
 
-      // 1. friends 테이블에서 내 친구 목록 가져오기
-      // 컬럼명 주의: is_blocked, is_favorite (명세서 기준)
       const { data, error } = await supabase
         .from('friends')
         .select('*')
         .eq('user_id', session.user.id)
-        .eq('is_blocked', false) // 차단되지 않은 친구만
+        .eq('is_blocked', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       const uuids = (data || []).map((item: any) => item.friend_user_id).filter(Boolean);
 
-      // 2. 상대방의 최신 프로필(아바타, 배경) 정보 가져오기
       const { data: profileImages } = uuids.length > 0
         ? await supabase.from('user_profiles').select('user_id, avatar_url, bg_image').in('user_id', uuids)
         : { data: [] };
       
       const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p]) || []);
 
-      // 3. 데이터 매핑 (DB 컬럼 -> FE 상태 변수)
       setFriends((data || []).map((item: any) => ({
         id: item.id,
         friend_user_id: item.friend_user_id,
-        name: item.alias_name || item.name, // 별명이 있으면 별명 우선 (명세서 4번 컬럼)
+        name: item.alias_name || item.name,
         phone: item.phone,
         status: item.status, 
         avatar_url: profileMap.get(item.friend_user_id)?.avatar_url || null,
         bg: profileMap.get(item.friend_user_id)?.bg_image || null,
-        isFavorite: item.is_favorite || false, // is_favorite 확인
+        isFavorite: item.is_favorite || false,
         friendlyScore: item.friendly_score || 0,
       })));
     } catch (err) {
@@ -288,7 +280,6 @@ export default function FriendsListPage() {
     if (step === 'list' && !isCheckingPermission) fetchFriends();
   }, [step, isCheckingPermission, fetchFriends, fetchMyProfile]);
 
-  // ✅ 214번 라인 근처: handleSaveMyProfile 함수 수정
   const handleSaveMyProfile = useCallback(async (p: MyProfile) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -296,7 +287,6 @@ export default function FriendsListPage() {
 
       const userId = session.user.id;
 
-      // 1. [users] 테이블은 'name'만 업데이트 (명세서 NO.1 준수)
       const { error: userError } = await supabase
         .from('users')
         .update({ 
@@ -307,12 +297,11 @@ export default function FriendsListPage() {
 
       if (userError) throw userError;
 
-      // 2. [user_profiles] 테이블에 나머지 정보 저장 (명세서 NO.2 준수)
       const { error: profileError } = await supabase
         .from('user_profiles')
         .upsert({
           user_id: userId,
-          nickname: p.name,          // 명세서 상 nickname 컬럼
+          nickname: p.name,
           status_message: p.status,
           avatar_url: p.avatar_url,
           bg_image: p.bg,
@@ -339,7 +328,6 @@ export default function FriendsListPage() {
     catch { setFriends(prev => prev.map(f => f.id === id ? { ...f, isFavorite: !ns } : f)); }
   }, [friends, selectedFriend]);
 
-  // ── AI 점수 계산 (고도화) ─────────────────────────────────
   const analyzeFriendlyScore = useCallback(async (friend: Friend) => {
     if (!friend.friend_user_id || !user?.id) return;
     setCalculatingScore(true);
@@ -422,7 +410,6 @@ export default function FriendsListPage() {
     };
   }, [filteredFriends]);
 
-  // ── Loading state ─────────────────────────────────────────
   if (isCheckingPermission) {
     return (
       <div className="h-full w-full flex items-center justify-center" style={{ background: T.bg }}>
@@ -433,18 +420,6 @@ export default function FriendsListPage() {
 
   return (
     <div className="h-full w-full flex flex-col relative" style={{ background: T.bg, color: '#fff' }}>
-      
-      {/* ── [전역 동기화] 사용자 배경화면 ── */}
-      {myProfile.bg && (
-        <div className="absolute top-0 left-0 w-full h-[320px] z-0 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-[#212121]/50 to-[#212121]" />
-          <img 
-            src={myProfile.bg} 
-            alt="background" 
-            className="w-full h-full object-cover opacity-60"
-          />
-        </div>
-      )}
 
       {/* ── Permission screen ───────────────────────────── */}
       {step === 'permission' && (
@@ -486,8 +461,8 @@ export default function FriendsListPage() {
           {/* Header */}
           <header className="h-[54px] flex items-center justify-between px-4 shrink-0 relative z-20"
             style={{ 
-              background: 'rgba(33, 33, 33, 0.6)', // 반투명 배경
-              backdropFilter: 'blur(12px)',        // 블러 효과
+              background: 'rgba(33, 33, 33, 0.95)',
+              backdropFilter: 'blur(12px)',
               borderBottom: `1px solid ${T.border}` 
             }}>
             <span className="text-[18px] font-bold tracking-tight pl-1">친구</span>
@@ -584,7 +559,7 @@ export default function FriendsListPage() {
                           style={{ border: `2.5px solid ${T.bg}` }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[16px] font-bold truncate text-white drop-shadow-md">{myProfile.name}</p>
+                        <p className="text-[16px] font-bold truncate text-white">{myProfile.name}</p>
                         <p className="text-[12px] mt-0.5 truncate text-white/60">
                           {myProfile.status || '상태메시지를 입력해보세요'}
                         </p>
@@ -634,30 +609,52 @@ export default function FriendsListPage() {
       <AnimatePresence>
         {selectedFriend && (
           <Sheet onClose={() => setSelectedFriend(null)} maxH="92dvh">
-            {/* BG strip */}
-            <div className="relative h-20 shrink-0 overflow-hidden rounded-t-[24px]">
-              {selectedFriend.bg
-                ? <img src={selectedFriend.bg} className="w-full h-full object-cover" alt="" />
-                : <div className="w-full h-full" style={{ background: T.surface }} />
-              }
-              <div className="absolute inset-0"
-                style={{ background: 'linear-gradient(to bottom, transparent 30%, rgba(29,29,29,0.97))' }} />
+            {/* ✅ 배경 이미지 영역 - 더 크고 인터랙티브하게 */}
+            <div className="relative h-44 shrink-0 overflow-hidden rounded-t-[24px]">
+              {selectedFriend.bg ? (
+                <>
+                  {/* 배경 이미지 */}
+                  <motion.img 
+                    src={selectedFriend.bg} 
+                    className="w-full h-full object-cover"
+                    alt=""
+                    initial={{ scale: 1.1, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5 }}
+                  />
+                  
+                  {/* 그라데이션 오버레이 - 더 강하게 */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{ 
+                      background: 'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(29,29,29,0.75) 50%, rgba(29,29,29,0.98) 100%)' 
+                    }} 
+                  />
+                </>
+              ) : (
+                /* 기본 배경 */
+                <div className="w-full h-full" style={{ background: T.surface }} />
+              )}
+              
+              {/* 즐겨찾기 버튼 */}
               <button onClick={() => toggleFavorite(selectedFriend.id)}
-                className="absolute top-3 left-4 w-8 h-8 flex items-center justify-center rounded-full"
-                style={{ background: 'rgba(0,0,0,0.4)' }}>
-                <Star className={`w-4 h-4 ${selectedFriend.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-white'}`} />
+                className="absolute top-3 left-4 w-9 h-9 flex items-center justify-center rounded-full backdrop-blur-md transition-all active:scale-95"
+                style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Star className={`w-4.5 h-4.5 ${selectedFriend.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-white'}`} />
               </button>
+              
+              {/* 닫기 버튼 */}
               <button onClick={() => setSelectedFriend(null)}
-                className="absolute top-3 right-4 w-8 h-8 flex items-center justify-center rounded-full"
-                style={{ background: 'rgba(0,0,0,0.4)' }}>
-                <X className="w-4 h-4 text-white" />
+                className="absolute top-3 right-4 w-9 h-9 flex items-center justify-center rounded-full backdrop-blur-md transition-all active:scale-95"
+                style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <X className="w-4.5 h-4.5 text-white" />
               </button>
             </div>
 
             {/* Info */}
-            <div className="px-5 pt-0 pb-28 flex flex-col items-center text-center -mt-10 relative z-10">
+            <div className="px-5 pt-0 pb-28 flex flex-col items-center text-center -mt-12 relative z-10">
               <div className="mb-3.5" style={{ filter: 'drop-shadow(0 4px 20px rgba(0,0,0,0.6))' }}>
-                <Av src={selectedFriend.avatar_url} size={76} r={22} ring={{ w: 3, c: T.sheet }} />
+                <Av src={selectedFriend.avatar_url} size={80} r={24} ring={{ w: 4, c: T.sheet }} />
               </div>
               <h3 className="text-[19px] font-bold mb-0.5">{selectedFriend.name}</h3>
               {selectedFriend.status && (
@@ -1048,7 +1045,6 @@ function DeleteFriendModal({ friend, onClose, onConfirm }: {
 function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
   isOpen: boolean; onClose: () => void; initialProfile: MyProfile; onSave: (p: MyProfile) => void;
 }) {
-  // ── States for editing
   const [p, setP] = useState(initialProfile);
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [currentImageType, setCurrentImageType] = useState<'avatar_url' | 'bg'>('avatar_url');
@@ -1081,7 +1077,6 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
     if (!tempImageSrc || !croppedAreaPixels || !user) return;
     try {
       const croppedImageUrl = await getCroppedImg(tempImageSrc, croppedAreaPixels);
-      // Upload to storage
       const res = await fetch(croppedImageUrl);
       const blob = await res.blob();
       const filePath = `${user.id}/${currentImageType}_${Date.now()}.jpg`;
@@ -1163,7 +1158,7 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
         <div 
            className="relative h-44 group overflow-hidden cursor-pointer" 
            style={{ background: T.surface }}
-           onClick={() => bgInputRef.current?.click()} // Main area triggers upload
+           onClick={() => bgInputRef.current?.click()}
         >
           {p.bg
             ? <img src={p.bg} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700" alt="" />
@@ -1173,14 +1168,12 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
               </div>
           }
           
-          {/* Controls Overlay - Visible on hover/tap */}
+          {/* Controls Overlay */}
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-              {/* Pill Container - Stop propagation to separate actions */}
               <div 
                 className="flex items-center gap-1 p-1 bg-black/50 backdrop-blur-md rounded-full border border-white/10 pointer-events-auto shadow-xl transform scale-95 group-hover:scale-100 transition-transform"
                 onClick={e => e.stopPropagation()}
               >
-                  {/* Change Button */}
                   <button 
                     onClick={() => bgInputRef.current?.click()}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/10 transition-colors"
@@ -1189,10 +1182,8 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
                      <span className="text-[12px] font-medium text-white">변경</span>
                   </button>
 
-                  {/* Divider */}
                   {p.bg && <div className="w-[1px] h-4 bg-white/20" />}
 
-                  {/* Remove Button */}
                   {p.bg && (
                     <button 
                       onClick={() => handleResetImage('bg')}
@@ -1213,7 +1204,6 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
               <Av src={p.avatar_url} size={88} r={28} ring={{ w: 3, c: T.bg }} />
             </div>
             
-            {/* Avatar Edit Controls */}
             <div className="absolute inset-0 rounded-[28px] bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                  <div 
                     className="flex items-center gap-1 p-1 bg-black/50 backdrop-blur-md rounded-full border border-white/10 pointer-events-auto shadow-lg"
@@ -1328,7 +1318,6 @@ function AddFriendModal({ isOpen, onClose, onFriendAdded }: {
     <AnimatePresence>
       <Sheet onClose={onClose}>
         <div className="px-5 pt-3 pb-24">
-          {/* Header */}
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-[18px] font-bold">
               {showResults ? `${results.length}명 찾음` : '친구 추가'}
@@ -1469,7 +1458,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
     <AnimatePresence>
       <Sheet onClose={onClose} maxH="88dvh">
         <div className="flex flex-col" style={{ maxHeight: '88dvh' }}>
-          {/* Header */}
           <div className="flex items-center justify-between px-5 pt-3 pb-4 shrink-0">
             {step === 'select-friends'
               ? <button onClick={() => setStep('select-type')}
@@ -1513,7 +1501,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
 
           {step === 'select-friends' && (
             <>
-              {/* Search */}
               <div className="px-5 pb-3 shrink-0">
                 <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl"
                   style={{ background: T.surface, border: `1px solid ${T.border}` }}>
@@ -1529,7 +1516,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
                 </div>
               </div>
 
-              {/* Friend list */}
               <div className="flex-1 overflow-y-auto px-4 pb-2" style={{ scrollbarWidth: 'none' }}>
                 {filtered.length === 0
                   ? <div className="flex items-center justify-center h-28 text-[13px]" style={{ color: T.muted }}>
@@ -1559,7 +1545,6 @@ function CreateChatModal({ isOpen, onClose, friends }: {
                 }
               </div>
 
-              {/* CTA */}
               <div className="px-5 pt-3 pb-28 shrink-0" style={{ borderTop: `1px solid ${T.border}` }}>
                 <button onClick={handleCreate} disabled={!selectedIds.length}
                   className="w-full h-[50px] rounded-2xl font-bold text-[15px] text-white mt-1 transition-all"
