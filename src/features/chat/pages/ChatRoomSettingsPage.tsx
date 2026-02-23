@@ -57,16 +57,19 @@ const getFileName = (url: string) => {
 const classifyContent = (url: string) => {
   if (!url) return null;
   const lowerUrl = url.toLowerCase();
-  const trimmed = url.trim();
   
-  // 링크 체크 우선 (https://, http://, www. 로 시작)
+  // 1️⃣ Storage 파일 체크 우선 (Supabase Storage URL)
+  const isStorage = lowerUrl.includes('supabase.co/storage') || lowerUrl.includes('chat-uploads');
+  if (isStorage) {
+    const ext = lowerUrl.split('.').pop() || '';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].some(e => ext.includes(e))) return 'image';
+    if (['mp4', 'mov', 'webm', 'avi', 'm4v'].some(e => ext.includes(e))) return 'video';
+    return 'file';
+  }
+
+    const trimmed = url.trim();
   if (/^(https?:\/\/|www\.)/i.test(trimmed)) return 'link';
   
-  const ext = lowerUrl.split('.').pop() || '';
-  const isStorage = lowerUrl.includes('supabase.co/storage') || lowerUrl.includes('chat-uploads');
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].some(e => ext.includes(e))) return 'image';
-  if (['mp4', 'mov', 'webm', 'avi', 'm4v'].some(e => ext.includes(e))) return 'video';
-  if (isStorage) return 'file';
   return null;
 };
 
@@ -213,7 +216,7 @@ export default function ChatRoomSettingsPage() {
     toast.success(n ? '알림이 켜졌습니다.' : '알림이 꺼졌습니다.', { icon: n ? '🔔' : '🔕' });
   };
 
-  // ✅ 수정된 채팅방 나가기 (대화내용 삭제 + AI 점수 초기화 + 나가기)
+  // ✅✅✅ 채팅방 나가기: AI 점수 0으로 초기화 + 메시지 삭제 + 나가기
   const handleConfirmLeave = async () => {
     try {
       if (!chatId) return;
@@ -221,38 +224,45 @@ export default function ChatRoomSettingsPage() {
       const myId = session?.user.id;
       if (!myId) return;
 
-      // 1. [AI 점수 초기화] 1:1 채팅방인 경우
       const isGroup = chatId.startsWith('group_');
+
+      // 🔥 1. [AI 점수 초기화] 1:1 채팅방의 경우 friendly_score를 0으로 초기화
       if (!isGroup) {
         const friendId = chatId.split('_').find(id => id !== myId);
         if (friendId) {
            await supabase.from('friends')
-             .update({ friendly_score: 1 })
+             .update({ friendly_score: 0 })  // ✅ 0으로 변경 (기존 1에서)
              .match({ user_id: myId, friend_user_id: friendId });
         }
       }
 
-      // 2. [대화 내용 삭제] 해당 채팅방의 모든 메시지 삭제
-      await supabase.from('messages').delete().eq('room_id', chatId);
-
-      // 3. [멤버 삭제] 방 나가기 처리
+      // 🔥 2. [멤버 삭제] 방 나가기 처리 (먼저 수행)
       const { error } = await supabase.from('room_members').delete()
         .eq('room_id', chatId).eq('user_id', myId);
 
       if (error) throw error;
 
-      // 4. [방 청소] 멤버가 0명이면 방 자체 삭제
+      // 🔥 3. [남은 멤버 수 확인]
       const { count } = await supabase.from('room_members')
         .select('*', { count: 'exact', head: true })
         .eq('room_id', chatId);
 
+      // 🔥 4. [메시지 및 방 삭제 전략]
       if (count === 0) {
+        // ✅ 모든 멤버가 나간 경우: 메시지 + 방 모두 삭제
+        await supabase.from('messages').delete().eq('room_id', chatId);
         await supabase.from('chat_rooms').delete().eq('id', chatId);
+      } else if (!isGroup && count === 1) {
+        // ✅ 1:1 채팅에서 한 명이 나가면 (상대방 1명만 남음) 메시지 삭제
+        // → 다시 입장 시 이전 대화 없이 새로운 대화 시작
+        await supabase.from('messages').delete().eq('room_id', chatId);
+        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', chatId);
       } else {
+        // ✅ 그룹 채팅에서 일부만 나간 경우: 멤버 수만 업데이트
         await supabase.from('chat_rooms').update({ members_count: count }).eq('id', chatId);
       }
 
-      toast.success('채팅방을 나갔습니다. (초기화 완료)');
+      toast.success('채팅방을 나갔습니다.');
       setIsLeaveModalOpen(false);
       navigate('/main/chats');
 
@@ -660,7 +670,9 @@ export default function ChatRoomSettingsPage() {
           </div>
           <h3 className="text-[18px] font-bold text-white mb-1.5 tracking-tight">채팅방 나가기</h3>
           <p className="text-[13.5px] text-white/38 leading-relaxed">
-            대화 내용이 삭제되며<br />AI 지수도 1점으로 초기화 됩니다.
+            {chatId?.startsWith('group_') 
+              ? '채팅방에서 나가면 목록에서 사라집니다.'
+              : '1:1 채팅방의 모든 대화 내용이 삭제되며\nAI 친밀도 점수가 0점으로 초기화됩니다.'}
           </p>
         </div>
         <div className="px-4 pb-8 pt-2 flex gap-2.5 shrink-0">

@@ -46,12 +46,12 @@ const isUrl = (text: string): boolean => {
   return /^(https?:\/\/|www\.)/i.test(trimmed);
 };
 
+// ✅ 수정: Storage 파일 우선 체크 → 확장자 분류 → 외부 링크 체크
 const getFileType = (content: string) => {
   if (!content) return 'text';
   
-  if (isUrl(content)) return 'link';
-  
-  const isStorageFile = content.includes('chat-uploads');
+  // 1️⃣ Storage 파일 체크 우선 (Supabase Storage URL)
+  const isStorageFile = content.includes('chat-uploads') || content.includes('supabase.co/storage');
   if (isStorageFile) {
     const ext = content.split('.').pop()?.toLowerCase();
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
@@ -61,6 +61,10 @@ const getFileType = (content: string) => {
     if (['txt', 'log', 'md', 'json'].includes(ext || '')) return 'text-file';
     return 'file';
   }
+  
+  // 2️⃣ 외부 링크 체크 (https://, http://, www. 로 시작)
+  if (isUrl(content)) return 'link';
+  
   return 'text';
 };
 
@@ -240,29 +244,22 @@ export default function ChatRoomPage() {
           if (friendId) {
             const friendProfile = profileMap[friendId];
 
-            // 🚩 기존 .eq() 대신 .filter()를 사용하여 타입을 명시적으로 비교
-            const { data: friendRecord, error: friendError } = await supabase
+            const { data: friendRecord } = await supabase
               .from('friends')
-              .select('alias_name, is_blocked')
-              .filter('user_id', 'eq', user.id)
-              .filter('friend_user_id', 'eq', friendId) // friendId가 UUID 규격인지 확인
+              .select('name, is_blocked')
+              .eq('user_id', user.id)
+              .eq('friend_user_id', friendId)
               .maybeSingle();
 
-            if (friendError) {
-              console.error("친구 확인 중 실제 에러 발생:", friendError);
-            }
-
             if (friendRecord) {
-              setRoomTitle(friendRecord.alias_name || friendProfile?.name || '알 수 없는 사용자');
+              setRoomTitle(friendRecord.name || friendProfile?.name || '알 수 없는 사용자');
               setRoomAvatar(friendProfile?.avatar_url || null);
               setIsFriend(true);
               setIsBlocked(!!friendRecord.is_blocked);
             } else {
-              // 🚩 데이터가 없거나 400 에러로 실패하면 여기로 빠짐
-              console.log("친구 기록을 찾을 수 없음. friendId:", friendId);
               setRoomTitle(friendProfile?.name || '알 수 없는 사용자');
               setRoomAvatar(friendProfile?.avatar_url || null);
-              setIsFriend(false); // 여기서 false가 되면 "미등록 사용자"가 뜸
+              setIsFriend(false);
               setIsBlocked(false);
             }
           }
@@ -678,7 +675,7 @@ export default function ChatRoomPage() {
       await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendId,
-        alias_name: friendUser?.name || roomTitle,
+        name: friendUser?.name || roomTitle,
         avatar_url: friendProfile?.avatar_url || roomAvatar,
         status: friendProfile?.status_message || null,
         friendly_score: 10,
@@ -710,7 +707,7 @@ export default function ChatRoomPage() {
       await supabase.from('friends').upsert({
         user_id: user.id,
         friend_user_id: friendId,
-        alias_name: friendUser?.name || roomTitle,
+        name: friendUser?.name || roomTitle,
         is_blocked: true,
       });
 
@@ -1471,6 +1468,28 @@ function ImageViewerModal({
     else if (info.offset.x > 50 && index > 0) paginate(-1);
   };
 
+  // ✅ 이미지 저장 기능 추가
+  const handleDownload = async () => {
+    const current = images[index];
+    const t = toast.loading('저장 중...');
+    try {
+      const response = await fetch(current);
+      if (!response.ok) throw new Error();
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `grayn_image_${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('사진이 저장되었습니다.', { id: t });
+    } catch {
+      toast.error('저장에 실패했습니다.', { id: t });
+    }
+  };
+
   if (!isOpen || images.length === 0) return null;
 
   return (
@@ -1527,6 +1546,17 @@ function ImageViewerModal({
             alt=""
           />
         </AnimatePresence>
+      </div>
+
+      {/* ✅ 저장 버튼 추가 */}
+      <div className="absolute bottom-0 left-0 w-full flex justify-center pb-10 z-20">
+        <button
+          onClick={handleDownload}
+          className="flex items-center gap-2.5 px-6 py-3 bg-white/[0.08] backdrop-blur-xl border border-white/12 rounded-full text-white/75 hover:text-white hover:bg-white/14 transition-all group"
+        >
+          <Download className="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
+          <span className="text-[13.5px] font-semibold">저장하기</span>
+        </button>
       </div>
     </div>
   );

@@ -340,11 +340,11 @@ export default function FriendsListPage() {
     finally { setCalculatingScore(false); }
   }, [user?.id]);
 
-  const handleFriendClick = (f: Friend) => {
-    setSelectedFriend(f);
-    setScoreBreakdown(null);
-    analyzeFriendlyScore(f);
-  };
+      const handleFriendClick = (f: Friend) => {
+        setSelectedFriend(f);
+        setScoreBreakdown(null);
+        // analyzeFriendlyScore(f);  // ❌ 자동 재계산 제거
+      };
 
   const handleEnterChat = useCallback(async (friend: Friend) => {
     const t = toast.loading('채팅방 연결 중...');
@@ -687,25 +687,32 @@ export default function FriendsListPage() {
                 <p className="text-[13px] mb-4" style={{ color: T.muted }}>{selectedFriend.status}</p>
               )}
 
-              {/* AI Score */}
-              <div className="w-full max-w-[280px] px-4 py-3.5 rounded-2xl mb-2"
-                style={{ background: T.surface, border: `1px solid ${T.border}` }}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full"
-                      style={{ background: `${T.red}15` }}>
-                      <Sparkles className="w-3 h-3" style={{ color: T.red }} />
-                      <span className="text-[10px] font-bold tracking-[0.08em] uppercase" style={{ color: T.red }}>AI 친밀도</span>
+                {/* AI Score */}
+                <div className="w-full max-w-[280px] px-4 py-3.5 rounded-2xl mb-2"
+                  style={{ background: T.surface, border: `1px solid ${T.border}` }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+                        style={{ background: `${T.red}15` }}>
+                        <Sparkles className="w-3 h-3" style={{ color: T.red }} />
+                        <span className="text-[10px] font-bold tracking-[0.08em] uppercase" style={{ color: T.red }}>AI 친밀도</span>
+                      </div>
+                      <button onClick={() => setShowScoreInfo(true)}
+                        className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
+                        <HelpCircle className="w-3.5 h-3.5" style={{ color: T.muted }} />
+                      </button>
                     </div>
-                    <button onClick={() => setShowScoreInfo(true)}
-                      className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors">
-                      <HelpCircle className="w-3.5 h-3.5" style={{ color: T.muted }} />
+
+                {/* 🔥 새로고침 버튼 추가 */}
+                    <button 
+                      onClick={() => selectedFriend && analyzeFriendlyScore(selectedFriend)}
+                      disabled={calculatingScore}
+                      className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors active:scale-95"
+                      title="점수 다시 계산"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${calculatingScore ? 'animate-spin' : ''}`} style={{ color: T.muted }} />
                     </button>
                   </div>
-                  {calculatingScore && (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: T.muted }} />
-                  )}
-                </div>
 
                 <div className="flex items-baseline justify-center gap-1.5 mb-1">
                   <span className="text-[32px] font-bold font-mono tabular-nums"

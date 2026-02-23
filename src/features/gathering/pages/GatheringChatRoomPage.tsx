@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import React from 'react';
 import {
   ArrowLeft, Send, Users, LogOut,
   Loader2, Crown, Hash, X,
@@ -15,16 +16,18 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 // ─── 유틸 ────────────────────────────────────────────────────
 const getFileType = (content: string) => {
   if (!content) return 'text';
-  const hasExtension = content.includes('.');
-  if (hasExtension) {
-    const ext = content.split('.').pop()?.toLowerCase();
+  
+  // 🔥 Storage URL 우선 체크 (ChatRoomPage와 동일)
+  if (content.includes('gathering-uploads') || content.includes('supabase.co/storage')) {
+    const ext = content.split('.').pop()?.toLowerCase().split('?')[0];
     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
     if (['mp4', 'mov', 'webm', 'avi', 'm4v'].includes(ext || '')) return 'video';
     if (['pdf'].includes(ext || '')) return 'pdf';
     if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'hwp'].includes(ext || '')) return 'office';
-    if (['txt', 'log', 'md', 'json'].includes(ext || '')) return 'text-file';
+    return 'file';
   }
-  if (content.includes('gathering-uploads') || content.includes('chat-uploads')) return 'file';
+  
+  // 텍스트 메시지
   return 'text';
 };
 
@@ -37,6 +40,25 @@ const getFileName = (url: string) => {
   } catch {
     return '첨부파일';
   }
+};
+
+const extractUrls = (text: string): string[] => {
+  // HTTP/HTTPS URL + 도메인만 있는 패턴 모두 감지
+  const urlRegex = /(https?:\/\/[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
+  return text.match(urlRegex) || [];
+};
+
+const isOnlyUrl = (text: string): boolean => {
+  const urls = extractUrls(text);
+  return urls.length === 1 && text.trim() === urls[0];
+};
+
+// 🔥 URL 정규화 함수 추가 (http:// 없으면 자동 추가)
+const normalizeUrl = (url: string): string => {
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `https://${url}`;
 };
 
 const BUCKET_NAME = 'gathering-uploads';
@@ -301,37 +323,37 @@ export default function GatheringChatRoomPage() {
   };
 
   // ── 파일 업로드 ─────────────────────────────────────────
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !roomId || !user) return;
-    const uploadToast = toast.loading('파일 업로드 중...');
-    setIsMenuOpen(false);
-    try {
-const { data: userData } = await supabase.from('users').select('name').eq('id', user.id).single();
-const { data: userProfile } = await supabase.from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
-      const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`;
-      const filePath = `${roomId}/${fileName}`;
-      
-      const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
-      if (uploadError) throw uploadError;
-      
-      const { data: { publicUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-      
-      const { data: insertedMsg, error: insertError } = await supabase.from('gathering_messages').insert({
-        room_id: roomId, user_id: user.id,
-        user_name: userData?.name || '사용자',
-        user_avatar: userProfile?.avatar_url || null,
-        content: publicUrl,
-      }).select().single();
+      const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !roomId || !user) return;
+        const uploadToast = toast.loading('파일 업로드 중...');
+        setIsMenuOpen(false);
+        try {
+          const { data: userData } = await supabase.from('users').select('name').eq('id', user.id).single();
+          const { data: userProfile } = await supabase.from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
+          const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`;
+          const filePath = `${roomId}/${fileName}`;
+          
+          const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
+          if (uploadError) throw uploadError;
+          
+          const { data: { publicUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+          
+          const { data: insertedMsg, error: insertError } = await supabase.from('gathering_messages').insert({
+            room_id: roomId, user_id: user.id,
+            user_name: userData?.name || '사용자',
+            user_avatar: userProfile?.avatar_url || null,
+            content: publicUrl,
+          }).select().single();
 
-      if (insertError) throw insertError;
-      
-      if (insertedMsg) {
-        messageIdsRef.current.add(insertedMsg.id);
-        // 파일은 낙관적 업데이트 없이 바로 리얼타임/응답으로 처리
-      }
+          if (insertError) throw insertError;
+          
+          if (insertedMsg) {
+            messageIdsRef.current.add(insertedMsg.id);
+            setMessages(prev => [...prev, insertedMsg]); // 🔥 이 줄 추가!
+          }
 
-      toast.success('전송 완료', { id: uploadToast });
+          toast.success('전송 완료', { id: uploadToast });
     } catch {
       toast.error('전송 실패', { id: uploadToast });
     } finally {
@@ -395,12 +417,8 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
 
     if (type === 'image') {
       return (
-        <div className={`rounded-[18px] overflow-hidden max-w-[220px] border cursor-pointer ${
-          isMe ? 'border-white/[0.08]' : 'border-white/[0.06]'
-        }`}>
-          <img
-            src={msg.content} alt=""
-            className="w-full h-auto object-cover"
+        <div className={`rounded-[18px] overflow-hidden max-w-[220px] border cursor-pointer ${isMe ? 'border-white/[0.08]' : 'border-white/[0.06]'}`}>
+          <img src={msg.content} alt="" className="w-full h-auto object-cover"
             onClick={() => {
               const idx = allImages.indexOf(msg.content);
               if (idx !== -1) { setInitialImageIndex(idx); setIsViewerOpen(true); }
@@ -420,16 +438,9 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
 
     if (['pdf', 'file', 'office', 'text-file'].includes(type)) {
       return (
-        <div className={`flex items-stretch max-w-[260px] rounded-[18px] border overflow-hidden ${
-          isMe ? 'bg-[#FF203A]/8 border-[#FF203A]/15' : 'bg-[#2a2a2a] border-white/[0.07]'
-        }`}>
-          <button
-            onClick={() => window.open(msg.content, '_blank')}
-            className="flex-1 flex items-center gap-3 p-3 hover:bg-white/[0.04] transition-colors text-left"
-          >
-            <div className={`w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0 ${
-              isMe ? 'bg-[#FF203A]/15' : 'bg-[#FF203A]/10'
-            }`}>
+        <div className={`flex items-stretch max-w-[260px] rounded-[18px] border overflow-hidden ${isMe ? 'bg-[#FF203A]/8 border-[#FF203A]/15' : 'bg-[#2a2a2a] border-white/[0.07]'}`}>
+          <button onClick={() => window.open(msg.content, '_blank')} className="flex-1 flex items-center gap-3 p-3 hover:bg-white/[0.04] transition-colors text-left">
+            <div className={`w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0 ${isMe ? 'bg-[#FF203A]/15' : 'bg-[#FF203A]/10'}`}>
               <FileText className="w-5 h-5 text-[#FF203A]" />
             </div>
             <div className="flex-1 min-w-0">
@@ -438,31 +449,67 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
             </div>
           </button>
           <div className="w-px bg-white/[0.06] self-stretch" />
-          <button
-            onClick={() => {
-              const a = document.createElement('a');
-              a.href = msg.content;
-              a.download = getFileName(msg.content);
-              a.click();
-            }}
-            className="px-3 flex items-center text-white/28 hover:text-white/60 transition-colors"
-          >
+          <button onClick={() => { const a = document.createElement('a'); a.href = msg.content; a.download = getFileName(msg.content); a.click(); }} className="px-3 flex items-center text-white/28 hover:text-white/60 transition-colors">
             <Download className="w-4 h-4" />
           </button>
         </div>
       );
     }
 
-    // 텍스트 메시지
-    return (
-      <div className={`px-[14px] py-[9px] text-[14.5px] leading-[1.55] break-words ${
-        isMe
-          ? 'bg-[#FF203A] text-white rounded-[18px] rounded-tr-[5px]'
-          : 'bg-[#2a2a2a] text-white/90 rounded-[18px] rounded-tl-[5px] border border-white/[0.07]'
-      }`}>
-        {msg.content}
+    const urls = extractUrls(msg.content);
+    const onlyUrl = isOnlyUrl(msg.content);
+
+ if (onlyUrl && urls.length > 0) {
+  const url = urls[0];
+  const normalizedUrl = normalizeUrl(url); // 🔥 정규화 추가
+  const domain = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  
+  return (
+    <a 
+      href={normalizedUrl} // 🔥 정규화된 URL 사용
+      target="_blank" 
+      rel="noopener noreferrer" 
+      className={`group flex flex-col max-w-[260px] rounded-[18px] overflow-hidden border transition-all ${
+        isMe ? 'bg-[#FF203A]/8 border-[#FF203A]/15 hover:border-[#FF203A]/25' : 'bg-[#2a2a2a] border-white/[0.07] hover:border-white/[0.12]'
+      }`}
+    >
+      <div className="px-3.5 py-3 flex items-start gap-3">
+        <div className={`w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0 ${isMe ? 'bg-[#FF203A]/12' : 'bg-white/[0.06]'}`}>
+          <svg className="w-4 h-4 text-[#FF203A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-medium text-white/85 truncate">{domain}</p>
+          <p className="text-[11px] text-white/35 mt-0.5 truncate">{url}</p>
+        </div>
       </div>
-    );
+      <div className={`h-px ${isMe ? 'bg-[#FF203A]/10' : 'bg-white/[0.05]'}`} />
+      <div className="px-3.5 py-2 flex items-center gap-2 text-[#FF203A]">
+        <span className="text-[11px] font-medium">링크 열기</span>
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+        </svg>
+      </div>
+    </a>
+  );
+}
+
+    if (urls.length > 0) {
+      const elements: (string | JSX.Element)[] = [];
+      let lastIndex = 0;
+      urls.forEach((url, i) => {
+        const urlIndex = msg.content.indexOf(url, lastIndex);
+        if (urlIndex > lastIndex) elements.push(msg.content.slice(lastIndex, urlIndex));
+        const normalizedUrl = normalizeUrl(url); // 🔥 정규화 추가
+        elements.push(<a key={i} href={normalizedUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all" onClick={(e) => e.stopPropagation()}>{url}</a>);
+        lastIndex = urlIndex + url.length;
+      });
+      if (lastIndex < msg.content.length) elements.push(msg.content.slice(lastIndex));
+      return <div className={`px-[14px] py-[9px] text-[14.5px] leading-[1.55] break-words ${isMe ? 'bg-[#FF203A] text-white rounded-[18px] rounded-tr-[5px]' : 'bg-[#2a2a2a] text-white/90 rounded-[18px] rounded-tl-[5px] border border-white/[0.07]'}`}>{elements}</div>;
+    }
+
+    return <div className={`px-[14px] py-[9px] text-[14.5px] leading-[1.55] break-words ${isMe ? 'bg-[#FF203A] text-white rounded-[18px] rounded-tr-[5px]' : 'bg-[#2a2a2a] text-white/90 rounded-[18px] rounded-tl-[5px] border border-white/[0.07]'}`}>{msg.content}</div>;
   };
 
   // ── 로딩 ────────────────────────────────────────────────
@@ -653,7 +700,7 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
       {/* 히든 파일 인풋 */}
       <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
       <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleFileUpload} className="hidden" />
-      <input type="file" ref={docInputRef} onChange={handleFileUpload} className="hidden" />
+      <input type="file" accept="*/*" ref={docInputRef} onChange={handleFileUpload} className="hidden" />
 
       {/* ───────── 첨부 바텀시트 ───────── */}
       <BottomSheet isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} maxH="max-h-[36vh]">

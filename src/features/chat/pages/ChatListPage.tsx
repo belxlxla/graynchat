@@ -300,7 +300,7 @@ export default function ChatListPage() {
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
 
-  // ✅ 채팅방 나가기: 메시지 삭제 + AI 점수 초기화 + 나가기
+  // ✅✅✅ 채팅방 나가기: AI 점수 0으로 초기화 + 메시지 삭제 + 나가기
   const handleLeaveChatConfirm = async () => {
     if (!user?.id || !leaveChatTarget) return;
 
@@ -311,17 +311,17 @@ export default function ChatListPage() {
     setLeaveChatTarget(null);
     
     try {
+      // 🔥 1. [AI 점수 초기화] 1:1 채팅방의 경우 friendly_score를 0으로 초기화
       if (isIndividual) {
         const friendId = targetRoomId.split('_').find(id => id !== user.id);
         if (friendId) {
            await supabase.from('friends')
-             .update({ friendly_score: 1 })
+             .update({ friendly_score: 0 })  // ✅ 0으로 변경 (기존 1에서)
              .match({ user_id: user.id, friend_user_id: friendId });
         }
       }
 
-      await supabase.from('messages').delete().eq('room_id', targetRoomId);
-
+      // 🔥 2. [멤버 삭제] 방 나가기 처리 (먼저 수행)
       const { error: deleteMemberError } = await supabase
         .from('room_members')
         .delete()
@@ -329,14 +329,24 @@ export default function ChatListPage() {
       
       if (deleteMemberError) throw deleteMemberError;
       
+      // 🔥 3. [남은 멤버 수 확인]
       const { count } = await supabase
         .from('room_members')
-        .select('count(*)', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
         .eq('room_id', targetRoomId);
       
+      // 🔥 4. [메시지 및 방 삭제 전략]
       if (count === 0) {
+        // ✅ 모든 멤버가 나간 경우: 메시지 + 방 모두 삭제
+        await supabase.from('messages').delete().eq('room_id', targetRoomId);
         await supabase.from('chat_rooms').delete().eq('id', targetRoomId);
+      } else if (isIndividual && count === 1) {
+        // ✅ 1:1 채팅에서 한 명이 나가면 (상대방 1명만 남음) 메시지 삭제
+        // → 다시 입장 시 이전 대화 없이 새로운 대화 시작
+        await supabase.from('messages').delete().eq('room_id', targetRoomId);
+        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', targetRoomId);
       } else {
+        // ✅ 그룹 채팅에서 일부만 나간 경우: 멤버 수만 업데이트
         await supabase.from('chat_rooms').update({ members_count: count }).eq('id', targetRoomId);
       }
       
@@ -673,7 +683,7 @@ function LeaveChatModal({ chat, onClose, onConfirm }: {
         <h3 className="text-[18px] font-bold text-white mb-2 tracking-tight">채팅방을 나갈까요?</h3>
         <p className="text-[13.5px] text-white/38 leading-relaxed">
           {chat?.type === 'individual' 
-            ? '1:1 채팅방의 모든 대화 내용이 삭제되며\n채팅 목록에서 사라집니다.'
+            ? '1:1 채팅방의 모든 대화 내용이 삭제되며\nAI 친밀도 점수가 0점으로 초기화됩니다.'
             : '채팅방에서 나가면\n채팅 목록에서 사라집니다.'}
         </p>
       </div>
