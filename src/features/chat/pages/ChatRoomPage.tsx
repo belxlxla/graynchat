@@ -188,12 +188,14 @@ export default function ChatRoomPage() {
     }
 
     try {
+      // 1. 채팅방 기본 정보 조회
       const { data: room } = await supabase
         .from('chat_rooms')
         .select('*')
         .eq('id', chatId)
         .maybeSingle();
 
+      // 2. 내 배경화면 설정 조회
       const { data: myMember } = await supabase
         .from('room_members')
         .select('wallpaper_url')
@@ -203,13 +205,15 @@ export default function ChatRoomPage() {
 
       setBackground(myMember?.wallpaper_url || '');
 
+      // ⭐ 3. 모든 참여자 정보 조회 (left_at 컬럼 반드시 포함)
       const { data: members } = await supabase
         .from('room_members')
-        .select('user_id')
+        .select('user_id, left_at') // 2026.02.23 kyle: 나간 사용자 체크를 위해 추가
         .eq('room_id', chatId);
 
       let memberIds = members?.map(m => m.user_id) || [];
 
+      // 1:1 채팅인데 멤버 레코드가 아직 생기기 전인 경우 대비
       if (!isGroupChat && memberIds.length < 2) {
         const idsInUrl = chatId.split('_');
         const extractedFriendId = idsInUrl.find(id => id !== user.id);
@@ -219,6 +223,7 @@ export default function ChatRoomPage() {
       }
 
       if (memberIds.length > 0) {
+        // 4. 프로필 정보(이름, 아바타) 통합 조회
         const { data: profiles } = await supabase
           .from('users')
           .select('id, name')
@@ -230,7 +235,6 @@ export default function ChatRoomPage() {
           .in('user_id', memberIds);
 
         const profileImagesMap = new Map(profileImages?.map(p => [p.user_id, p.avatar_url]) || []);
-
         const profileMap: Record<string, MemberProfile> = {};
         profiles?.forEach(p => {
           profileMap[p.id] = { id: p.id, name: p.name, avatar_url: profileImagesMap.get(p.id) || null };
@@ -241,10 +245,14 @@ export default function ChatRoomPage() {
           setRoomTitle(room?.title || `그룹 채팅 (${memberIds.length}명)`);
           setRoomAvatar(room?.avatar_url || null);
         } else {
+          // ⭐ 5. 1:1 채팅 상대방 상태 체크 및 제목 결정
           const friendId = memberIds.find(id => id !== user.id);
+          const friendMemberData = members?.find(m => m.user_id === friendId);
+          
           if (friendId) {
             const friendProfile = profileMap[friendId];
 
+            // 내 친구 목록에서의 별명 및 차단 여부 확인
             const { data: friendRecord } = await supabase
               .from('friends')
               .select('name, is_blocked')
@@ -252,17 +260,18 @@ export default function ChatRoomPage() {
               .eq('friend_user_id', friendId)
               .maybeSingle();
 
-            if (friendRecord) {
-              setRoomTitle(friendRecord.name || friendProfile?.name || '알 수 없는 사용자');
-              setRoomAvatar(friendProfile?.avatar_url || null);
-              setIsFriend(true);
-              setIsBlocked(!!friendRecord.is_blocked);
-            } else {
-              setRoomTitle(friendProfile?.name || '알 수 없는 사용자');
-              setRoomAvatar(friendProfile?.avatar_url || null);
-              setIsFriend(false);
-              setIsBlocked(false);
+            // 이름 우선순위: 친구 별명 > 실제 이름 > '알 수 없는 사용자'
+            let finalTitle = friendRecord?.name || friendProfile?.name || '알 수 없는 사용자';
+            
+            // ✅ 핵심 로직: 참여자 목록에 기록은 있지만 나간 일시(left_at)가 있는 경우
+            if (friendMemberData && friendMemberData.left_at !== null) {
+              finalTitle = `${finalTitle} (나간 사용자)`;
             }
+
+            setRoomTitle(finalTitle);
+            setRoomAvatar(friendProfile?.avatar_url || null);
+            setIsFriend(!!friendRecord);
+            setIsBlocked(!!friendRecord?.is_blocked);
           }
         }
       }
@@ -278,8 +287,13 @@ export default function ChatRoomPage() {
       // 2. 메시지 로드 (가시성 필터 적용)
       let query = supabase
         .from('messages')
-        .select('*')
+        .select(`
+          *,
+          room_members!inner(created_at) 
+        `)
         .eq('room_id', chatId)
+        .eq('room_members.user_id', user.id)
+        .filter('created_at', 'gte', 'room_members.created_at')
         .order('created_at', { ascending: true });
 
       // joined_at 이후 메시지만

@@ -1516,18 +1516,49 @@ function CreateChatModal({ isOpen, onClose, friends }: {
       if (!isGroup) {
         const fid = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
         if (!fid) { toast.dismiss(t); toast.error('친구 정보를 찾을 수 없습니다.'); return; }
+        
         roomId = [session.user.id, fid].sort().join('_');
-        const { data: ex } = await supabase.from('chat_rooms').select('id').eq('id', roomId).maybeSingle();
-        if (ex) { toast.dismiss(t); toast.success('기존 채팅방으로 이동합니다.'); onClose(); navigate(`/chat/room/${roomId}`); return; }
+
+        // 1. 방 정보 insert (중복 시 무시)
         const { error: re } = await supabase.from('chat_rooms').insert([{
-          id: roomId, title: friends.find(f => f.id === selectedIds[0])?.name || '새 대화',
-          type: 'individual', created_by: session.user.id, last_message: '대화를 시작해보세요!', members_count: 2,
+          id: roomId, 
+          title: friends.find(f => f.id === selectedIds[0])?.name || '새 대화',
+          type: 'individual', 
+          created_by: session.user.id, 
+          last_message: '대화를 시작해보세요!', 
+          members_count: 2,
         }]);
         if (re && re.code !== '23505') throw re;
-        await supabase.from('room_members').upsert([
-          { room_id: roomId, user_id: session.user.id, unread_count: 0 },
-          { room_id: roomId, user_id: fid, unread_count: 0 },
-        ], { onConflict: 'room_id,user_id', ignoreDuplicates: true });
+
+        // ⭐ 2. 내 참여 상태 확인 (나간 사람인지 확인)
+        const { data: myMember } = await supabase
+          .from('room_members')
+          .select('left_at')
+          .match({ room_id: roomId, user_id: session.user.id })
+          .maybeSingle();
+
+        // 3. 조건부 업데이트 데이터 준비
+        const memberData = { 
+          room_id: roomId, 
+          user_id: session.user.id, 
+          unread_count: 0,
+          left_at: null as string | null,    
+          created_at: undefined as string | undefined, 
+        };
+
+        // ✅ 나갔던 사람이거나(left_at 존재), 아예 처음 들어오는 경우만 시간 갱신
+        if (!myMember || myMember.left_at !== null) {
+          memberData.left_at = null;
+          memberData.created_at = new Date().toISOString(); // 재입장 시점에만 갱신!
+        }
+
+        // 4. 멤버 정보 반영
+        const { error: memError } = await supabase.from('room_members').upsert([
+          memberData, // 조건에 따라 갱신되거나 유지된 내 데이터
+          { room_id: roomId, user_id: fid } // 상대방 데이터 (유지)
+        ], { onConflict: 'room_id,user_id' });
+
+        if (memError) throw memError;
       } else {
         roomId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const { error: re } = await supabase.from('chat_rooms').insert([{
