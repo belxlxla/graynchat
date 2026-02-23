@@ -300,7 +300,6 @@ export default function ChatListPage() {
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
 
-  // ✅✅✅ 채팅방 나가기: AI 점수 0으로 초기화 + 메시지 삭제 + 나가기
   const handleLeaveChatConfirm = async () => {
     if (!user?.id || !leaveChatTarget) return;
 
