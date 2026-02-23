@@ -216,73 +216,61 @@ export default function ChatRoomSettingsPage() {
     toast.success(n ? '알림이 켜졌습니다.' : '알림이 꺼졌습니다.', { icon: n ? '🔔' : '🔕' });
   };
 
-      // 🔥 ChatRoomSettingsPage.tsx의 handleConfirmLeave도 동일하게 수정
-      const handleConfirmLeave = async () => {
-        try {
-          if (!chatId) return;
-          const { data: { session } } = await supabase.auth.getSession();
-          const myId = session?.user.id;
-          if (!myId) return;
+  // ✅✅✅ 채팅방 나가기: AI 점수 0으로 초기화 + 메시지 삭제 + 나가기
+  const handleConfirmLeave = async () => {
+    try {
+      if (!chatId) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const myId = session?.user.id;
+      if (!myId) return;
 
-          const now = new Date().toISOString();
-          const isGroup = chatId.startsWith('group_');
+      const isGroup = chatId.startsWith('group_');
 
-          // 1. AI 점수 초기화 (1:1만)
-          if (!isGroup) {
-            const friendId = chatId.split('_').find(id => id !== myId);
-            if (friendId) {
-              await supabase.from('friends')
-                .update({ friendly_score: 0 })
-                .match({ user_id: myId, friend_user_id: friendId });
-            }
-          }
-
-          // 2. 그룹 채팅: 시스템 메시지 + left_at 기록
-          if (isGroup) {
-            const { data: myUser } = await supabase
-              .from('users')
-              .select('name')
-              .eq('id', myId)
-              .single();
-
-            await supabase.from('messages').insert({
-              room_id: chatId,
-              sender_id: myId,
-              content: `${myUser?.name || '사용자'}님이 나갔습니다.`,
-              message_type: 'system_leave',
-            });
-
-            await supabase.from('room_members')
-              .update({ left_at: now })
-              .match({ room_id: chatId, user_id: myId });
-
-            const { count } = await supabase
-              .from('room_members')
-              .select('*', { count: 'exact', head: true })
-              .eq('room_id', chatId)
-              .is('left_at', null);
-
-            await supabase.from('chat_rooms')
-              .update({ members_count: count || 0 })
-              .eq('id', chatId);
-          }
-
-          // 3. 1:1 채팅: left_at만 기록
-          if (!isGroup) {
-            await supabase.from('room_members')
-              .update({ left_at: now })
-              .match({ room_id: chatId, user_id: myId });
-          }
-
-          toast.success('채팅방을 나갔습니다.');
-          setIsLeaveModalOpen(false);
-          navigate('/main/chats');
-
-        } catch (err) {
-          console.error('나가기 실패:', err);
-          toast.error('나가기에 실패했습니다.');
+      // 🔥 1. [AI 점수 초기화] 1:1 채팅방의 경우 friendly_score를 0으로 초기화
+      if (!isGroup) {
+        const friendId = chatId.split('_').find(id => id !== myId);
+        if (friendId) {
+           await supabase.from('friends')
+             .update({ friendly_score: 0 })  // ✅ 0으로 변경 (기존 1에서)
+             .match({ user_id: myId, friend_user_id: friendId });
         }
-      };
+      }
+
+      // 🔥 2. [멤버 삭제] 방 나가기 처리 (먼저 수행)
+      const { error } = await supabase.from('room_members').delete()
+        .eq('room_id', chatId).eq('user_id', myId);
+
+      if (error) throw error;
+
+      // 🔥 3. [남은 멤버 수 확인]
+      const { count } = await supabase.from('room_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('room_id', chatId);
+
+      // 🔥 4. [메시지 및 방 삭제 전략]
+      if (count === 0) {
+        // ✅ 모든 멤버가 나간 경우: 메시지 + 방 모두 삭제
+        await supabase.from('messages').delete().eq('room_id', chatId);
+        await supabase.from('chat_rooms').delete().eq('id', chatId);
+      } else if (!isGroup && count === 1) {
+        // ✅ 1:1 채팅에서 한 명이 나가면 (상대방 1명만 남음) 메시지 삭제
+        // → 다시 입장 시 이전 대화 없이 새로운 대화 시작
+        await supabase.from('messages').delete().eq('room_id', chatId);
+        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', chatId);
+      } else {
+        // ✅ 그룹 채팅에서 일부만 나간 경우: 멤버 수만 업데이트
+        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', chatId);
+      }
+
+      toast.success('채팅방을 나갔습니다.');
+      setIsLeaveModalOpen(false);
+      navigate('/main/chats');
+
+    } catch (err) {
+      console.error('나가기 실패:', err);
+      toast.error('나가기에 실패했습니다.');
+    }
+  };
 
   const handleInvite = async (selectedFriendIds: number[]) => {
     if (!chatId || selectedFriendIds.length === 0) return;
