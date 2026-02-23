@@ -311,23 +311,40 @@ export default function ChatListPage() {
     setLeaveChatTarget(null);
     
     try {
-      // 🔥 1. [AI 점수 초기화] 1:1 채팅방의 경우 friendly_score를 0으로 초기화
+      // 채팅방 나가기시 룸 아이디로 룸 맴버를 조회해서 점수 초기화 - 2026.02.23 kyle
+      // 🔥 1. [AI 점수 초기화] DB 조회를 통해 상대방 ID 특정
       if (isIndividual) {
-        const friendId = targetRoomId.split('_').find(id => id !== user.id);
-        if (friendId) {
-           await supabase.from('friends')
-             .update({ friendly_score: 0 })  // ✅ 0으로 변경 (기존 1에서)
-             .match({ user_id: user.id, friend_user_id: friendId });
+        // room_members에서 이 방의 참여자들을 가져옴
+        const { data: members, error: memberError } = await supabase
+          .from('room_members')
+          .select('user_id')
+          .eq('room_id', targetRoomId);
+
+        if (!memberError && members) {
+          // 참여자 중 내 아이디가 아닌 사람(상대방)을 찾음
+          const friend = members.find(m => m.user_id !== user.id);
+          
+          if (friend) {
+            await supabase.from('friends')
+              .update({ friendly_score: 0 })
+              .match({ user_id: user.id, friend_user_id: friend.user_id });
+            
+            console.log(`${friend.user_id}님과의 친밀도 초기화 완료`);
+          }
         }
       }
-
-      // 🔥 2. [멤버 삭제] 방 나가기 처리 (먼저 수행)
-      const { error: deleteMemberError } = await supabase
+      
+      // 채팅방 나가기시 나간 시간기록으로 스냅샷 - 2026.02.23 kyle
+      // 🔥 2. [변경됨] 멤버 삭제 대신 '나간 시간' 업데이트 (Soft Delete)
+      const { error: updateMemberError } = await supabase
         .from('room_members')
-        .delete()
+        .update({ 
+          left_at: new Date().toISOString(), // 나간 시간 기록
+          unread_count: 0                    // 안 읽은 수 초기화
+        })
         .match({ room_id: targetRoomId, user_id: user.id });
       
-      if (deleteMemberError) throw deleteMemberError;
+      if (updateMemberError) throw updateMemberError;
       
       // 🔥 3. [남은 멤버 수 확인]
       const { count } = await supabase

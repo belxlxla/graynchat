@@ -266,11 +266,17 @@ export default function ChatRoomPage() {
         }
       }
 
+      // 채팅방 참여일 기준 이후 메시지만 조회로 수정 - 2026.02.23 kyle
       const { data: msgData, error: msgError } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('room_id', chatId)
-        .order('created_at', { ascending: true });
+      .from('messages')
+      .select(`
+        *,
+        room_members!inner(created_at) 
+      `)
+      .eq('room_id', chatId)
+      .eq('room_members.user_id', user.id) // 내 멤버 정보와 조인
+      .filter('created_at', 'gte', 'room_members.created_at') // 내 입장일 이후 메시지만
+      .order('created_at', { ascending: true });
 
       if (msgError) throw msgError;
 
