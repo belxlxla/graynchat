@@ -22,6 +22,7 @@ interface Message {
   content: string;
   created_at: string;
   is_read: boolean;
+  message_type?: 'user' | 'system_leave' | 'system_join';
   isFailed?: boolean;
   isRetrying?: boolean;
   tempId?: string;
@@ -266,11 +267,32 @@ export default function ChatRoomPage() {
         }
       }
 
-      const { data: msgData, error: msgError } = await supabase
+      // 1. 내 멤버십 정보 가져오기
+      const { data: myMembership } = await supabase
+        .from('room_members')
+        .select('joined_at, left_at')
+        .eq('room_id', chatId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      // 2. 메시지 로드 (가시성 필터 적용)
+      let query = supabase
         .from('messages')
         .select('*')
         .eq('room_id', chatId)
         .order('created_at', { ascending: true });
+
+      // joined_at 이후 메시지만
+      if (myMembership?.joined_at) {
+        query = query.gte('created_at', myMembership.joined_at);
+      }
+
+      // left_at 이전 메시지만 (나간 경우)
+      if (myMembership?.left_at) {
+        query = query.lte('created_at', myMembership.left_at);
+      }
+
+      const { data: msgData, error: msgError } = await query;
 
       if (msgError) throw msgError;
 
@@ -751,6 +773,20 @@ export default function ChatRoomPage() {
   };
 
   const renderMessageContent = (msg: Message, isMe: boolean) => {
+    // 🔥 시스템 메시지는 중앙 정렬
+    if (msg.message_type === 'system_leave' || msg.message_type === 'system_join') {
+    return (
+      <motion.div
+        key={msg.tempId || msg.id}
+          layout
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex justify-center"
+        >
+          {renderMessageContent(msg, false)}
+        </motion.div>
+      );
+    }
     const type = getFileType(msg.content);
     const isHighlighted = searchResults.includes(msg.id);
     const isCurrentSearch = searchResults[currentSearchIndex] === msg.id;
