@@ -496,7 +496,7 @@ export default function GatheringChatRoomPage() {
 }
 
     if (urls.length > 0) {
-      const elements: (string | JSX.Element)[] = [];
+      const elements: (string | React.ReactElement)[] = [];
       let lastIndex = 0;
       urls.forEach((url, i) => {
         const urlIndex = msg.content.indexOf(url, lastIndex);
