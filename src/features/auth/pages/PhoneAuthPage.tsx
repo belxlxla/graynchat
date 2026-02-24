@@ -69,10 +69,16 @@ export default function PhoneAuthPage() {
     } else if (step === 'name') {
       setStep('verify');
     } else {
+      // 🛠️ 수정: 무한 루프 방지를 위한 로직
       if (isSignupMode) {
         setShowQuitAlert(true);
       } else {
-        navigate('/settings/account');
+        // [기존] navigate('/settings/account'); 
+        // -> 이렇게 하면 히스토리에 다시 쌓여서 루프가 발생합니다.
+        
+        // [수정] 단순히 브라우저 이전 페이지로 가거나, 
+        // 상황에 따라 명확히 replace를 사용해야 합니다.
+        navigate('/settings/account', { replace: true });
       }
     }
   }, [step, isSignupMode, navigate]);

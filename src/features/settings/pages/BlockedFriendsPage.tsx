@@ -31,31 +31,54 @@ export default function BlockedFriendsPage() {
   const fetchBlockedUsers = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // 1️⃣ friends 테이블에서 차단된 목록과 필요한 컬럼만 조회
+      // (avatar_url이 없으므로 제외하고, 대신 정보를 가져올 friend_user_id를 포함)
+      const { data: blockedData, error: friendsError } = await supabase
         .from('friends')
-        .select('id, name, phone, avatar_url, hide_profile, is_blocked')
-        .eq('is_blocked', true) // SQL에서 업데이트를 완료했다면 이 쿼리가 정확히 작동합니다.
-        .order('name', { ascending: true });
+        .select('id, alias_name, hide_profile, is_blocked, friend_user_id')
+        .eq('is_blocked', true);
 
-      if (error) throw error;
+      if (friendsError) throw friendsError;
 
-      if (data) {
-        const formattedData: BlockedUser[] = data.map((item: any) => ({
-          id: item.id.toString(),
-          name: item.name,
-          phone: item.phone,
-          avatar_url: item.avatar_url,
-          isProfileHidden: item.hide_profile || false 
-        }));
+      if (blockedData && blockedData.length > 0) {
+        // 2️⃣ 차단된 유저들의 실제 프로필(아바타, 이름 등) 정보 가져오기
+        const friendIds = blockedData.map(f => f.friend_user_id);
+        
+        const { data: profiles } = await supabase
+          .from('user_profiles') // 정의서 NO.3 기준
+          .select('user_id, avatar_url')
+          .in('user_id', friendIds);
+
+        const { data: usersInfo } = await supabase
+          .from('users') // 정의서 NO.1 기준
+          .select('id, name, phone')
+          .in('id', friendIds);
+
+        const profilesMap = new Map(profiles?.map(p => [p.user_id, p.avatar_url]) || []);
+        const usersMap = new Map(usersInfo?.map(u => [u.id, u]) || []);
+
+        // 3️⃣ 데이터 결합 및 포맷팅
+        const formattedData: BlockedUser[] = blockedData.map((item: any) => {
+          const actualUser = usersMap.get(item.friend_user_id);
+          return {
+            id: item.id.toString(),
+            // 이름 우선순위: 내 설정 별명 > 실제 이름 > 기본값
+            name: item.alias_name || actualUser?.name || '이름 없음',
+            phone: actualUser?.phone || '', 
+            avatar_url: profilesMap.get(item.friend_user_id) || null,
+            isProfileHidden: item.hide_profile || false 
+          };
+        });
+
+        // 이름순 정렬 후 상태 반영
+        formattedData.sort((a, b) => a.name.localeCompare(b.name));
         setUsers(formattedData);
+      } else {
+        setUsers([]);
       }
     } catch (error: any) {
       console.error('Fetch Blocked Users Error:', error);
-      if (error.code === '42703') {
-        toast.error('DB 설정을 확인해주세요.');
-      } else {
-        toast.error('차단 목록을 불러오지 못했습니다.');
-      }
+      toast.error('차단 목록을 불러오지 못했습니다.');
     } finally {
       setIsLoading(false);
     }

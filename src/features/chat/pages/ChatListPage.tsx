@@ -266,29 +266,35 @@ export default function ChatListPage() {
     return () => { supabase.removeChannel(channel); };
   }, [user?.id, fetchChats]);
 
+  // ─── 기존 201번 라인 부근 수정 ───
   const fetchFriends = useCallback(async () => {
     if (!user?.id) return;
     try {
+      // 1. friendships 테이블에서 수락된(ACCEPTED) 친구 목록 가져오기
       const { data: friendsData, error } = await supabase
-        .from('friends')
-        .select('id, friend_user_id, alias_name') // name 대신 alias_name 사용
-        .eq('user_id', user.id);
-        
+        .from('friendships') // ✅ 'friends' -> 'friendships'
+        .select('id, friend_id, status') // ✅ 'friend_user_id' -> 'friend_id'
+        .eq('user_id', user.id)
+        .eq('status', 'ACCEPTED');
+
       if (error) throw error;
 
       if (friendsData && friendsData.length > 0) {
-        const uuids = friendsData.map(f => f.friend_user_id).filter(Boolean);
+        // 2. 조회된 friend_id들로 UUID 배열 생성
+        const uuids = friendsData.map(f => f.friend_id).filter(Boolean); // ✅ 변수명 일치
+
+        // 3. 사용자 정보 및 프로필 통합 조회
         const { data: usersData } = await supabase.from('users').select('id, name').in('id', uuids);
         const { data: profilesData } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', uuids);
+        
         const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
         const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
         
         setFriendsList(friendsData.map(f => ({
           id: f.id,
-          friend_user_id: f.friend_user_id,
-          // ✅ users 테이블의 실제 이름 우선, 없으면 친구 설정 별명(alias_name) 사용
-          name: usersMap.get(f.friend_user_id)?.name || f.alias_name || '이름 없음',
-          avatar_url: profilesMap.get(f.friend_user_id)?.avatar_url || null,
+          friend_user_id: f.friend_id, // ✅ f.friend_id 사용
+          name: usersMap.get(f.friend_id)?.name || '이름 없음',
+          avatar_url: profilesMap.get(f.friend_id)?.avatar_url || null,
         })));
       } else {
         setFriendsList([]);
@@ -296,7 +302,7 @@ export default function ChatListPage() {
     } catch (error) { 
       console.error('Fetch Friends Error:', error); 
     }
-  }, [user]);
+  }, [user?.id]); // ✅ 의존성 최적화
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
 
@@ -324,12 +330,12 @@ export default function ChatListPage() {
           const friend = members.find(m => m.user_id !== user.id);
           
           if (friend) {
-            await supabase.from('friends')
-              .update({ friendly_score: 0 })
-              .match({ user_id: user.id, friend_user_id: friend.user_id });
+            await supabase.from('friendships') // ✅ 'friends' -> 'friendships'
+              .update({ friendly_score: 0 }) 
+              .match({ user_id: user.id, friend_id: friend.user_id }); // ✅ friend_user_id -> friend_id
             
             console.log(`${friend.user_id}님과의 친밀도 초기화 완료`);
-          }
+          } 
         }
       }
       
@@ -353,7 +359,7 @@ export default function ChatListPage() {
       
       // 🔥 4. [메시지 및 방 삭제 전략]
       if (count === 0) {
-        // ✅ 모든 멤버가 나간 경우: 메시지 + 방 모두 삭제
+        // ✅ 모든 멤버가 나간 경우: 메시지 + 방 모두 삭제미등록 사용자
         await supabase.from('messages').delete().eq('room_id', targetRoomId);
         await supabase.from('chat_rooms').delete().eq('id', targetRoomId);
       } else if (isIndividual && count === 1) {

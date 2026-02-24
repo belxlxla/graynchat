@@ -209,18 +209,28 @@ export default function AccountInfoPage() {
     if (!user) return;
     const type = showVerifyConfirm;
     setShowVerifyConfirm(null);
+
+    // 세션 저장
     sessionStorage.setItem('verify_return_type', type || '');
     sessionStorage.setItem('verify_user_id', user.id);
     sessionStorage.setItem('verify_current_name', profile.name);
     sessionStorage.setItem('verify_current_phone', profile.phone);
-    navigate('/auth/phone-verify');
+
+    // 🛠️ 수정: replace: true를 사용하여 현재 'AccountInfo' 기록을 'phone-verify'로 덮어씌웁니다.
+    // 이렇게 하면 인증 페이지에서 뒤로가기를 눌렀을 때 'AccountInfo'가 아닌 
+    // 그 이전 페이지(예: 메인 설정 등)로 이동하게 됩니다.
+    navigate('/auth/phone-verify', { replace: true });
   };
 
   return (
     <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
       {/* ── 헤더 (유지) ───────────────────────────────── */}
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
-        <button onClick={() => navigate(-1)} className="p-2 text-white hover:text-brand-DEFAULT transition-colors">
+        {/* 🛠️ 수정: navigate(-1) 대신 전체 설정(또는 메인) 경로를 직접 입력하세요 */}
+        <button 
+          onClick={() => navigate('/main/settings')} 
+          className="p-2 text-white hover:text-brand-DEFAULT transition-colors"
+        >
           <ChevronLeft className="w-7 h-7" />
         </button>
         <h1 className="text-lg font-bold ml-1">계정 정보</h1>

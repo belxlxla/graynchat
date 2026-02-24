@@ -187,32 +187,32 @@ export default function ChatRoomPage() {
     }
 
     try {
-      // 1. 채팅방 기본 정보 조회
+      // 1. 채팅방 기본 정보 조회 (chat_rooms)
       const { data: room } = await supabase
         .from('chat_rooms')
         .select('*')
         .eq('id', chatId)
         .maybeSingle();
 
-      // 2. 내 배경화면 설정 조회
+      // 2. 내 방 설정 조회 (room_members) - wallpaper_url, left_at, created_at 포함
       const { data: myMember } = await supabase
         .from('room_members')
-        .select('wallpaper_url')
+        .select('wallpaper_url, created_at, left_at')
         .eq('room_id', chatId)
         .eq('user_id', user.id)
         .maybeSingle();
 
       setBackground(myMember?.wallpaper_url || '');
 
-      // ⭐ 3. 모든 참여자 정보 조회 (left_at 컬럼 반드시 포함)
+      // 3. 모든 참여자 정보 조회
       const { data: members } = await supabase
         .from('room_members')
-        .select('user_id, left_at') // 2026.02.23 kyle: 나간 사용자 체크를 위해 추가
+        .select('user_id, left_at, created_at')
         .eq('room_id', chatId);
 
       let memberIds = members?.map(m => m.user_id) || [];
 
-      // 1:1 채팅인데 멤버 레코드가 아직 생기기 전인 경우 대비
+      // 1:1 채팅 예외 처리 (방 생성 전 시점 대비)
       if (!isGroupChat && memberIds.length < 2) {
         const idsInUrl = chatId.split('_');
         const extractedFriendId = idsInUrl.find(id => id !== user.id);
@@ -222,7 +222,7 @@ export default function ChatRoomPage() {
       }
 
       if (memberIds.length > 0) {
-        // 4. 프로필 정보(이름, 아바타) 통합 조회
+        // 4. 프로필 정보 통합 조회 (users + user_profiles)
         const { data: profiles } = await supabase
           .from('users')
           .select('id, name')
@@ -244,48 +244,61 @@ export default function ChatRoomPage() {
           setRoomTitle(room?.title || `그룹 채팅 (${memberIds.length}명)`);
           setRoomAvatar(room?.avatar_url || null);
         } else {
-          // ⭐ 5. 1:1 채팅 상대방 상태 체크 및 제목 결정
+          // ⭐ 5. 1:1 채팅 상대방 상태 체크 (friendships + friends 테이블 연동)
           const friendId = memberIds.find(id => id !== user.id);
           const friendMemberData = members?.find(m => m.user_id === friendId);
-          
+
           if (friendId) {
             const friendProfile = profileMap[friendId];
 
-            // 내 친구 목록에서의 별명 및 차단 여부 확인
-            const { data: friendRecord } = await supabase
+            // A. 관계 마스터 확인 (friendships)
+            const { data: friendshipRecord } = await supabase
+              .from('friendships')
+              .select('status')
+              .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`)
+              .maybeSingle();
+
+            // B. 내 친구 목록 및 차단 여부 확인 (friends)
+            const { data: friendSetting } = await supabase
               .from('friends')
-              .select('name, is_blocked')
+              .select('alias_name, is_blocked')
               .eq('user_id', user.id)
               .eq('friend_user_id', friendId)
               .maybeSingle();
 
-            // 이름 우선순위: 친구 별명 > 실제 이름 > '알 수 없는 사용자'
-            let finalTitle = friendRecord?.name || friendProfile?.name || '알 수 없는 사용자';
+            // 이름 결정: 친구 별명 > 실제 이름 > 기본값
+            let finalTitle = friendSetting?.alias_name || friendProfile?.name || '알 수 없는 사용자';
             
-            // ✅ 핵심 로직: 참여자 목록에 기록은 있지만 나간 일시(left_at)가 있는 경우
             if (friendMemberData && friendMemberData.left_at !== null) {
               finalTitle = `${finalTitle} (나간 사용자)`;
             }
 
             setRoomTitle(finalTitle);
             setRoomAvatar(friendProfile?.avatar_url || null);
-            setIsFriend(!!friendRecord);
-            setIsBlocked(!!friendRecord?.is_blocked);
+            
+            // 친구 여부 결정: 관계가 ACCEPTED이고, 내 친구 목록(friends)에 등록되어 있어야 함
+            const isFriendAccepted = friendshipRecord?.status === 'ACCEPTED';
+            const isInFriendList = !!friendSetting;
+            
+            setIsFriend(isFriendAccepted && isInFriendList);
+            setIsBlocked(!!friendSetting?.is_blocked);
           }
         }
       }
 
-      // 6. 메시지 조회 (재입장일 이후 데이터만 필터링)
-      const { data: msgData, error: msgError } = await supabase
+      // 6. 메시지 조회 (내 입장 시점 created_at 이후 데이터만)
+      const joinedAt = myMember?.created_at;
+
+      let msgQuery = supabase
         .from('messages')
-        .select(`
-          *,
-          room_members!inner(created_at) 
-        `)
-        .eq('room_id', chatId)
-        .eq('room_members.user_id', user.id)
-        .filter('created_at', 'gte', 'room_members.created_at')
-        .order('created_at', { ascending: true });
+        .select('*')
+        .eq('room_id', chatId);
+
+      if (joinedAt) {
+        msgQuery = msgQuery.gte('created_at', joinedAt);
+      }
+
+      const { data: msgData, error: msgError } = await msgQuery.order('created_at', { ascending: true });
 
       if (msgError) throw msgError;
 
@@ -674,35 +687,31 @@ export default function ChatRoomPage() {
     if (!chatId || !user) return;
     const friendId = chatId.split('_').find(id => id !== user.id);
     if (!friendId) return;
+
     try {
-      const { data: friendUser } = await supabase
-        .from('users')
-        .select('name')
-        .eq('id', friendId)
-        .maybeSingle();
+      // 1. 관계 마스터(friendships) 업데이트
+      // 내가 보내든 상대가 보냈든 상관없이 ACCEPTED 상태로 만듭니다.
+      await supabase.from('friendships').upsert({
+        user_id: user.id,   // 내가 주체가 되어
+        friend_id: friendId, 
+        status: 'ACCEPTED',
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id, friend_id' });
 
-      const { data: friendProfile } = await supabase
-        .from('user_profiles')
-        .select('avatar_url, status_message')
-        .eq('user_id', friendId)
-        .maybeSingle();
-
+      // 2. 내 친구 목록(friends)에 추가
+      // 400 에러를 피하기 위해 정의서 NO.9의 컬럼명(friend_user_id, alias_name)을 사용하세요.
       await supabase.from('friends').upsert({
         user_id: user.id,
-        friend_user_id: friendId,
-        name: friendUser?.name || roomTitle,
-        avatar_url: friendProfile?.avatar_url || roomAvatar,
-        status: friendProfile?.status_message || null,
-        friendly_score: 10,
-        is_blocked: false,
-      });
+        friend_user_id: friendId, // friend_id 아님 주의
+        alias_name: roomTitle,    // 별명 저장
+        friendly_score: 10
+      }, { onConflict: 'user_id, friend_user_id' });
 
       setIsFriend(true);
-      setIsBlocked(false);
-      toast.success('친구로 추가되었습니다.');
-      fetchInitialData();
-    } catch {
-      toast.error('친구 추가에 실패했습니다.');
+      toast.success('친구 추가가 완료되었습니다.');
+      fetchInitialData(); // 화면 새로고침
+    } catch (error) {
+      console.error('친구 추가 버튼 에러:', error);
     }
   };
 
@@ -710,26 +719,78 @@ export default function ChatRoomPage() {
     if (!chatId || !user) return;
     const friendId = chatId.split('_').find(id => id !== user.id);
     if (!friendId) return;
+
     if (!window.confirm('차단하시겠습니까? 차단하면 메시지를 받을 수 없습니다.')) return;
 
     try {
-      const { data: friendUser } = await supabase
-        .from('users')
-        .select('name')
-        .eq('id', friendId)
-        .maybeSingle();
+      // 1. friends 테이블에 차단 정보 업데이트 (정의서 NO.9 기준)
+      const { error: blockError } = await supabase
+        .from('friends')
+        .upsert({
+          user_id: user.id,
+          friend_user_id: friendId, // ✅ 컬럼명: friend_id 아님!
+          is_blocked: true,          // ✅ 차단 설정
+          alias_name: roomTitle      // 기존 별명 유지
+        }, { onConflict: 'user_id, friend_user_id' }); // 중복 시 업데이트
 
-      await supabase.from('friends').upsert({
-        user_id: user.id,
-        friend_user_id: friendId,
-        name: friendUser?.name || roomTitle,
-        is_blocked: true,
-      });
+      if (blockError) throw blockError;
+
+      // 2. 관계 마스터(friendships) 상태도 필요하다면 변경 (선택 사항)
+      await supabase
+        .from('friendships')
+        .update({ status: 'REJECTED' }) // 차단을 거절 상태로 관리할 경우
+        .match({ user_id: user.id, friend_id: friendId });
 
       setIsBlocked(true);
       toast.success('사용자가 차단되었습니다.');
-    } catch {
-      toast.error('차단에 실패했습니다.');
+      fetchInitialData(); // 화면 새로고침
+
+    } catch (error) {
+      console.error('차단 처리 오류:', error);
+      toast.error('차단 처리에 실패했습니다.');
+    }
+  };
+
+  const handleUnblockUser = async () => {
+    if (!chatId || !user) return;
+    const friendId = chatId.split('_').find(id => id !== user.id);
+    if (!friendId) return;
+
+    const loadingToast = toast.loading('차단 해제 중...');
+
+    try {
+      // 1. friends 테이블 (개인 설정)에서 차단 해제
+      const { error: friendsError } = await supabase
+        .from('friends')
+        .update({ 
+          is_blocked: false, 
+          hide_profile: false 
+        })
+        .match({ user_id: user.id, friend_user_id: friendId });
+
+      if (friendsError) throw friendsError;
+
+      // 2. friendships 테이블 (관계 마스터) 상태를 다시 ACCEPTED로 복구
+      const { error: friendshipError } = await supabase
+        .from('friendships')
+        .update({ status: 'ACCEPTED', updated_at: new Date().toISOString() })
+        .or(`and(user_id.eq.${user.id},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${user.id})`);
+
+      if (friendshipError) throw friendshipError;
+
+      // 3. UI 상태 즉시 업데이트
+      setIsBlocked(false);
+      setIsFriend(true);
+      toast.dismiss(loadingToast);
+      toast.success('차단이 해제되었습니다.');
+      
+      // DB 상태 재검증을 위해 리로드
+      fetchInitialData();
+
+    } catch (error) {
+      console.error('차단 해제 오류:', error);
+      toast.dismiss(loadingToast);
+      toast.error('차단 해제에 실패했습니다.');
     }
   };
 
@@ -1092,7 +1153,7 @@ export default function ChatRoomPage() {
               <p className="text-sm font-bold text-[#FF203A]">차단된 사용자</p>
             </div>
             <button
-              onClick={handleAddFriend}
+              onClick={handleUnblockUser}
               className="bg-[#3A3A3C] px-4 py-2 rounded-xl text-xs font-bold text-white border border-white/10 hover:bg-[#454547] transition-colors"
             >
               차단 해제
