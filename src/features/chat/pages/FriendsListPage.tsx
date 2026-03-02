@@ -1007,7 +1007,7 @@ function BlockFriendModal({ friend, onClose, onConfirm }: {
   return (
     <AnimatePresence>
       <Sheet onClose={onClose}>
-        <div className="px-5 pt-3 pb-10">
+        <div className="px-5 pt-3 pb-28">
           <div className="w-10 h-10 rounded-[14px] flex items-center justify-center mx-auto mb-5"
             style={{ background: `${T.red}12`, border: `1px solid ${T.red}22` }}>
             <Ban className="w-5 h-5" style={{ color: T.red }} />
@@ -1053,7 +1053,7 @@ function DeleteFriendModal({ friend, onClose, onConfirm }: {
   return (
     <AnimatePresence>
       <Sheet onClose={onClose}>
-        <div className="px-5 pt-3 pb-10 text-center">
+        <div className="px-5 pt-3 pb-28 text-center">
           <div className="w-10 h-10 rounded-[14px] flex items-center justify-center mx-auto mb-5"
             style={{ background: `${T.red}12`, border: `1px solid ${T.red}22` }}>
             <AlertTriangle className="w-5 h-5" style={{ color: T.red }} />
