@@ -1,7 +1,9 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react'; // 🔥 useState, useEffect 추가
 import { Outlet, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import BottomNavigation from './BottomNavigation';
+import { supabase } from "../../shared/lib/supabaseClient";
+import { useAuth } from '../../features/auth/contexts/AuthContext';
 
 const MAIN_TAB_PATHS = [
   '/main/friends',   // home → friends
@@ -18,7 +20,11 @@ const isMainTab = (pathname: string) => getTabIndex(pathname) !== -1;
 
 export default function MainLayout() {
   const location = useLocation();
+  const { user } = useAuth(); // 🔥 추가
   const prevTabIndexRef = useRef(getTabIndex(location.pathname));
+  
+  // 🔥 안 읽은 메시지 상태 추가
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
   const currentTabIndex = getTabIndex(location.pathname);
   const isTab = isMainTab(location.pathname);
@@ -30,6 +36,41 @@ export default function MainLayout() {
   if (isTab && currentTabIndex !== prevTabIndex) {
     prevTabIndexRef.current = currentTabIndex;
   }
+
+  // 🔥 안 읽은 메시지 실시간 감지
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const checkUnreadMessages = async () => {
+      try {
+        const { data } = await supabase
+          .from('room_members')
+          .select('unread_count')
+          .eq('user_id', user.id)
+          .is('left_at', null) // 나가지 않은 방만
+          .gt('unread_count', 0)
+          .limit(1)
+          .maybeSingle();
+
+        setHasUnreadMessages(!!data);
+      } catch (error) {
+        console.error('Check unread error:', error);
+      }
+    };
+
+    checkUnreadMessages();
+
+    // ✅ Realtime 구독
+    const channel = supabase
+      .channel(`main_unread_${user.id}`)
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'room_members', filter: `user_id=eq.${user.id}` },
+        () => checkUnreadMessages()
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
 
   return (
     <div
@@ -52,7 +93,8 @@ export default function MainLayout() {
         </AnimatePresence>
       </div>
 
-      <BottomNavigation />
+      {/* 🔥 hasUnreadMessages prop 전달 */}
+      <BottomNavigation hasUnreadMessages={hasUnreadMessages} />
     </div>
   );
 }

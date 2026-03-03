@@ -217,7 +217,7 @@ const { data: members } = await supabase
   .select('user_id, left_at, created_at')
   .eq('room_id', chatId);
 
-  setMembers(members || []);
+setMembers(members || []);
 
 // ✅ 활성 멤버 수 계산 (left_at이 null인 사람만)
 const activeMemberIds = members?.filter(m => !m.left_at).map(m => m.user_id) || [];
@@ -225,6 +225,20 @@ setActiveMemberCount(activeMemberIds.length);
 
 // ✅ 모든 멤버 ID (나간 사람 포함 - 프로필 조회용)
 let memberIds = members?.map(m => m.user_id) || [];
+
+// 🔥 [중요] 메시지를 보낸 사람들도 프로필 조회 대상에 포함
+const { data: allMessagesInRoom } = await supabase
+  .from('messages')
+  .select('sender_id')
+  .eq('room_id', chatId);
+
+  const messageSenderIds = [...new Set(allMessagesInRoom?.map(m => m.sender_id) || [])];
+
+// 🔥 멤버 목록에 없지만 메시지를 보낸 사람들 추가 (이전에 나간 사람)
+const additionalSenders = messageSenderIds.filter(id => !memberIds.includes(id));
+if (additionalSenders.length > 0) {
+  memberIds = [...memberIds, ...additionalSenders];
+}  
 
 // 1:1 채팅 예외 처리 (기존 로직 유지)
 if (!isGroupChat && memberIds.length < 2) {
@@ -235,7 +249,7 @@ if (!isGroupChat && memberIds.length < 2) {
   }
 }
 
-// ✅ 4. 프로필 정보 조회 (나간 사람도 포함)
+// ✅ 4. 프로필 정보 조회 (나간 사람 + 메시지 발신자 모두 포함)
 if (memberIds.length > 0) {
   const { data: profiles } = await supabase
     .from('users')
@@ -260,19 +274,17 @@ if (memberIds.length > 0) {
   setMemberProfiles(profileMap);
 
   if (isGroupChat) {
-    setRoomTitle(room?.title || `그룹 채팅 (${memberIds.length}명)`);
+    // 🔥 활성 멤버 수 사용 (나간 사람 제외)
+    setRoomTitle(room?.title || `그룹 채팅 (${activeMemberIds.length}명)`);
     setRoomAvatar(room?.avatar_url || null);
   } else {
-    // ⭐ 5. 1:1 채팅 상대방 상태 체크 (friendships + friends 테이블 연동)
+    // 1:1 채팅 로직 (기존 유지)
     const friendId = memberIds.find(id => id !== user.id);
-    // ❌ 에러를 일으키던 바깥쪽 중복 변수 선언은 삭제했습니다.
+    const friendMemberData = members?.find(m => m.user_id === friendId);
 
     if (friendId) {
       const friendProfile = profileMap[friendId];
-      // ✅ 여기서 선언된 변수가 정상적으로 사용됩니다.
-      const friendMemberData = members?.find(m => m.user_id === friendId);
 
-      // ✅ 간단한 로직: 내 friends 테이블만 확인
       const { data: myFriendRecord } = await supabase
         .from('friends')
         .select('alias_name, is_blocked')
@@ -280,25 +292,20 @@ if (memberIds.length > 0) {
         .eq('friend_user_id', friendId)
         .maybeSingle();
 
-      // 이름 우선순위: 내가 설정한 별명 > 상대방 실제 이름 > 기본값
       let finalTitle = myFriendRecord?.alias_name || friendProfile?.name || '알 수 없는 사용자';
       
-      // 나간 사용자 표시
       if (friendMemberData && friendMemberData.left_at !== null) {
         finalTitle = `${finalTitle} (나간 사용자)`;
       }
 
       setRoomTitle(finalTitle);
       setRoomAvatar(friendProfile?.avatar_url || null);
-      
-      // ✅ 친구 여부: friends 테이블에 레코드가 있고 차단되지 않았으면 친구
       setIsFriend(!!myFriendRecord && !myFriendRecord.is_blocked);
-      
-      // ✅ 차단 여부
       setIsBlocked(!!myFriendRecord?.is_blocked);
     }
   }
 }
+
       // 6. 메시지 조회 (내 입장 시점 created_at 이후 데이터만)
       const joinedAt = myMember?.created_at;
 

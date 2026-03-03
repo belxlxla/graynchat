@@ -106,85 +106,137 @@ export default function ChatListPage() {
   const [leaveChatTarget, setLeaveChatTarget] = useState<ChatRoom | null>(null);
 
   // ── 채팅 목록 불러오기 ──────────────────────────────────
-  const fetchChats = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const { data: myMemberships, error: memberError } = await supabase
-        .from('room_members').select('room_id').eq('user_id', user.id);
-      if (memberError) throw memberError;
-      if (!myMemberships || myMemberships.length === 0) { setChats([]); setIsLoading(false); return; }
+  // 🔥 기존 fetchChats 함수 전체 교체 (130번 줄 근처)
 
-      const roomIds = myMemberships.map(m => m.room_id);
+const fetchChats = useCallback(async () => {
+  if (!user?.id) return;
+  try {
+    const { data: myMemberships, error: memberError } = await supabase
+      .from('room_members')
+      .select('room_id, left_at')
+      .eq('user_id', user.id);
+      
+    if (memberError) throw memberError;
+    
+    // 🔥 나간 방 제외 (left_at이 null인 것만)
+    const activeRoomIds = myMemberships
+      ?.filter(m => !m.left_at)
+      .map(m => m.room_id) || [];
+    
+    if (activeRoomIds.length === 0) { 
+      setChats([]); 
+      setIsLoading(false); 
+      return; 
+    }
 
-      const { data: roomsData, error: roomsError } = await supabase
-        .from('chat_rooms').select('*').in('id', roomIds).order('last_message_at', { ascending: false });
-      if (roomsError) throw roomsError;
+    const { data: roomsData, error: roomsError } = await supabase
+      .from('chat_rooms')
+      .select('*')
+      .in('id', activeRoomIds)
+      .order('last_message_at', { ascending: false });
+      
+    if (roomsError) throw roomsError;
 
-      const { data: myRoomMembers } = await supabase
-        .from('room_members').select('room_id, unread_count')
-        .eq('user_id', user.id).in('room_id', roomIds);
+    const { data: myRoomMembers } = await supabase
+      .from('room_members')
+      .select('room_id, unread_count')
+      .eq('user_id', user.id)
+      .in('room_id', activeRoomIds);
 
-      const unreadMap = new Map(myRoomMembers?.map(m => [m.room_id, m.unread_count || 0]) || []);
+    const unreadMap = new Map(myRoomMembers?.map(m => [m.room_id, m.unread_count || 0]) || []);
 
-      const individualRooms = roomsData?.filter(r => r.type === 'individual') || [];
-      const friendUUIDs = individualRooms
-        .map(r => r.id.split('_').find((id: string) => id !== user.id))
-        .filter((id): id is string => !!id && id.length > 20);
+    // 🔥 각 방의 실제 활성 멤버 수 계산
+    const { data: allRoomMembers } = await supabase
+      .from('room_members')
+      .select('room_id, user_id, left_at')
+      .in('room_id', activeRoomIds);
 
-      let usersMap = new Map<string, UserProfile>();
-      if (friendUUIDs.length > 0) {
-        const { data: usersData } = await supabase.from('users').select('id, name').in('id', friendUUIDs);
-        const { data: profilesData } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', friendUUIDs);
-        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
-        usersData?.forEach(u => usersMap.set(u.id, {
-          id: u.id,
-          name: u.name,
-          avatar_url: profilesMap.get(u.id)?.avatar_url || null,
-        }));
-      }
+    // 🔥 방별 활성 멤버 수 계산 (left_at이 null인 사람만)
+    const activeMemberCountMap = new Map<string, number>();
+    activeRoomIds.forEach(roomId => {
+      const count = allRoomMembers?.filter(m => 
+        m.room_id === roomId && !m.left_at
+      ).length || 0;
+      activeMemberCountMap.set(roomId, count);
+    });
 
-      const formattedData = (roomsData || []).map((room): ChatRoom | null => {
-        if (!room) return null;
-        const isGroup = room.type === 'group';
-        let title = '알 수 없는 사용자';
-        let avatar_url: string | null = null;
+    const individualRooms = roomsData?.filter(r => r.type === 'individual') || [];
+    const friendUUIDs = individualRooms
+      .map(r => r.id.split('_').find((id: string) => id !== user.id))
+      .filter((id): id is string => !!id && id.length > 20);
 
-        if (isGroup) {
-          title = room.title || '그룹 채팅';
-          avatar_url = room.avatar_url;
-        } else {
-          const friendId = room.id.split('_').find((id: string) => id !== user.id);
-          if (friendId) {
-            const up = usersMap.get(friendId);
-            if (up) { title = up.name; avatar_url = up.avatar_url; }
+    let usersMap = new Map<string, UserProfile>();
+    if (friendUUIDs.length > 0) {
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', friendUUIDs);
+        
+      const { data: profilesData } = await supabase
+        .from('user_profiles')
+        .select('user_id, avatar_url')
+        .in('user_id', friendUUIDs);
+        
+      const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+      usersData?.forEach(u => usersMap.set(u.id, {
+        id: u.id,
+        name: u.name,
+        avatar_url: profilesMap.get(u.id)?.avatar_url || null,
+      }));
+    }
+
+    const formattedData = (roomsData || []).map((room): ChatRoom | null => {
+      if (!room) return null;
+      const isGroup = room.type === 'group';
+      let title = '알 수 없는 사용자';
+      let avatar_url: string | null = null;
+
+      // 🔥 실제 활성 멤버 수 사용
+      const actualMemberCount = activeMemberCountMap.get(room.id) || 0;
+
+      if (isGroup) {
+        title = room.title || '그룹 채팅';
+        avatar_url = room.avatar_url;
+      } else {
+        const friendId = room.id.split('_').find((id: string) => id !== user.id);
+        if (friendId) {
+          const up = usersMap.get(friendId);
+          if (up) { 
+            title = up.name; 
+            avatar_url = up.avatar_url; 
           }
         }
+      }
 
-        return {
-          id: room.id.toString(), type: room.type || 'individual', title, avatar_url,
-          membersCount: room.members_count || (isGroup ? 3 : 1),
-          lastMessage: room.last_message || '대화를 시작해보세요!',
-          timestamp: room.last_message_at
-            ? new Date(room.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          unreadCount: unreadMap.get(room.id) || 0, isMuted: false,
-        };
-      }).filter((c): c is ChatRoom => c !== null);
+      return {
+        id: room.id.toString(),
+        type: room.type || 'individual',
+        title,
+        avatar_url,
+        membersCount: actualMemberCount, // 🔥 실제 활성 멤버 수 사용
+        lastMessage: room.last_message || '대화를 시작해보세요!',
+        timestamp: room.last_message_at
+          ? new Date(room.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        unreadCount: unreadMap.get(room.id) || 0,
+        isMuted: false,
+      };
+    }).filter((c): c is ChatRoom => c !== null);
 
-      const uniqueChats = formattedData.reduce((acc: ChatRoom[], chat) => {
-        if (!acc.find(c => c.id === chat.id)) {
-          acc.push(chat);
-        }
-        return acc;
-      }, []);
+    const uniqueChats = formattedData.reduce((acc: ChatRoom[], chat) => {
+      if (!acc.find(c => c.id === chat.id)) {
+        acc.push(chat);
+      }
+      return acc;
+    }, []);
 
-      setChats(uniqueChats);
-    } catch (error) {
-      console.error('Fetch Chats Error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
+    setChats(uniqueChats);
+  } catch (error) {
+    console.error('Fetch Chats Error:', error);
+  } finally {
+    setIsLoading(false);
+  }
+}, [user]);
 
   // ✅ 경로 변경될 때마다 새로고침
   useEffect(() => {
@@ -301,80 +353,71 @@ const fetchFriends = useCallback(async () => {
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
 
-  const handleLeaveChatConfirm = async () => {
-    if (!user?.id || !leaveChatTarget) return;
+const handleLeaveChatConfirm = async () => {
+  if (!user?.id || !leaveChatTarget) return;
 
-    const targetRoomId = leaveChatTarget.id;
-    const isIndividual = leaveChatTarget.type === 'individual';
+  const targetRoomId = leaveChatTarget.id;
+  const isIndividual = leaveChatTarget.type === 'individual';
 
-    setChats(prev => prev.filter(c => c.id !== targetRoomId));
-    setLeaveChatTarget(null);
-    
-    try {
-      // 채팅방 나가기시 룸 아이디로 룸 맴버를 조회해서 점수 초기화 - 2026.02.23 kyle
-      // 🔥 1. [AI 점수 초기화] DB 조회를 통해 상대방 ID 특정
-      if (isIndividual) {
-        // room_members에서 이 방의 참여자들을 가져옴
-        const { data: members, error: memberError } = await supabase
-          .from('room_members')
-          .select('user_id')
-          .eq('room_id', targetRoomId);
+  // 🔥 UI에서 즉시 제거
+  setChats(prev => prev.filter(c => c.id !== targetRoomId));
+  setLeaveChatTarget(null);
+  
+  try {
+    const now = new Date().toISOString();
 
-        if (!memberError && members) {
-          // 참여자 중 내 아이디가 아닌 사람(상대방)을 찾음
-          const friend = members.find(m => m.user_id !== user.id);
-          
-          if (friend) {
-            await supabase.from('friendships') // ✅ 'friends' -> 'friendships'
-              .update({ friendly_score: 0 }) 
-              .match({ user_id: user.id, friend_id: friend.user_id }); // ✅ friend_user_id -> friend_id
-            
-            console.log(`${friend.user_id}님과의 친밀도 초기화 완료`);
-          } 
-        }
+    // 🔥 1. AI 점수 초기화 (1:1만)
+    if (isIndividual) {
+      const friendId = targetRoomId.split('_').find(id => id !== user.id);
+      if (friendId) {
+        await supabase.from('friends')
+          .update({ friendly_score: 0 })
+          .match({ user_id: user.id, friend_user_id: friendId });
       }
-      
-      // 채팅방 나가기시 나간 시간기록으로 스냅샷 - 2026.02.23 kyle
-      // 🔥 2. [변경됨] 멤버 삭제 대신 '나간 시간' 업데이트 (Soft Delete)
-      const { error: updateMemberError } = await supabase
-        .from('room_members')
-        .update({ 
-          left_at: new Date().toISOString(), // 나간 시간 기록
-          unread_count: 0                    // 안 읽은 수 초기화
-        })
-        .match({ room_id: targetRoomId, user_id: user.id });
-      
-      if (updateMemberError) throw updateMemberError;
-      
-      // 🔥 3. [남은 멤버 수 확인]
-      const { count } = await supabase
-        .from('room_members')
-        .select('*', { count: 'exact', head: true })
-        .eq('room_id', targetRoomId);
-      
-      // 🔥 4. [메시지 및 방 삭제 전략]
-      if (count === 0) {
-        // ✅ 모든 멤버가 나간 경우: 메시지 + 방 모두 삭제미등록 사용자
-        await supabase.from('messages').delete().eq('room_id', targetRoomId);
-        await supabase.from('chat_rooms').delete().eq('id', targetRoomId);
-      } else if (isIndividual && count === 1) {
-        // ✅ 1:1 채팅에서 한 명이 나가면 (상대방 1명만 남음) 메시지 삭제
-        // → 다시 입장 시 이전 대화 없이 새로운 대화 시작
-        await supabase.from('messages').delete().eq('room_id', targetRoomId);
-        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', targetRoomId);
-      } else {
-        // ✅ 그룹 채팅에서 일부만 나간 경우: 멤버 수만 업데이트
-        await supabase.from('chat_rooms').update({ members_count: count }).eq('id', targetRoomId);
-      }
-      
-      toast.success('채팅방을 나갔습니다.');
-      
-    } catch (error) {
-      console.error('나가기 실패:', error);
-      toast.error('나가기에 실패했습니다.');
-      fetchChats(); 
     }
-  };
+
+    // 🔥 2. 그룹: 시스템 메시지 + left_at 기록
+    if (!isIndividual) {
+      const { data: myUser } = await supabase.from('users')
+        .select('name').eq('id', user.id).single();
+
+      await supabase.from('messages').insert({
+        room_id: targetRoomId,
+        sender_id: user.id,
+        content: `${myUser?.name || '사용자'}님이 나갔습니다.`,
+        message_type: 'system_leave',
+      });
+
+      await supabase.from('room_members')
+        .update({ left_at: now })
+        .match({ room_id: targetRoomId, user_id: user.id });
+
+      // 🔥 멤버 수 업데이트 (left_at이 NULL인 사람만 카운트)
+      const { count } = await supabase.from('room_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('room_id', targetRoomId)
+        .is('left_at', null);
+
+      await supabase.from('chat_rooms')
+        .update({ members_count: count || 0 })
+        .eq('id', targetRoomId);
+    }
+
+    // 🔥 3. 1:1: left_at만 기록 (메시지/멤버 삭제 안 함)
+    if (isIndividual) {
+      await supabase.from('room_members')
+        .update({ left_at: now })
+        .match({ room_id: targetRoomId, user_id: user.id });
+    }
+
+    toast.success('채팅방을 나갔습니다.');
+    
+  } catch (error) {
+    console.error('나가기 실패:', error);
+    toast.error('나가기에 실패했습니다.');
+    fetchChats();
+  }
+};
 
   const handleMarkAsRead = async (id: string) => {
     if (!user?.id) return;
@@ -654,9 +697,11 @@ function ChatListItem({ data, onLeave, onRead, onEditTitle }: {
               <span className="text-[15.5px] font-semibold text-white truncate leading-tight">
                 {data.title}
               </span>
-              {isGroup && data.membersCount > 1 && (
-                <span className="text-[12px] font-semibold text-[#FF203A]/90 shrink-0">{data.membersCount}</span>
-              )}
+                {isGroup && data.membersCount > 0 && (
+                  <span className="text-[12px] font-semibold text-[#FF203A]/90 shrink-0">
+                    {data.membersCount}
+                  </span>
+                )}
             </div>
             <span className="text-[11px] text-white/28 shrink-0 tabular-nums">{data.timestamp}</span>
           </div>
