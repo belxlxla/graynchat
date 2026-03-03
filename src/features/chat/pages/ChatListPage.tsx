@@ -266,43 +266,38 @@ export default function ChatListPage() {
     return () => { supabase.removeChannel(channel); };
   }, [user?.id, fetchChats]);
 
-  // ─── 기존 201번 라인 부근 수정 ───
-  const fetchFriends = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      // 1. friendships 테이블에서 수락된(ACCEPTED) 친구 목록 가져오기
-      const { data: friendsData, error } = await supabase
-        .from('friendships') // ✅ 'friends' -> 'friendships'
-        .select('id, friend_id, status') // ✅ 'friend_user_id' -> 'friend_id'
-        .eq('user_id', user.id)
-        .eq('status', 'ACCEPTED');
+const fetchFriends = useCallback(async () => {
+  if (!user?.id) return;
+  try {
+    // ✅ is_blocked = false인 친구만 조회 (차단된 사람 제외)
+    const { data: friendsData, error } = await supabase
+      .from('friends')
+      .select('id, friend_user_id, alias_name')
+      .eq('user_id', user.id)
+      .eq('is_blocked', false); // 🔥 차단된 친구 제외
+      
+    if (error) throw error;
 
-      if (error) throw error;
-
-      if (friendsData && friendsData.length > 0) {
-        // 2. 조회된 friend_id들로 UUID 배열 생성
-        const uuids = friendsData.map(f => f.friend_id).filter(Boolean); // ✅ 변수명 일치
-
-        // 3. 사용자 정보 및 프로필 통합 조회
-        const { data: usersData } = await supabase.from('users').select('id, name').in('id', uuids);
-        const { data: profilesData } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', uuids);
-        
-        const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
-        const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
-        
-        setFriendsList(friendsData.map(f => ({
-          id: f.id,
-          friend_user_id: f.friend_id, // ✅ f.friend_id 사용
-          name: usersMap.get(f.friend_id)?.name || '이름 없음',
-          avatar_url: profilesMap.get(f.friend_id)?.avatar_url || null,
-        })));
-      } else {
-        setFriendsList([]);
-      }
-    } catch (error) { 
-      console.error('Fetch Friends Error:', error); 
+    if (friendsData && friendsData.length > 0) {
+      const uuids = friendsData.map(f => f.friend_user_id).filter(Boolean);
+      const { data: usersData } = await supabase.from('users').select('id, name').in('id', uuids);
+      const { data: profilesData } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', uuids);
+      const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+      const profilesMap = new Map(profilesData?.map(p => [p.user_id, p]) || []);
+      
+      setFriendsList(friendsData.map(f => ({
+        id: f.id,
+        friend_user_id: f.friend_user_id,
+        name: usersMap.get(f.friend_user_id)?.name || f.alias_name || '이름 없음',
+        avatar_url: profilesMap.get(f.friend_user_id)?.avatar_url || null,
+      })));
+    } else {
+      setFriendsList([]);
     }
-  }, [user?.id]); // ✅ 의존성 최적화
+  } catch (error) { 
+    console.error('Fetch Friends Error:', error); 
+  }
+}, [user]);
 
   useEffect(() => { fetchFriends(); }, [fetchFriends]);
 

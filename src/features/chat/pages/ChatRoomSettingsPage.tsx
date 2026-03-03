@@ -149,9 +149,14 @@ export default function ChatRoomSettingsPage() {
 
         if (room) { title = room.title || title; avatar_url = room.avatar_url; memberCount = room.members_count || 0; }
 
-        const { count: realCount } = await supabase.from('room_members')
-          .select('*', { count: 'exact', head: true }).eq('room_id', chatId);
-        memberCount = realCount || memberCount;
+// ✅ left_at이 null인 활성 멤버만 카운트
+const { count: realCount } = await supabase
+  .from('room_members')
+  .select('*', { count: 'exact', head: true })
+  .eq('room_id', chatId)
+  .is('left_at', null); // ✅ 활성 멤버만
+
+memberCount = realCount || memberCount;
 
         let statusMessage: string | null = null;
 
