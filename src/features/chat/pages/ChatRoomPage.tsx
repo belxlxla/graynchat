@@ -22,6 +22,7 @@ interface Message {
   content: string;
   created_at: string;
   is_read: boolean;
+  message_type?: 'user' | 'system_join' | 'system_leave' | 'system_created'; // ✅ 추가
   isFailed?: boolean;
   isRetrying?: boolean;
   tempId?: string;
@@ -827,8 +828,8 @@ export default function ChatRoomPage() {
   };
 
   const renderMessageContent = (msg: Message, isMe: boolean) => {
-    const type = getFileType(msg.content);
-    const isHighlighted = searchResults.includes(msg.id);
+  const type = getFileType(msg.content);
+  const isHighlighted = searchResults.includes(msg.id);
     const isCurrentSearch = searchResults[currentSearchIndex] === msg.id;
 
     if (type === 'link') {
@@ -869,6 +870,36 @@ export default function ChatRoomPage() {
         </button>
       );
     }
+
+      if (msg.message_type && msg.message_type !== 'user') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: -8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+        className="flex justify-center w-full my-2"
+      >
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/[0.06] backdrop-blur-sm rounded-full border border-white/[0.08] shadow-lg">
+          {msg.message_type === 'system_created' && (
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/70 animate-pulse" />
+          )}
+          {msg.message_type === 'system_join' && (
+            <svg className="w-3.5 h-3.5 text-blue-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+          )}
+          {msg.message_type === 'system_leave' && (
+            <svg className="w-3.5 h-3.5 text-orange-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          )}
+          <p className="text-[11.5px] font-medium text-white/45 tracking-tight">
+            {msg.content}
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
 
     if (type === 'image') {
       return (
@@ -1213,13 +1244,21 @@ export default function ChatRoomPage() {
               const isMe = msg.sender_id === user?.id;
               const sender = memberProfiles[msg.sender_id];
 
-              return (
-                <motion.div
-                  key={msg.tempId || msg.id}
-                  layout
-                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+                if (msg.message_type && msg.message_type !== 'user') {
+                return (
+                  <div key={msg.tempId || msg.id} className="w-full">
+                    {renderMessageContent(msg, false)}
+                  </div>
+                );
+              }
+
+                return (
+                  <motion.div
+                    key={msg.tempId || msg.id}
+                    layout
+                    initial={{ opacity: 0, y: 8, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
                   ref={el => {
                     messageRefs.current[msg.id] = el as HTMLDivElement | null;
                   }}

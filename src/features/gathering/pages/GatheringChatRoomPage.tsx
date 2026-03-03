@@ -64,6 +64,7 @@ const normalizeUrl = (url: string): string => {
 const BUCKET_NAME = 'gathering-uploads';
 
 // ─── 타입 ────────────────────────────────────────────────────
+// 🔥 수정 후
 interface ChatMessage {
   id: number;
   user_id: string;
@@ -71,6 +72,7 @@ interface ChatMessage {
   user_avatar: string | null;
   content: string;
   created_at: string;
+  message_type?: 'user' | 'system_join' | 'system_leave' | 'system_created'; // ✅ 추가
 }
 
 interface RoomInfo {
@@ -365,23 +367,39 @@ export default function GatheringChatRoomPage() {
 
   // ── 나가기/삭제 ─────────────────────────────────────────
   const handleLeaveOrDeleteRoom = async () => {
-    if (!user || !roomId) return;
-    try {
-      if (isHost) {
-        // 호스트는 방을 삭제
-        await supabase.from('gathering_rooms').delete().eq('id', roomId);
-        toast.success('게더링 챗을 삭제했습니다.');
-      } else {
-        // 일반 멤버는 나가기
-        await supabase.from('gathering_room_members').delete()
-          .eq('room_id', roomId).eq('user_id', user.id);
-        toast.success('게더링 챗을 나갔습니다.');
-      }
-      navigate('/main/gathering', { replace: true });
-    } catch {
-      toast.error('요청 처리에 실패했습니다.');
+  if (!user || !roomId) return;
+  try {
+    if (isHost) {
+      // 호스트는 방을 삭제
+      await supabase.from('gathering_rooms').delete().eq('id', roomId);
+      toast.success('게더링 챗을 삭제했습니다.');
+    } else {
+      // 🔥 나가기 전 시스템 메시지 추가
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', user.id)
+        .single();
+
+      await supabase.from('gathering_messages').insert({
+        room_id: roomId,
+        user_id: user.id,
+        user_name: '시스템',
+        user_avatar: null,
+        content: `${userData?.name || '사용자'}님이 나갔습니다.`,
+        message_type: 'system_leave',
+      });
+
+      // 일반 멤버는 나가기
+      await supabase.from('gathering_room_members').delete()
+        .eq('room_id', roomId).eq('user_id', user.id);
+      toast.success('게더링 챗을 나갔습니다.');
     }
-  };
+    navigate('/main/gathering', { replace: true });
+  } catch {
+    toast.error('요청 처리에 실패했습니다.');
+  }
+};
 
   // ── 멤버 로드 ────────────────────────────────────────────
   const loadMembers = async () => {
@@ -413,6 +431,36 @@ export default function GatheringChatRoomPage() {
 
   // ── 메시지 콘텐츠 ────────────────────────────────────────
   const renderMessageContent = (msg: ChatMessage, isMe: boolean) => {
+      // 🔥 시스템 메시지 처리 (맨 앞에 추가)
+  if (msg.message_type && msg.message_type !== 'user') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: -8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+        className="flex justify-center w-full my-2"
+      >
+        <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/[0.06] backdrop-blur-sm rounded-full border border-white/[0.08] shadow-lg">
+          {msg.message_type === 'system_created' && (
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/70 animate-pulse" />
+          )}
+          {msg.message_type === 'system_join' && (
+            <svg className="w-3.5 h-3.5 text-blue-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+          )}
+          {msg.message_type === 'system_leave' && (
+            <svg className="w-3.5 h-3.5 text-orange-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          )}
+          <p className="text-[11.5px] font-medium text-white/45 tracking-tight">
+            {msg.content}
+          </p>
+        </div>
+      </motion.div>
+    );
+  }
     const type = getFileType(msg.content);
 
     if (type === 'image') {
@@ -581,15 +629,33 @@ export default function GatheringChatRoomPage() {
         )}
 
         {messages.map((msg, idx) => {
-          const isMe      = msg.user_id === user?.id;
-          const prevMsg   = messages[idx - 1];
-          const showDay   = !prevMsg || getDayStr(msg.created_at) !== getDayStr(prevMsg.created_at);
+          const isMe = msg.user_id === user?.id;
+          const prevMsg = messages[idx - 1];
+          const showDay = !prevMsg || getDayStr(msg.created_at) !== getDayStr(prevMsg.created_at);
           const showAvatar = !isMe && (!prevMsg || prevMsg.user_id !== msg.user_id || showDay);
 
-          return (
-            <div key={msg.id}>
-              {/* 날짜 구분선 */}
-              {showDay && (
+                    // ✅ 시스템 메시지 별도 처리
+          if (msg.message_type && msg.message_type !== 'user') {
+            return (
+              <div key={msg.id}>
+                {showDay && (
+                  <div className="flex items-center gap-3 py-5">
+                    <div className="flex-1 h-px bg-white/[0.05]" />
+                    <span className="text-[11px] text-white/20 px-3 py-[5px] bg-white/[0.04] rounded-full border border-white/[0.05]">
+                      {getDayStr(msg.created_at)}
+                    </span>
+                    <div className="flex-1 h-px bg-white/[0.05]" />
+                  </div>
+                )}
+                {renderMessageContent(msg, false)}
+              </div>
+            );
+          }
+
+            return (
+              <div key={msg.id}>
+                {/* 날짜 구분선 */}
+                {showDay && (
                 <div className="flex items-center gap-3 py-5">
                   <div className="flex-1 h-px bg-white/[0.05]" />
                   <span className="text-[11px] text-white/20 px-3 py-[5px] bg-white/[0.04] rounded-full border border-white/[0.05]">

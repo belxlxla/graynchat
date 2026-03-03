@@ -272,117 +272,182 @@ export default function ChatRoomSettingsPage() {
     }
   };
 
-  const handleInvite = async (selectedFriendIds: number[]) => {
-    if (!chatId || selectedFriendIds.length === 0) return;
+const handleInvite = async (selectedFriendIds: number[]) => {
+  if (!chatId || selectedFriendIds.length === 0) return;
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const myId = session?.user.id;
-      if (!myId) return;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const myId = session?.user.id;
+    if (!myId) return;
 
-      const { data: currentMembers } = await supabase
-        .from('room_members')
-        .select('user_id')
-        .eq('room_id', chatId);
+    // 🔥 1. 현재 멤버 조회 (left_at 포함)
+    const { data: currentMembers } = await supabase
+      .from('room_members')
+      .select('user_id, left_at')
+      .eq('room_id', chatId);
 
-      const currentMemberIds = currentMembers?.map(m => m.user_id) || [];
+    const activeMemberIds = currentMembers
+      ?.filter(m => !m.left_at) // left_at이 null인 사람만
+      .map(m => m.user_id) || [];
 
-      const selectedUserIds = selectedFriendIds
-        .map(fid => friendsList.find(fr => fr.id === fid)?.friend_user_id)
-        .filter(Boolean) as string[];
+    const leftMemberIds = currentMembers
+      ?.filter(m => m.left_at !== null) // 나간 사람
+      .map(m => m.user_id) || [];
 
-      if (selectedUserIds.length === 0) {
-        toast.error('선택한 친구를 찾을 수 없습니다.');
-        return;
-      }
+    // 🔥 2. 선택한 친구들의 UUID 변환
+    const selectedUserIds = selectedFriendIds
+      .map(fid => friendsList.find(fr => fr.id === fid)?.friend_user_id)
+      .filter(Boolean) as string[];
 
-      const alreadyMembers = selectedUserIds.filter(uid => currentMemberIds.includes(uid));
-      const newMembers = selectedUserIds.filter(uid => !currentMemberIds.includes(uid));
+    if (selectedUserIds.length === 0) {
+      toast.error('선택한 친구를 찾을 수 없습니다.');
+      return;
+    }
 
-      if (alreadyMembers.length > 0) {
-        const alreadyMemberNames = alreadyMembers
-          .map(uid => friendsList.find(f => f.friend_user_id === uid)?.alias_name)
-          .filter(Boolean);
-        toast.error(`${alreadyMemberNames.join(', ')}님은 이미 채팅방에 있습니다.`);
-      }
+    // 🔥 3. 이미 활성 멤버인지 체크
+    const alreadyActive = selectedUserIds.filter(uid => activeMemberIds.includes(uid));
+    if (alreadyActive.length > 0) {
+      const alreadyNames = alreadyActive
+        .map(uid => friendsList.find(f => f.friend_user_id === uid)?.alias_name)
+        .filter(Boolean);
+      toast.error(`${alreadyNames.join(', ')}님은 이미 채팅방에 있습니다.`);
+      return;
+    }
 
-      if (newMembers.length === 0) {
-        return;
-      }
+    // 🔥 4. 재초대 vs 신규 초대 분리
+    const toReinvite = selectedUserIds.filter(uid => leftMemberIds.includes(uid));
+    const toInvite = selectedUserIds.filter(uid => 
+      !activeMemberIds.includes(uid) && !leftMemberIds.includes(uid)
+    );
 
-      const isGroupChat = chatId.startsWith('group_');
+    const now = new Date().toISOString();
+    const isGroupChat = chatId.startsWith('group_');
 
-      if (!isGroupChat) {
-        const allMembers = [...currentMemberIds, ...newMembers];
-        const groupId = `group_${Date.now()}`;
+    // 🔥 5-1. 1:1 채팅을 그룹으로 전환 (기존 로직)
+    if (!isGroupChat && (toReinvite.length > 0 || toInvite.length > 0)) {
+      const allMembers = [...activeMemberIds, ...toReinvite, ...toInvite];
+      const groupId = `group_${Date.now()}`;
 
-        const { data: userProfiles } = await supabase
-          .from('users')
-          .select('id, name')
-          .in('id', allMembers);
+      const { data: userProfiles } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', allMembers);
 
-        const memberNames = userProfiles?.map(u => u.name).filter(Boolean) || [];
-        const groupTitle = memberNames.length > 0
-          ? `${memberNames.slice(0, 3).join(', ')}${memberNames.length > 3 ? ` 외 ${memberNames.length - 3}명` : ''}`
-          : `그룹 채팅 (${allMembers.length}명)`;
+      const memberNames = userProfiles?.map(u => u.name).filter(Boolean) || [];
+      const groupTitle = memberNames.length > 0
+        ? `${memberNames.slice(0, 3).join(', ')}${memberNames.length > 3 ? ` 외 ${memberNames.length - 3}명` : ''}`
+        : `그룹 채팅 (${allMembers.length}명)`;
 
-        const { error: roomError } = await supabase
-          .from('chat_rooms')
-          .insert({
-            id: groupId,
-            type: 'group',
-            title: groupTitle,
-            created_by: myId,
-            members_count: allMembers.length,
-          });
+      const { error: roomError } = await supabase
+        .from('chat_rooms')
+        .insert({
+          id: groupId,
+          type: 'group',
+          title: groupTitle,
+          created_by: myId,
+          members_count: allMembers.length,
+        });
 
-        if (roomError) throw roomError;
+      if (roomError) throw roomError;
 
-        const memberInserts = allMembers.map(uid => ({
-          room_id: groupId,
-          user_id: uid,
-        }));
-
-        const { error: membersError } = await supabase
-          .from('room_members')
-          .insert(memberInserts);
-
-        if (membersError) throw membersError;
-
-        toast.success('새 그룹 채팅방이 생성되었습니다.');
-        setIsInviteModalOpen(false);
-        navigate(`/chat/room/${groupId}`);
-        return;
-      }
-
-      const memberInserts = newMembers.map(uid => ({
-        room_id: chatId,
+      const memberInserts = allMembers.map(uid => ({
+        room_id: groupId,
         user_id: uid,
+        joined_at: now,
+        left_at: null,
       }));
 
-      const { error: insertError } = await supabase
+      const { error: membersError } = await supabase
         .from('room_members')
         .insert(memberInserts);
 
-      if (insertError) throw insertError;
+      if (membersError) throw membersError;
 
-      const newMemberCount = currentMemberIds.length + newMembers.length;
-      const { error: updateError } = await supabase
-        .from('chat_rooms')
-        .update({ members_count: newMemberCount })
-        .eq('id', chatId);
+      // 🔥 그룹 생성 메시지
+      const createDate = new Date();
+      const dateStr = `${createDate.getFullYear()}년 ${createDate.getMonth() + 1}월 ${createDate.getDate()}일 ${createDate.getHours()}:${String(createDate.getMinutes()).padStart(2, '0')}`;
+      await supabase.from('messages').insert({
+        room_id: groupId,
+        sender_id: myId,
+        content: `${dateStr}에 그룹 채팅방이 생성되었습니다.`,
+        message_type: 'system_created',
+      });
 
-      if (updateError) console.warn('멤버 수 업데이트 실패:', updateError);
-
-      toast.success(`${newMembers.length}명을 초대했습니다.`);
+      toast.success('새 그룹 채팅방이 생성되었습니다.');
       setIsInviteModalOpen(false);
-      window.location.reload();
-
-    } catch (err) {
-      console.error('초대 실패:', err);
-      toast.error('초대에 실패했습니다.');
+      navigate(`/chat/room/${groupId}`);
+      return;
     }
-  };
+
+    // 🔥 5-2. 재초대 처리
+    for (const uid of toReinvite) {
+      await supabase.from('room_members')
+        .update({ joined_at: now, left_at: null })
+        .match({ room_id: chatId, user_id: uid });
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', uid)
+        .single();
+
+      // ✅ 시스템 메시지 추가
+      await supabase.from('messages').insert({
+        room_id: chatId,
+        sender_id: uid,
+        content: `${userData?.name || '사용자'}님이 다시 초대되었습니다.`,
+        message_type: 'system_join',
+      });
+    }
+
+    // 🔥 5-3. 신규 초대 처리
+    if (toInvite.length > 0) {
+      const memberInserts = toInvite.map(uid => ({
+        room_id: chatId,
+        user_id: uid,
+        joined_at: now,
+        left_at: null,
+      }));
+
+      await supabase.from('room_members').insert(memberInserts);
+
+      for (const uid of toInvite) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', uid)
+          .single();
+
+        // ✅ 시스템 메시지 추가
+        await supabase.from('messages').insert({
+          room_id: chatId,
+          sender_id: uid,
+          content: `${userData?.name || '사용자'}님이 초대되었습니다.`,
+          message_type: 'system_join',
+        });
+      }
+    }
+
+    // 🔥 6. 멤버 수 업데이트
+    const { count: finalCount } = await supabase
+      .from('room_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('room_id', chatId)
+      .is('left_at', null);
+
+    await supabase.from('chat_rooms')
+      .update({ members_count: finalCount || 0 })
+      .eq('id', chatId);
+
+    toast.success(`${toReinvite.length + toInvite.length}명을 초대했습니다.`);
+    setIsInviteModalOpen(false);
+    window.location.reload();
+
+  } catch (err) {
+    console.error('초대 실패:', err);
+    toast.error('초대에 실패했습니다.');
+  }
+};
 
   const handleDownload = async (url: string, filename: string) => {
     const t = toast.loading('다운로드 중...');

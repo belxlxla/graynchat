@@ -748,65 +748,84 @@ function CreateChatModal({ isOpen, onClose, friends, onCreated }: {
   const toggle = (id: number) =>
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
 
-  const handleCreate = async () => {
-    if (selectedIds.length === 0 || !user?.id) { toast.error('상대를 선택해주세요.'); return; }
-    try {
-      const isGroup = selectedIds.length > 1;
-      let roomId = '';
+const handleCreate = async () => {
+  if (selectedIds.length === 0 || !user?.id) { toast.error('상대를 선택해주세요.'); return; }
+  try {
+    const isGroup = selectedIds.length > 1;
+    let roomId = '';
 
-      if (!isGroup) {
-        const friendId = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
-        if (!friendId) throw new Error('Friend ID not found');
-        roomId = [user.id, friendId].sort().join('_');
+    if (!isGroup) {
+      const friendId = friends.find(f => f.id === selectedIds[0])?.friend_user_id;
+      if (!friendId) throw new Error('Friend ID not found');
+      roomId = [user.id, friendId].sort().join('_');
 
-        const { data: existing } = await supabase.from('chat_rooms').select('id').eq('id', roomId).maybeSingle();
-        if (existing) { 
-          if (onCreated) onCreated(roomId); 
-          return; 
-        }
-
-        const { data: fu } = await supabase.from('users').select('name').eq('id', friendId).maybeSingle();
-        const friendName = fu?.name || friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
-
-        const { error: re } = await supabase.from('chat_rooms').insert([{
-          id: roomId, title: friendName, type: 'individual',
-          created_by: user.id, last_message: '대화를 시작해보세요!', members_count: 2,
-        }]);
-        if (re) throw re;
-
-        const { error: me } = await supabase.from('room_members').insert([
-          { room_id: roomId, user_id: user.id, unread_count: 0 },
-          { room_id: roomId, user_id: friendId, unread_count: 0 },
-        ]);
-        if (me) throw me;
-
-      } else {
-        roomId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const title = `나 외 ${selectedIds.length}명`;
-
-        const { error: re } = await supabase.from('chat_rooms').insert([{
-          id: roomId, title, type: 'group', created_by: user.id,
-          last_message: '대화를 시작해보세요!', members_count: selectedIds.length + 1,
-        }]);
-        if (re) throw re;
-
-        const inserts = [{ room_id: roomId, user_id: user.id, unread_count: 0 }];
-        selectedIds.forEach(sid => {
-          const fid = friends.find(f => f.id === sid)?.friend_user_id;
-          if (fid) inserts.push({ room_id: roomId, user_id: fid, unread_count: 0 });
-        });
-
-        const { error: me } = await supabase.from('room_members').insert(inserts);
-        if (me) throw me;
+      const { data: existing } = await supabase.from('chat_rooms').select('id').eq('id', roomId).maybeSingle();
+      if (existing) { 
+        if (onCreated) onCreated(roomId); 
+        return; 
       }
 
-      toast.success('채팅방이 생성되었습니다.');
-      if (onCreated) onCreated(roomId);
-    } catch (error: any) {
-      console.error('Create Chat Error:', error);
-      toast.error(error.message?.includes('duplicate key') ? '이미 존재하는 채팅방입니다.' : '채팅방 생성에 실패했습니다.');
+      const { data: fu } = await supabase.from('users').select('name').eq('id', friendId).maybeSingle();
+      const friendName = fu?.name || friends.find(f => f.id === selectedIds[0])?.name || '새 대화';
+
+      const { error: re } = await supabase.from('chat_rooms').insert([{
+        id: roomId, title: friendName, type: 'individual',
+        created_by: user.id, last_message: '대화를 시작해보세요!', members_count: 2,
+      }]);
+      if (re) throw re;
+
+      const { error: me } = await supabase.from('room_members').insert([
+        { room_id: roomId, user_id: user.id, unread_count: 0 },
+        { room_id: roomId, user_id: friendId, unread_count: 0 },
+      ]);
+      if (me) throw me;
+
+      const now = new Date();      const now = new Date();
+      const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+      await supabase.from('messages').insert({
+        room_id: roomId,
+        sender_id: user.id,
+        content: `${dateStr}에 대화방이 생성되었습니다.`,
+        message_type: 'system_created',
+      });
+
+    } else {
+      roomId = `group_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const title = `나 외 ${selectedIds.length}명`;
+
+      const { error: re } = await supabase.from('chat_rooms').insert([{
+        id: roomId, title, type: 'group', created_by: user.id,
+        last_message: '대화를 시작해보세요!', members_count: selectedIds.length + 1,
+      }]);
+      if (re) throw re;
+
+      const inserts = [{ room_id: roomId, user_id: user.id, unread_count: 0 }];
+      selectedIds.forEach(sid => {
+        const fid = friends.find(f => f.id === sid)?.friend_user_id;
+        if (fid) inserts.push({ room_id: roomId, user_id: fid, unread_count: 0 });
+      });
+
+      const { error: me } = await supabase.from('room_members').insert(inserts);
+      if (me) throw me;
+
+      // 🔥 그룹 채팅 생성 메시지
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+      await supabase.from('messages').insert({
+        room_id: roomId,
+        sender_id: user.id,
+        content: `${dateStr}에 대화방이 생성되었습니다.`,
+        message_type: 'system_created',
+      });
     }
-  };
+
+    toast.success('채팅방이 생성되었습니다.');
+    if (onCreated) onCreated(roomId);
+  } catch (error: any) {
+    console.error('Create Chat Error:', error);
+    toast.error(error.message?.includes('duplicate key') ? '이미 존재하는 채팅방입니다.' : '채팅방 생성에 실패했습니다.');
+  }
+};
 
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} maxH="max-h-[88vh]">
