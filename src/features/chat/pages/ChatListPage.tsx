@@ -780,7 +780,7 @@ const handleCreate = async () => {
       ]);
       if (me) throw me;
 
-      const now = new Date();      const now = new Date();
+      const now = new Date();
       const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
       await supabase.from('messages').insert({
         room_id: roomId,

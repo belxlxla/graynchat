@@ -202,21 +202,49 @@ function GatheringChatTab() {
     if (!user) return toast.error('로그인이 필요합니다.');
     if (isJoining) return;
     setIsJoining(true);
+    
     try {
+      // 1. 비밀번호 확인 로직
       if (room.is_locked && password !== undefined) {
         const { data } = await supabase.from('gathering_rooms').select('password').eq('id', room.id).single();
-        if (data?.password !== password) { toast.error('비밀번호가 틀렸습니다.'); setIsJoining(false); return; }
+        if (data?.password !== password) { 
+          toast.error('비밀번호가 틀렸습니다.'); 
+          setIsJoining(false); 
+          return; 
+        }
       }
+
+      // 2. 기존 참여 기록 조회 (left_at 포함)
       const { data: existing } = await supabase
-        .from('gathering_room_members').select('id')
-        .eq('room_id', room.id).eq('user_id', user.id).maybeSingle();
+        .from('gathering_room_members')
+        .select('id, left_at')
+        .eq('room_id', room.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
 
       if (!existing) {
-        await supabase.from('gathering_room_members').insert({ room_id: room.id, user_id: user.id });
+        // [케이스 A] 처음 입장: 새로 INSERT (joined_at은 DB 기본값인 NOW()로 들어감)
+        await supabase
+          .from('gathering_room_members')
+          .insert({ room_id: room.id, user_id: user.id });
+          
+      } else if (existing.left_at !== null) {
+        // [케이스 B] 나갔다가 재입장: left_at을 비우고, joined_at을 현재로 UPDATE
+        await supabase
+          .from('gathering_room_members')
+          .update({ 
+            left_at: null, 
+            joined_at: new Date().toISOString() 
+          })
+          .eq('id', existing.id); // 조회된 고유 ID로 확실하게 업데이트
       }
+      // [케이스 C] existing이 있고 left_at이 null인 경우: 이미 방에 참여 중이므로 아무 작업 없이 넘어감
+
       setSelectedRoom(null);
       navigate(`/gathering/chat/${room.id}`);
-    } catch {
+      
+    } catch (err) {
+      console.error(err);
       toast.error('입장에 실패했습니다.');
     } finally {
       setIsJoining(false);

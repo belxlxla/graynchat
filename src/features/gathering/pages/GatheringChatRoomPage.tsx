@@ -1,50 +1,74 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import React from 'react';
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import React from "react";
 import {
-  ArrowLeft, Send, Users, LogOut,
-  Loader2, Crown, Hash, X,
-  Plus, ImageIcon, Camera, FileText, Smile,
-  ChevronLeft, ChevronRight, Download, Trash2, Rocket, Sparkles
-} from 'lucide-react';
-import toast from 'react-hot-toast';
-import { supabase } from '../../../shared/lib/supabaseClient';
-import { useAuth } from '../../auth/contexts/AuthContext';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+  ArrowLeft,
+  Send,
+  Users,
+  LogOut,
+  Loader2,
+  Crown,
+  Hash,
+  X,
+  Plus,
+  ImageIcon,
+  Camera,
+  FileText,
+  Smile,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Trash2,
+  Rocket,
+  Sparkles,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import { supabase } from "../../../shared/lib/supabaseClient";
+import { useAuth } from "../../auth/contexts/AuthContext";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 // ─── 유틸 ────────────────────────────────────────────────────
 const getFileType = (content: string) => {
-  if (!content) return 'text';
-  
+  if (!content) return "text";
+
   // 🔥 Storage URL 우선 체크 (ChatRoomPage와 동일)
-  if (content.includes('gathering-uploads') || content.includes('supabase.co/storage')) {
-    const ext = content.split('.').pop()?.toLowerCase().split('?')[0];
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return 'image';
-    if (['mp4', 'mov', 'webm', 'avi', 'm4v'].includes(ext || '')) return 'video';
-    if (['pdf'].includes(ext || '')) return 'pdf';
-    if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'hwp'].includes(ext || '')) return 'office';
-    return 'file';
+  if (
+    content.includes("gathering-uploads") ||
+    content.includes("supabase.co/storage")
+  ) {
+    const ext = content.split(".").pop()?.toLowerCase().split("?")[0];
+    if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext || ""))
+      return "image";
+    if (["mp4", "mov", "webm", "avi", "m4v"].includes(ext || ""))
+      return "video";
+    if (["pdf"].includes(ext || "")) return "pdf";
+    if (
+      ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "hwp"].includes(ext || "")
+    )
+      return "office";
+    return "file";
   }
-  
+
   // 텍스트 메시지
-  return 'text';
+  return "text";
 };
 
 const getFileName = (url: string) => {
   try {
     const decodedUrl = decodeURIComponent(url);
-    const rawName = decodedUrl.split('/').pop() || 'file';
-    if (rawName.includes('___')) return rawName.split('___')[1];
-    return rawName.replace(/^\d+_/, '');
+    const rawName = decodedUrl.split("/").pop() || "file";
+    if (rawName.includes("___")) return rawName.split("___")[1];
+    return rawName.replace(/^\d+_/, "");
   } catch {
-    return '첨부파일';
+    return "첨부파일";
   }
 };
 
 const extractUrls = (text: string): string[] => {
   // HTTP/HTTPS URL + 도메인만 있는 패턴 모두 감지
-  const urlRegex = /(https?:\/\/[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
+  const urlRegex =
+    /(https?:\/\/[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/g;
   return text.match(urlRegex) || [];
 };
 
@@ -55,13 +79,13 @@ const isOnlyUrl = (text: string): boolean => {
 
 // 🔥 URL 정규화 함수 추가 (http:// 없으면 자동 추가)
 const normalizeUrl = (url: string): string => {
-  if (url.startsWith('http://') || url.startsWith('https://')) {
+  if (url.startsWith("http://") || url.startsWith("https://")) {
     return url;
   }
   return `https://${url}`;
 };
 
-const BUCKET_NAME = 'gathering-uploads';
+const BUCKET_NAME = "gathering-uploads";
 
 // ─── 타입 ────────────────────────────────────────────────────
 // 🔥 수정 후
@@ -72,7 +96,7 @@ interface ChatMessage {
   user_avatar: string | null;
   content: string;
   created_at: string;
-  message_type?: 'user' | 'system_join' | 'system_leave' | 'system_created'; // ✅ 추가
+  message_type?: "user" | "system_join" | "system_leave" | "system_created"; // ✅ 추가
 }
 
 interface RoomInfo {
@@ -88,25 +112,40 @@ interface RoomInfo {
 
 // ─── 공통 바텀시트 ───────────────────────────────────────────
 function BottomSheet({
-  isOpen, onClose, children, maxH = 'max-h-[90vh]',
+  isOpen,
+  onClose,
+  children,
+  maxH = "max-h-[90vh]",
 }: {
-  isOpen: boolean; onClose: () => void; children: React.ReactNode; maxH?: string;
+  isOpen: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  maxH?: string;
 }) {
   return (
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-[70] flex flex-col justify-end">
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.22 }}
             className="absolute inset-0 bg-black/60 backdrop-blur-[3px]"
             onClick={onClose}
           />
           <motion.div
-            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 32, stiffness: 320, mass: 0.9 }}
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{
+              type: "spring",
+              damping: 32,
+              stiffness: 320,
+              mass: 0.9,
+            }}
             className={`relative z-10 bg-[#1c1c1c] rounded-t-[28px] ${maxH} flex flex-col overflow-hidden`}
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-center pt-3 pb-1 shrink-0">
               <div className="w-9 h-[3px] bg-white/10 rounded-full" />
@@ -122,77 +161,114 @@ function BottomSheet({
 // ════════════════════════════════════════════════════════════
 export default function GatheringChatRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
-  const navigate   = useNavigate();
-  const { user }   = useAuth();
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const [room, setRoom]                             = useState<RoomInfo | null>(null);
-  const [messages, setMessages]                     = useState<ChatMessage[]>([]);
-  const [input, setInput]                           = useState('');
-  const [isSending, setIsSending]                   = useState(false);
-  const [isLoading, setIsLoading]                   = useState(true);
+  const [room, setRoom] = useState<RoomInfo | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [realParticipantCount, setRealParticipantCount] = useState<number>(0);
-  const [showMembers, setShowMembers]               = useState(false);
-  const [showLeaveConfirm, setShowLeaveConfirm]     = useState(false);
-  const [isMenuOpen, setIsMenuOpen]                 = useState(false);
-  const [showEmojiModal, setShowEmojiModal]         = useState(false);
-  const [isViewerOpen, setIsViewerOpen]             = useState(false);
-  const [initialImageIndex, setInitialImageIndex]   = useState(0);
-  const [members, setMembers]                       = useState<{ id: string; name: string; avatar_url: string | null }[]>([]);
+  const [showMembers, setShowMembers] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showEmojiModal, setShowEmojiModal] = useState(false);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [initialImageIndex, setInitialImageIndex] = useState(0);
+  const [members, setMembers] = useState<
+    { id: string; name: string; avatar_url: string | null }[]
+  >([]);
 
-  const bottomRef      = useRef<HTMLDivElement>(null);
-  const textareaRef    = useRef<HTMLTextAreaElement>(null);
-  const channelRef     = useRef<RealtimeChannel | null>(null);
-  const messageIdsRef  = useRef<Set<number>>(new Set());
-  const fileInputRef   = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const messageIdsRef = useRef<Set<number>>(new Set());
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const docInputRef    = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
 
   const isHost = room?.host_id === user?.id;
 
-  const allImages = useMemo(() =>
-    messages.filter(m => m.content && getFileType(m.content) === 'image').map(m => m.content),
-  [messages]);
+  const allImages = useMemo(
+    () =>
+      messages
+        .filter((m) => m.content && getFileType(m.content) === "image")
+        .map((m) => m.content),
+    [messages],
+  );
 
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 100)}px`;
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(
+        textareaRef.current.scrollHeight,
+        100,
+      )}px`;
     }
   }, [input]);
 
   // ── 초기 데이터 ─────────────────────────────────────────
   useEffect(() => {
-    if (!roomId) return;
-    
+    // 🔥 user?.id가 없으면 실행하지 않도록 추가 (현재 유저 정보를 가져오기 위함)
+    if (!roomId || !user?.id) return;
+
     const loadInitialData = async () => {
       try {
         // 1. 방 정보 로드
-        const { data: roomData } = await supabase.from('gathering_rooms').select('*').eq('id', roomId).single();
+        const { data: roomData } = await supabase
+          .from("gathering_rooms")
+          .select("*")
+          .eq("id", roomId)
+          .single();
         if (roomData) setRoom(roomData);
 
-        // 2. 참여자 수 로드
-        const { count } = await supabase.from('gathering_room_members')
-          .select('*', { count: 'exact', head: true }).eq('room_id', roomId);
+        // 2. 🔥 현재 유저의 참여 정보(joined_at) 조회
+        const { data: myMemberInfo } = await supabase
+          .from("gathering_room_members")
+          .select("joined_at")
+          .eq("room_id", roomId)
+          .eq("user_id", user.id)
+          .single();
+
+        // 3. 참여자 수 로드 (🔥 나간 사람(left_at이 NULL이 아닌 사람)은 제외)
+        const { count } = await supabase
+          .from("gathering_room_members")
+          .select("*", { count: "exact", head: true })
+          .eq("room_id", roomId)
+          .is("left_at", null); // 현재 방에 남아있는 사람만 카운트
         if (count !== null) setRealParticipantCount(count);
 
-        // 3. 메시지 로드
-        const { data: msgData } = await supabase.from('gathering_messages').select('*')
-          .eq('room_id', roomId).order('created_at', { ascending: true }); // limit 제거 또는 적절히 조정
+        // 4. 메시지 로드 (🔥 내 입장 시간 이후의 메시지만 필터링)
+        let messageQuery = supabase
+          .from("gathering_messages")
+          .select("*")
+          .eq("room_id", roomId)
+          .order("created_at", { ascending: true }); // limit 제거 또는 적절히 조정
 
-        if (msgData) { 
-          // 중복 방지를 위한 ID 초기화
-          messageIdsRef.current = new Set(msgData.map(m => m.id));
-          setMessages(msgData); 
+        // 내 가입 시간이 존재하면, 그 시간 이후의 메시지만 가져오기 조건 추가
+        if (myMemberInfo?.joined_at) {
+          messageQuery = messageQuery.gte("created_at", myMemberInfo.joined_at);
         }
-      } catch {
-        toast.error('채팅방 정보를 불러올 수 없습니다.');
-        navigate('/main/gathering');
+
+        const { data: msgData } = await messageQuery;
+
+        if (msgData) {
+          // 중복 방지를 위한 ID 초기화
+          messageIdsRef.current = new Set(msgData.map((m) => m.id));
+          setMessages(msgData);
+        }
+      } catch (error) {
+        console.error("데이터 로드 실패:", error);
+        toast.error("채팅방 정보를 불러올 수 없습니다.");
+        navigate("/main/gathering");
       } finally {
         setIsLoading(false);
       }
     };
     loadInitialData();
-  }, [roomId, navigate]);
+  // 🔥 의존성 배열에 user?.id 추가
+  }, [roomId, navigate, user?.id]);
 
   // ── 실시간 구독 (수정됨: Date.now() 제거) ────────────────
   useEffect(() => {
@@ -205,68 +281,74 @@ export default function GatheringChatRoomPage() {
 
     // ✅ 중요: 채널 이름을 고정해야 서로 통신이 됩니다. (Date.now() 제거)
     const channelName = `gathering_room_${roomId}`;
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes',
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'gathering_messages', 
-          filter: `room_id=eq.${roomId}` 
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "gathering_messages",
+          filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
           const newMsg = payload.new as ChatMessage;
-          
+
           // 이미 존재하는 메시지인지 확인 (내가 보낸 메시지 중복 방지)
           if (messageIdsRef.current.has(newMsg.id)) return;
-          
+
           messageIdsRef.current.add(newMsg.id);
-          setMessages(prev => [...prev, newMsg]);
-        }
+          setMessages((prev) => [...prev, newMsg]);
+        },
       )
-      .on('postgres_changes',
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'gathering_room_members', 
-          filter: `room_id=eq.${roomId}` 
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "gathering_room_members",
+          filter: `room_id=eq.${roomId}`,
         },
         async () => {
           // 멤버 변경 시 카운트 업데이트
-          const { count } = await supabase.from('gathering_room_members')
-            .select('*', { count: 'exact', head: true }).eq('room_id', roomId);
+          const { count } = await supabase
+            .from("gathering_room_members")
+            .select("*", { count: "exact", head: true })
+            .eq("room_id", roomId);
           if (count !== null) setRealParticipantCount(count);
-        }
-      )
-      .on('postgres_changes',
-        { 
-          event: 'DELETE', 
-          schema: 'public', 
-          table: 'gathering_rooms', 
-          filter: `id=eq.${roomId}` 
         },
-        () => { 
-          toast('방장이 채팅방을 종료했습니다.'); 
-          navigate('/main/gathering', { replace: true }); 
-        }
       )
-      .subscribe((status) => { 
-        if (status === 'SUBSCRIBED') {
-          console.log(`✅ Connected to chat: ${channelName}`); 
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "gathering_rooms",
+          filter: `id=eq.${roomId}`,
+        },
+        () => {
+          toast("방장이 채팅방을 종료했습니다.");
+          navigate("/main/gathering", { replace: true });
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log(`✅ Connected to chat: ${channelName}`);
         }
       });
 
     channelRef.current = channel;
 
-    return () => { 
-      console.log('Cleaning up channel...'); 
-      supabase.removeChannel(channel); 
+    return () => {
+      console.log("Cleaning up channel...");
+      supabase.removeChannel(channel);
     };
   }, [roomId, navigate]);
 
   // 스크롤 자동 이동
   useEffect(() => {
     if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
@@ -274,37 +356,52 @@ export default function GatheringChatRoomPage() {
   const handleSend = async () => {
     if (!input.trim() || !user || isSending) return;
     const content = input.trim();
-    setInput('');
+    setInput("");
     setIsSending(true);
     setIsMenuOpen(false);
 
     // 낙관적 UI 업데이트를 위한 임시 ID 생성
     // DB의 ID 타입(int vs uuid)에 따라 충돌 가능성이 있으므로 음수나 timestamp 사용
-    const tempId = Date.now(); 
+    const tempId = Date.now();
 
     const optimisticMsg: ChatMessage = {
-      id: tempId, 
-      user_id: user.id, 
-      user_name: '나',
-      user_avatar: null, 
-      content, 
+      id: tempId,
+      user_id: user.id,
+      user_name: "나",
+      user_avatar: null,
+      content,
       created_at: new Date().toISOString(),
     };
 
-    setMessages(prev => [...prev, optimisticMsg]);
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(
+      () => bottomRef.current?.scrollIntoView({ behavior: "smooth" }),
+      50,
+    );
 
     try {
-      const { data: userData } = await supabase.from('users').select('name').eq('id', user.id).single();
-      const { data: userProfile } = await supabase.from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
-      
-      const { data: insertedMsg, error } = await supabase.from('gathering_messages').insert({
-        room_id: roomId, 
-        user_id: user.id,
-        user_name: userData?.name || '사용자',
-        user_avatar: userProfile?.avatar_url || null,
-        content,
-      }).select().single();
+      const { data: userData } = await supabase
+        .from("users")
+        .select("name")
+        .eq("id", user.id)
+        .single();
+      const { data: userProfile } = await supabase
+        .from("user_profiles")
+        .select("avatar_url")
+        .eq("user_id", user.id)
+        .single();
+
+      const { data: insertedMsg, error } = await supabase
+        .from("gathering_messages")
+        .insert({
+          room_id: roomId,
+          user_id: user.id,
+          user_name: userData?.name || "사용자",
+          user_avatar: userProfile?.avatar_url || null,
+          content,
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
@@ -312,107 +409,145 @@ export default function GatheringChatRoomPage() {
         // 실제 ID 등록
         messageIdsRef.current.add(insertedMsg.id);
         // 낙관적 메시지를 실제 메시지로 교체
-        setMessages(prev => prev.map(m => m.id === tempId ? insertedMsg : m));
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? insertedMsg : m)),
+        );
       }
     } catch (err) {
       console.error(err);
-      toast.error('메시지 전송 실패');
+      toast.error("메시지 전송 실패");
       setInput(content); // 실패 시 입력창 복구
-      setMessages(prev => prev.filter(m => m.id !== tempId)); // 낙관적 메시지 제거
+      setMessages((prev) => prev.filter((m) => m.id !== tempId)); // 낙관적 메시지 제거
     } finally {
       setIsSending(false);
     }
   };
 
   // ── 파일 업로드 ─────────────────────────────────────────
-      const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !roomId || !user) return;
-        const uploadToast = toast.loading('파일 업로드 중...');
-        setIsMenuOpen(false);
-        try {
-          const { data: userData } = await supabase.from('users').select('name').eq('id', user.id).single();
-          const { data: userProfile } = await supabase.from('user_profiles').select('avatar_url').eq('user_id', user.id).single();
-          const fileName = `${Date.now()}___${file.name.replace(/[^a-zA-Z0-9가-힣.]/g, '_')}`;
-          const filePath = `${roomId}/${fileName}`;
-          
-          const { error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(filePath, file);
-          if (uploadError) throw uploadError;
-          
-          const { data: { publicUrl } } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-          
-          const { data: insertedMsg, error: insertError } = await supabase.from('gathering_messages').insert({
-            room_id: roomId, user_id: user.id,
-            user_name: userData?.name || '사용자',
-            user_avatar: userProfile?.avatar_url || null,
-            content: publicUrl,
-          }).select().single();
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !roomId || !user) return;
+    const uploadToast = toast.loading("파일 업로드 중...");
+    setIsMenuOpen(false);
+    try {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("name")
+        .eq("id", user.id)
+        .single();
+      const { data: userProfile } = await supabase
+        .from("user_profiles")
+        .select("avatar_url")
+        .eq("user_id", user.id)
+        .single();
+      const fileName = `${Date.now()}___${file.name.replace(
+        /[^a-zA-Z0-9가-힣.]/g,
+        "_",
+      )}`;
+      const filePath = `${roomId}/${fileName}`;
 
-          if (insertError) throw insertError;
-          
-          if (insertedMsg) {
-            messageIdsRef.current.add(insertedMsg.id);
-            setMessages(prev => [...prev, insertedMsg]); // 🔥 이 줄 추가!
-          }
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, file);
+      if (uploadError) throw uploadError;
 
-          toast.success('전송 완료', { id: uploadToast });
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+
+      const { data: insertedMsg, error: insertError } = await supabase
+        .from("gathering_messages")
+        .insert({
+          room_id: roomId,
+          user_id: user.id,
+          user_name: userData?.name || "사용자",
+          user_avatar: userProfile?.avatar_url || null,
+          content: publicUrl,
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      if (insertedMsg) {
+        messageIdsRef.current.add(insertedMsg.id);
+        setMessages((prev) => [...prev, insertedMsg]); // 🔥 이 줄 추가!
+      }
+
+      toast.success("전송 완료", { id: uploadToast });
     } catch {
-      toast.error('전송 실패', { id: uploadToast });
+      toast.error("전송 실패", { id: uploadToast });
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      if (cameraInputRef.current) cameraInputRef.current.value = '';
-      if (docInputRef.current) docInputRef.current.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+      if (docInputRef.current) docInputRef.current.value = "";
     }
   };
 
   // ── 나가기/삭제 ─────────────────────────────────────────
   const handleLeaveOrDeleteRoom = async () => {
-  if (!user || !roomId) return;
-  try {
-    if (isHost) {
-      // 호스트는 방을 삭제
-      await supabase.from('gathering_rooms').delete().eq('id', roomId);
-      toast.success('게더링 챗을 삭제했습니다.');
-    } else {
-      // 🔥 나가기 전 시스템 메시지 추가
-      const { data: userData } = await supabase
-        .from('users')
-        .select('name')
-        .eq('id', user.id)
-        .single();
+    if (!user || !roomId) return;
+    try {
+      if (isHost) {
+        // 호스트는 방을 삭제
+        await supabase.from("gathering_rooms").delete().eq("id", roomId);
+        toast.success("게더링 챗을 삭제했습니다.");
+      } else {
+        // 🔥 나가기 전 시스템 메시지 추가
+        const { data: userData } = await supabase
+          .from("users")
+          .select("name")
+          .eq("id", user.id)
+          .single();
 
-      await supabase.from('gathering_messages').insert({
-        room_id: roomId,
-        user_id: user.id,
-        user_name: '시스템',
-        user_avatar: null,
-        content: `${userData?.name || '사용자'}님이 나갔습니다.`,
-        message_type: 'system_leave',
-      });
+        await supabase.from("gathering_messages").insert({
+          room_id: roomId,
+          user_id: user.id,
+          user_name: "시스템",
+          user_avatar: null,
+          content: `${userData?.name || "사용자"}님이 나갔습니다.`,
+          message_type: "system_leave",
+        });
 
-      // 일반 멤버는 나가기
-      await supabase.from('gathering_room_members').delete()
-        .eq('room_id', roomId).eq('user_id', user.id);
-      toast.success('게더링 챗을 나갔습니다.');
+        // 일반 멤버는 나가기
+        await supabase
+          .from("gathering_room_members")
+          .update({ left_at: new Date().toISOString() })
+          .eq("room_id", roomId)
+          .eq("user_id", user.id);
+        toast.success("게더링 챗을 나갔습니다.");
+      }
+      navigate("/main/gathering", { replace: true });
+    } catch {
+      toast.error("요청 처리에 실패했습니다.");
     }
-    navigate('/main/gathering', { replace: true });
-  } catch {
-    toast.error('요청 처리에 실패했습니다.');
-  }
-};
+  };
 
   // ── 멤버 로드 ────────────────────────────────────────────
   const loadMembers = async () => {
-    const { data } = await supabase.from('gathering_room_members').select('user_id').eq('room_id', roomId);
+    const { data } = await supabase
+      .from("gathering_room_members")
+      .select("user_id")
+      .eq("room_id", roomId);
     if (data) {
-      const ids = data.map(m => m.user_id);
-      const { data: usersData } = await supabase.from('users').select('id, name').in('id', ids);
-      const { data: profileImages } = await supabase.from('user_profiles').select('user_id, avatar_url').in('user_id', ids);
-      const profileMap = new Map(profileImages?.map((p: any) => [p.user_id, p.avatar_url]) || []);
-      setMembers((usersData || []).map((u: any) => ({
-        ...u,
-        avatar_url: profileMap.get(u.id) || null,
-      })));
+      const ids = data.map((m) => m.user_id);
+      const { data: usersData } = await supabase
+        .from("users")
+        .select("id, name")
+        .in("id", ids);
+      const { data: profileImages } = await supabase
+        .from("user_profiles")
+        .select("user_id, avatar_url")
+        .in("user_id", ids);
+      const profileMap = new Map(
+        profileImages?.map((p: any) => [p.user_id, p.avatar_url]) || [],
+      );
+      setMembers(
+        (usersData || []).map((u: any) => ({
+          ...u,
+          avatar_url: profileMap.get(u.id) || null,
+        })),
+      );
     }
     setShowMembers(true);
   };
@@ -420,8 +555,8 @@ export default function GatheringChatRoomPage() {
   const getTimeStr = (dateStr: string) => {
     const d = new Date(dateStr);
     const h = d.getHours();
-    const m = d.getMinutes().toString().padStart(2, '0');
-    return `${h >= 12 ? '오후' : '오전'} ${h % 12 || 12}:${m}`;
+    const m = d.getMinutes().toString().padStart(2, "0");
+    return `${h >= 12 ? "오후" : "오전"} ${h % 12 || 12}:${m}`;
   };
 
   const getDayStr = (dateStr: string) => {
@@ -431,73 +566,133 @@ export default function GatheringChatRoomPage() {
 
   // ── 메시지 콘텐츠 ────────────────────────────────────────
   const renderMessageContent = (msg: ChatMessage, isMe: boolean) => {
-      // 🔥 시스템 메시지 처리 (맨 앞에 추가)
-  if (msg.message_type && msg.message_type !== 'user') {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-        className="flex justify-center w-full my-2"
-      >
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/[0.06] backdrop-blur-sm rounded-full border border-white/[0.08] shadow-lg">
-          {msg.message_type === 'system_created' && (
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/70 animate-pulse" />
-          )}
-          {msg.message_type === 'system_join' && (
-            <svg className="w-3.5 h-3.5 text-blue-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
-          )}
-          {msg.message_type === 'system_leave' && (
-            <svg className="w-3.5 h-3.5 text-orange-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-          )}
-          <p className="text-[11.5px] font-medium text-white/45 tracking-tight">
-            {msg.content}
-          </p>
-        </div>
-      </motion.div>
-    );
-  }
+    // 🔥 시스템 메시지 처리 (맨 앞에 추가)
+    if (msg.message_type && msg.message_type !== "user") {
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.92, y: -8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ type: "spring", damping: 25, stiffness: 350 }}
+          className="flex justify-center w-full my-2"
+        >
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/[0.06] backdrop-blur-sm rounded-full border border-white/[0.08] shadow-lg">
+            {msg.message_type === "system_created" && (
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/70 animate-pulse" />
+            )}
+            {msg.message_type === "system_join" && (
+              <svg
+                className="w-3.5 h-3.5 text-blue-400/70"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                />
+              </svg>
+            )}
+            {msg.message_type === "system_leave" && (
+              <svg
+                className="w-3.5 h-3.5 text-orange-400/70"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                />
+              </svg>
+            )}
+            <p className="text-[11.5px] font-medium text-white/45 tracking-tight">
+              {msg.content}
+            </p>
+          </div>
+        </motion.div>
+      );
+    }
     const type = getFileType(msg.content);
 
-    if (type === 'image') {
+    if (type === "image") {
       return (
-        <div className={`rounded-[18px] overflow-hidden max-w-[220px] border cursor-pointer ${isMe ? 'border-white/[0.08]' : 'border-white/[0.06]'}`}>
-          <img src={msg.content} alt="" className="w-full h-auto object-cover"
+        <div
+          className={`rounded-[18px] overflow-hidden max-w-[220px] border cursor-pointer ${
+            isMe ? "border-white/[0.08]" : "border-white/[0.06]"
+          }`}
+        >
+          <img
+            src={msg.content}
+            alt=""
+            className="w-full h-auto object-cover"
             onClick={() => {
               const idx = allImages.indexOf(msg.content);
-              if (idx !== -1) { setInitialImageIndex(idx); setIsViewerOpen(true); }
+              if (idx !== -1) {
+                setInitialImageIndex(idx);
+                setIsViewerOpen(true);
+              }
             }}
           />
         </div>
       );
     }
 
-    if (type === 'video') {
+    if (type === "video") {
       return (
         <div className="rounded-[18px] overflow-hidden max-w-[240px] bg-black border border-white/[0.06]">
-          <video src={msg.content} controls playsInline className="w-full h-auto" />
+          <video
+            src={msg.content}
+            controls
+            playsInline
+            className="w-full h-auto"
+          />
         </div>
       );
     }
 
-    if (['pdf', 'file', 'office', 'text-file'].includes(type)) {
+    if (["pdf", "file", "office", "text-file"].includes(type)) {
       return (
-        <div className={`flex items-stretch max-w-[260px] rounded-[18px] border overflow-hidden ${isMe ? 'bg-[#FF203A]/8 border-[#FF203A]/15' : 'bg-[#2a2a2a] border-white/[0.07]'}`}>
-          <button onClick={() => window.open(msg.content, '_blank')} className="flex-1 flex items-center gap-3 p-3 hover:bg-white/[0.04] transition-colors text-left">
-            <div className={`w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0 ${isMe ? 'bg-[#FF203A]/15' : 'bg-[#FF203A]/10'}`}>
+        <div
+          className={`flex items-stretch max-w-[260px] rounded-[18px] border overflow-hidden ${
+            isMe
+              ? "bg-[#FF203A]/8 border-[#FF203A]/15"
+              : "bg-[#2a2a2a] border-white/[0.07]"
+          }`}
+        >
+          <button
+            onClick={() => window.open(msg.content, "_blank")}
+            className="flex-1 flex items-center gap-3 p-3 hover:bg-white/[0.04] transition-colors text-left"
+          >
+            <div
+              className={`w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0 ${
+                isMe ? "bg-[#FF203A]/15" : "bg-[#FF203A]/10"
+              }`}
+            >
               <FileText className="w-5 h-5 text-[#FF203A]" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] text-white/88 truncate font-medium">{getFileName(msg.content)}</p>
-              <p className="text-[10px] text-white/28 uppercase tracking-wider mt-0.5">{type.replace('-file', '')}</p>
+              <p className="text-[13px] text-white/88 truncate font-medium">
+                {getFileName(msg.content)}
+              </p>
+              <p className="text-[10px] text-white/28 uppercase tracking-wider mt-0.5">
+                {type.replace("-file", "")}
+              </p>
             </div>
           </button>
           <div className="w-px bg-white/[0.06] self-stretch" />
-          <button onClick={() => { const a = document.createElement('a'); a.href = msg.content; a.download = getFileName(msg.content); a.click(); }} className="px-3 flex items-center text-white/28 hover:text-white/60 transition-colors">
+          <button
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = msg.content;
+              a.download = getFileName(msg.content);
+              a.click();
+            }}
+            className="px-3 flex items-center text-white/28 hover:text-white/60 transition-colors"
+          >
             <Download className="w-4 h-4" />
           </button>
         </div>
@@ -507,57 +702,123 @@ export default function GatheringChatRoomPage() {
     const urls = extractUrls(msg.content);
     const onlyUrl = isOnlyUrl(msg.content);
 
- if (onlyUrl && urls.length > 0) {
-  const url = urls[0];
-  const normalizedUrl = normalizeUrl(url); // 🔥 정규화 추가
-  const domain = url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
-  
-  return (
-    <a 
-      href={normalizedUrl} // 🔥 정규화된 URL 사용
-      target="_blank" 
-      rel="noopener noreferrer" 
-      className={`group flex flex-col max-w-[260px] rounded-[18px] overflow-hidden border transition-all ${
-        isMe ? 'bg-[#FF203A]/8 border-[#FF203A]/15 hover:border-[#FF203A]/25' : 'bg-[#2a2a2a] border-white/[0.07] hover:border-white/[0.12]'
-      }`}
-    >
-      <div className="px-3.5 py-3 flex items-start gap-3">
-        <div className={`w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0 ${isMe ? 'bg-[#FF203A]/12' : 'bg-white/[0.06]'}`}>
-          <svg className="w-4 h-4 text-[#FF203A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-medium text-white/85 truncate">{domain}</p>
-          <p className="text-[11px] text-white/35 mt-0.5 truncate">{url}</p>
-        </div>
-      </div>
-      <div className={`h-px ${isMe ? 'bg-[#FF203A]/10' : 'bg-white/[0.05]'}`} />
-      <div className="px-3.5 py-2 flex items-center gap-2 text-[#FF203A]">
-        <span className="text-[11px] font-medium">링크 열기</span>
-        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-        </svg>
-      </div>
-    </a>
-  );
-}
+    if (onlyUrl && urls.length > 0) {
+      const url = urls[0];
+      const normalizedUrl = normalizeUrl(url); // 🔥 정규화 추가
+      const domain = url
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .split("/")[0];
+
+      return (
+        <a
+          href={normalizedUrl} // 🔥 정규화된 URL 사용
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`group flex flex-col max-w-[260px] rounded-[18px] overflow-hidden border transition-all ${
+            isMe
+              ? "bg-[#FF203A]/8 border-[#FF203A]/15 hover:border-[#FF203A]/25"
+              : "bg-[#2a2a2a] border-white/[0.07] hover:border-white/[0.12]"
+          }`}
+        >
+          <div className="px-3.5 py-3 flex items-start gap-3">
+            <div
+              className={`w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0 ${
+                isMe ? "bg-[#FF203A]/12" : "bg-white/[0.06]"
+              }`}
+            >
+              <svg
+                className="w-4 h-4 text-[#FF203A]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-medium text-white/85 truncate">
+                {domain}
+              </p>
+              <p className="text-[11px] text-white/35 mt-0.5 truncate">{url}</p>
+            </div>
+          </div>
+          <div
+            className={`h-px ${isMe ? "bg-[#FF203A]/10" : "bg-white/[0.05]"}`}
+          />
+          <div className="px-3.5 py-2 flex items-center gap-2 text-[#FF203A]">
+            <span className="text-[11px] font-medium">링크 열기</span>
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              />
+            </svg>
+          </div>
+        </a>
+      );
+    }
 
     if (urls.length > 0) {
       const elements: (string | React.ReactElement)[] = [];
       let lastIndex = 0;
       urls.forEach((url, i) => {
         const urlIndex = msg.content.indexOf(url, lastIndex);
-        if (urlIndex > lastIndex) elements.push(msg.content.slice(lastIndex, urlIndex));
+        if (urlIndex > lastIndex)
+          elements.push(msg.content.slice(lastIndex, urlIndex));
         const normalizedUrl = normalizeUrl(url); // 🔥 정규화 추가
-        elements.push(<a key={i} href={normalizedUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all" onClick={(e) => e.stopPropagation()}>{url}</a>);
+        elements.push(
+          <a
+            key={i}
+            href={normalizedUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 underline hover:text-blue-300 break-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {url}
+          </a>,
+        );
         lastIndex = urlIndex + url.length;
       });
-      if (lastIndex < msg.content.length) elements.push(msg.content.slice(lastIndex));
-      return <div className={`px-[14px] py-[9px] text-[14.5px] leading-[1.55] break-words ${isMe ? 'bg-[#FF203A] text-white rounded-[18px] rounded-tr-[5px]' : 'bg-[#2a2a2a] text-white/90 rounded-[18px] rounded-tl-[5px] border border-white/[0.07]'}`}>{elements}</div>;
+      if (lastIndex < msg.content.length)
+        elements.push(msg.content.slice(lastIndex));
+      return (
+        <div
+          className={`px-[14px] py-[9px] text-[14.5px] leading-[1.55] break-words ${
+            isMe
+              ? "bg-[#FF203A] text-white rounded-[18px] rounded-tr-[5px]"
+              : "bg-[#2a2a2a] text-white/90 rounded-[18px] rounded-tl-[5px] border border-white/[0.07]"
+          }`}
+        >
+          {elements}
+        </div>
+      );
     }
 
-    return <div className={`px-[14px] py-[9px] text-[14.5px] leading-[1.55] break-words ${isMe ? 'bg-[#FF203A] text-white rounded-[18px] rounded-tr-[5px]' : 'bg-[#2a2a2a] text-white/90 rounded-[18px] rounded-tl-[5px] border border-white/[0.07]'}`}>{msg.content}</div>;
+    return (
+      <div
+        className={`px-[14px] py-[9px] text-[14.5px] leading-[1.55] break-words ${
+          isMe
+            ? "bg-[#FF203A] text-white rounded-[18px] rounded-tr-[5px]"
+            : "bg-[#2a2a2a] text-white/90 rounded-[18px] rounded-tl-[5px] border border-white/[0.07]"
+        }`}
+      >
+        {msg.content}
+      </div>
+    );
   };
 
   // ── 로딩 ────────────────────────────────────────────────
@@ -571,11 +832,10 @@ export default function GatheringChatRoomPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-[#212121] text-white overflow-hidden">
-
       {/* ───────── 헤더 ───────── */}
       <header className="h-[54px] px-3 flex items-center gap-2 shrink-0 bg-[#212121]/90 backdrop-blur-xl border-b border-white/[0.05] z-20">
         <button
-          onClick={() => navigate('/main/gathering')}
+          onClick={() => navigate("/main/gathering")}
           className="w-9 h-9 flex items-center justify-center rounded-[12px] text-white/55 hover:bg-white/[0.07] hover:text-white transition-colors shrink-0"
         >
           <ArrowLeft className="w-[18px] h-[18px]" />
@@ -608,11 +868,15 @@ export default function GatheringChatRoomPage() {
             onClick={() => setShowLeaveConfirm(true)}
             className={`w-9 h-9 flex items-center justify-center rounded-[12px] transition-colors ${
               isHost
-                ? 'text-white/32 hover:bg-[#FF203A]/10 hover:text-[#FF203A]'
-                : 'text-white/32 hover:bg-white/[0.07] hover:text-white/75'
+                ? "text-white/32 hover:bg-[#FF203A]/10 hover:text-[#FF203A]"
+                : "text-white/32 hover:bg-white/[0.07] hover:text-white/75"
             }`}
           >
-            {isHost ? <Trash2 className="w-[17px] h-[17px]" /> : <LogOut className="w-[17px] h-[17px]" />}
+            {isHost ? (
+              <Trash2 className="w-[17px] h-[17px]" />
+            ) : (
+              <LogOut className="w-[17px] h-[17px]" />
+            )}
           </button>
         </div>
       </header>
@@ -631,11 +895,14 @@ export default function GatheringChatRoomPage() {
         {messages.map((msg, idx) => {
           const isMe = msg.user_id === user?.id;
           const prevMsg = messages[idx - 1];
-          const showDay = !prevMsg || getDayStr(msg.created_at) !== getDayStr(prevMsg.created_at);
-          const showAvatar = !isMe && (!prevMsg || prevMsg.user_id !== msg.user_id || showDay);
+          const showDay =
+            !prevMsg ||
+            getDayStr(msg.created_at) !== getDayStr(prevMsg.created_at);
+          const showAvatar =
+            !isMe && (!prevMsg || prevMsg.user_id !== msg.user_id || showDay);
 
-                    // ✅ 시스템 메시지 별도 처리
-          if (msg.message_type && msg.message_type !== 'user') {
+          // ✅ 시스템 메시지 별도 처리
+          if (msg.message_type && msg.message_type !== "user") {
             return (
               <div key={msg.id}>
                 {showDay && (
@@ -652,10 +919,10 @@ export default function GatheringChatRoomPage() {
             );
           }
 
-            return (
-              <div key={msg.id}>
-                {/* 날짜 구분선 */}
-                {showDay && (
+          return (
+            <div key={msg.id}>
+              {/* 날짜 구분선 */}
+              {showDay && (
                 <div className="flex items-center gap-3 py-5">
                   <div className="flex-1 h-px bg-white/[0.05]" />
                   <span className="text-[11px] text-white/20 px-3 py-[5px] bg-white/[0.04] rounded-full border border-white/[0.05]">
@@ -669,18 +936,24 @@ export default function GatheringChatRoomPage() {
                 initial={{ opacity: 0, y: 8, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
-                className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'} ${
-                  showAvatar ? 'mt-4' : 'mt-1'
-                }`}
+                className={`flex items-end gap-2 ${
+                  isMe ? "justify-end" : "justify-start"
+                } ${showAvatar ? "mt-4" : "mt-1"}`}
               >
                 {/* 상대방 아바타 */}
                 {!isMe && (
                   <div className="w-[30px] h-[30px] shrink-0 mb-[18px]">
                     {showAvatar ? (
                       <div className="w-[30px] h-[30px] rounded-[10px] bg-[#2e2e2e] border border-white/[0.06] overflow-hidden flex items-center justify-center text-[12px] font-medium text-white/40">
-                        {msg.user_avatar
-                          ? <img src={msg.user_avatar} className="w-full h-full object-cover" alt="" />
-                          : msg.user_name?.charAt(0)}
+                        {msg.user_avatar ? (
+                          <img
+                            src={msg.user_avatar}
+                            className="w-full h-full object-cover"
+                            alt=""
+                          />
+                        ) : (
+                          msg.user_name?.charAt(0)
+                        )}
                       </div>
                     ) : (
                       <div className="w-[30px]" />
@@ -688,11 +961,17 @@ export default function GatheringChatRoomPage() {
                   </div>
                 )}
 
-                <div className={`max-w-[73%] flex flex-col gap-[3px] ${isMe ? 'items-end' : 'items-start'}`}>
+                <div
+                  className={`max-w-[73%] flex flex-col gap-[3px] ${
+                    isMe ? "items-end" : "items-start"
+                  }`}
+                >
                   {/* 발신자 이름 + 호스트 뱃지 */}
                   {!isMe && showAvatar && (
                     <div className="flex items-center gap-1.5 ml-1 mb-[1px]">
-                      <span className="text-[11.5px] text-white/32 font-medium">{msg.user_name}</span>
+                      <span className="text-[11.5px] text-white/32 font-medium">
+                        {msg.user_name}
+                      </span>
                       {room?.host_id === msg.user_id && (
                         <Crown className="w-3 h-3 text-yellow-500/65" />
                       )}
@@ -735,9 +1014,12 @@ export default function GatheringChatRoomPage() {
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
             }}
             placeholder="메시지를 입력하세요"
             rows={1}
@@ -752,54 +1034,97 @@ export default function GatheringChatRoomPage() {
           disabled={!input.trim() || isSending}
           className={`w-[38px] h-[38px] flex items-center justify-center rounded-[12px] transition-all shrink-0 mb-0.5 ${
             input.trim()
-              ? 'bg-[#FF203A] text-white shadow-lg shadow-[#FF203A]/25'
-              : 'bg-[#2a2a2a] text-white/20 border border-white/[0.07]'
+              ? "bg-[#FF203A] text-white shadow-lg shadow-[#FF203A]/25"
+              : "bg-[#2a2a2a] text-white/20 border border-white/[0.07]"
           }`}
         >
-          {isSending
-            ? <Loader2 className="w-4 h-4 animate-spin" />
-            : <Send className="w-[15px] h-[15px]" />
-          }
+          {isSending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Send className="w-[15px] h-[15px]" />
+          )}
         </button>
       </div>
 
       {/* 히든 파일 인풋 */}
-      <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-      <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleFileUpload} className="hidden" />
-      <input type="file" accept="*/*" ref={docInputRef} onChange={handleFileUpload} className="hidden" />
+      <input
+        type="file"
+        accept="image/*"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        ref={cameraInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+      <input
+        type="file"
+        accept="*/*"
+        ref={docInputRef}
+        onChange={handleFileUpload}
+        className="hidden"
+      />
 
       {/* ───────── 첨부 바텀시트 ───────── */}
-      <BottomSheet isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} maxH="max-h-[36vh]">
+      <BottomSheet
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+        maxH="max-h-[36vh]"
+      >
         <div className="px-5 pt-2 pb-8">
-          <p className="text-[10.5px] font-semibold text-white/25 uppercase tracking-widest mb-5">첨부하기</p>
+          <p className="text-[10.5px] font-semibold text-white/25 uppercase tracking-widest mb-5">
+            첨부하기
+          </p>
           <div className="grid grid-cols-4 gap-3">
             {[
               {
-                ref: fileInputRef, Icon: ImageIcon, label: '앨범',
-                gradient: 'from-blue-500/18 to-blue-600/10', iconColor: 'text-blue-400',
+                ref: fileInputRef,
+                Icon: ImageIcon,
+                label: "앨범",
+                gradient: "from-blue-500/18 to-blue-600/10",
+                iconColor: "text-blue-400",
               },
               {
-                ref: cameraInputRef, Icon: Camera, label: '카메라',
-                gradient: 'from-green-500/18 to-green-600/10', iconColor: 'text-green-400',
+                ref: cameraInputRef,
+                Icon: Camera,
+                label: "카메라",
+                gradient: "from-green-500/18 to-green-600/10",
+                iconColor: "text-green-400",
               },
               {
-                ref: docInputRef, Icon: FileText, label: '파일',
-                gradient: 'from-purple-500/18 to-purple-600/10', iconColor: 'text-purple-400',
+                ref: docInputRef,
+                Icon: FileText,
+                label: "파일",
+                gradient: "from-purple-500/18 to-purple-600/10",
+                iconColor: "text-purple-400",
               },
             ].map(({ ref, Icon, label, gradient, iconColor }) => (
               <button
                 key={label}
-                onClick={() => { ref.current?.click(); setIsMenuOpen(false); }}
+                onClick={() => {
+                  ref.current?.click();
+                  setIsMenuOpen(false);
+                }}
                 className="flex flex-col items-center gap-2.5 active:scale-95 transition-transform"
               >
-                <div className={`w-[56px] h-[56px] rounded-[18px] bg-gradient-to-br ${gradient} border border-white/[0.07] flex items-center justify-center`}>
+                <div
+                  className={`w-[56px] h-[56px] rounded-[18px] bg-gradient-to-br ${gradient} border border-white/[0.07] flex items-center justify-center`}
+                >
                   <Icon className={`w-6 h-6 ${iconColor}`} />
                 </div>
                 <span className="text-[11.5px] text-white/40">{label}</span>
               </button>
             ))}
             <button
-              onClick={() => { setShowEmojiModal(true); setIsMenuOpen(false); }}
+              onClick={() => {
+                setShowEmojiModal(true);
+                setIsMenuOpen(false);
+              }}
               className="flex flex-col items-center gap-2.5 active:scale-95 transition-transform"
             >
               <div className="w-[56px] h-[56px] rounded-[18px] bg-gradient-to-br from-yellow-500/18 to-orange-500/10 border border-white/[0.07] flex items-center justify-center">
@@ -812,24 +1137,30 @@ export default function GatheringChatRoomPage() {
       </BottomSheet>
 
       {/* ───────── 나가기 확인 바텀시트 ───────── */}
-      <BottomSheet isOpen={showLeaveConfirm} onClose={() => setShowLeaveConfirm(false)} maxH="max-h-[46vh]">
+      <BottomSheet
+        isOpen={showLeaveConfirm}
+        onClose={() => setShowLeaveConfirm(false)}
+        maxH="max-h-[46vh]"
+      >
         <div className="px-6 pt-3 pb-2 text-center">
-          <div className={`w-[56px] h-[56px] rounded-[20px] flex items-center justify-center mx-auto mb-4 ${
-            isHost ? 'bg-[#FF203A]/10' : 'bg-white/[0.05]'
-          }`}>
-            {isHost
-              ? <Trash2 className="w-6 h-6 text-[#FF203A]" />
-              : <LogOut className="w-6 h-6 text-white/40" />
-            }
+          <div
+            className={`w-[56px] h-[56px] rounded-[20px] flex items-center justify-center mx-auto mb-4 ${
+              isHost ? "bg-[#FF203A]/10" : "bg-white/[0.05]"
+            }`}
+          >
+            {isHost ? (
+              <Trash2 className="w-6 h-6 text-[#FF203A]" />
+            ) : (
+              <LogOut className="w-6 h-6 text-white/40" />
+            )}
           </div>
           <h3 className="text-[18px] font-bold text-white mb-2 tracking-tight">
-            {isHost ? '게더링을 종료할까요?' : '게더링을 나갈까요?'}
+            {isHost ? "게더링을 종료할까요?" : "게더링을 나갈까요?"}
           </h3>
           <p className="text-[13.5px] text-white/35 leading-relaxed whitespace-pre-line">
             {isHost
-              ? '방장이 나가면 게더링과 모든 대화 내용이\n영구적으로 삭제됩니다.'
-              : '목록으로 돌아갑니다.\n언제든 다시 참여할 수 있습니다.'
-            }
+              ? "방장이 나가면 게더링과 모든 대화 내용이\n영구적으로 삭제됩니다."
+              : "목록으로 돌아갑니다.\n언제든 다시 참여할 수 있습니다."}
           </p>
         </div>
         <div className="px-4 pb-8 pt-4 flex gap-2.5 shrink-0">
@@ -843,16 +1174,22 @@ export default function GatheringChatRoomPage() {
             onClick={handleLeaveOrDeleteRoom}
             className="flex-1 h-[50px] bg-[#FF203A] hover:bg-[#e01c34] text-white font-bold rounded-2xl text-[15px] transition-colors"
           >
-            {isHost ? '종료 및 삭제' : '나가기'}
+            {isHost ? "종료 및 삭제" : "나가기"}
           </button>
         </div>
       </BottomSheet>
 
       {/* ───────── 멤버 바텀시트 ───────── */}
-      <BottomSheet isOpen={showMembers} onClose={() => setShowMembers(false)} maxH="max-h-[75vh]">
+      <BottomSheet
+        isOpen={showMembers}
+        onClose={() => setShowMembers(false)}
+        maxH="max-h-[75vh]"
+      >
         <div className="flex items-center justify-between px-5 pt-2 pb-4 shrink-0">
           <div className="flex items-center gap-2">
-            <h3 className="text-[18px] font-bold text-white tracking-tight">참여자</h3>
+            <h3 className="text-[18px] font-bold text-white tracking-tight">
+              참여자
+            </h3>
             <span className="text-[12px] font-semibold text-[#FF203A] bg-[#FF203A]/10 px-2.5 py-[3px] rounded-full tabular-nums">
               {members.length}
             </span>
@@ -866,23 +1203,32 @@ export default function GatheringChatRoomPage() {
         </div>
         <div className="flex-1 overflow-y-auto px-3 pb-8">
           <div className="space-y-0.5">
-            {members.map(m => (
+            {members.map((m) => (
               <div
                 key={m.id}
                 className="flex items-center gap-3 px-2 py-3 rounded-[16px] hover:bg-white/[0.03] transition-colors"
               >
                 <div className="w-[42px] h-[42px] rounded-[14px] bg-[#2e2e2e] border border-white/[0.06] overflow-hidden flex items-center justify-center text-[14px] font-medium text-white/38 shrink-0">
-                  {m.avatar_url
-                    ? <img src={m.avatar_url} className="w-full h-full object-cover" alt="" />
-                    : m.name?.charAt(0)
-                  }
+                  {m.avatar_url ? (
+                    <img
+                      src={m.avatar_url}
+                      className="w-full h-full object-cover"
+                      alt=""
+                    />
+                  ) : (
+                    m.name?.charAt(0)
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[14.5px] font-medium text-white/82">{m.name}</p>
+                  <p className="text-[14.5px] font-medium text-white/82">
+                    {m.name}
+                  </p>
                   {room?.host_id === m.id && (
                     <div className="flex items-center gap-1 mt-[2px]">
                       <Crown className="w-3 h-3 text-yellow-500/65" />
-                      <span className="text-[11px] text-yellow-500/60 font-medium">호스트</span>
+                      <span className="text-[11px] text-yellow-500/60 font-medium">
+                        호스트
+                      </span>
                     </div>
                   )}
                 </div>
@@ -893,7 +1239,11 @@ export default function GatheringChatRoomPage() {
       </BottomSheet>
 
       {/* ───────── 이모티콘 바텀시트 ───────── */}
-      <BottomSheet isOpen={showEmojiModal} onClose={() => setShowEmojiModal(false)} maxH="max-h-[52vh]">
+      <BottomSheet
+        isOpen={showEmojiModal}
+        onClose={() => setShowEmojiModal(false)}
+        maxH="max-h-[52vh]"
+      >
         <div className="px-6 pt-3 pb-8 text-center relative overflow-hidden">
           {/* 배경 글로우 */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-52 h-52 bg-[#FF203A]/8 blur-[60px] rounded-full pointer-events-none" />
@@ -904,17 +1254,30 @@ export default function GatheringChatRoomPage() {
             </div>
             <motion.div
               className="absolute -top-2 -right-1"
-              animate={{ y: [0, -7, 0], rotate: [0, 18, -8], scale: [1, 1.15, 1] }}
-              transition={{ duration: 3.2, ease: 'easeInOut', repeat: Infinity, repeatType: 'mirror' }}
+              animate={{
+                y: [0, -7, 0],
+                rotate: [0, 18, -8],
+                scale: [1, 1.15, 1],
+              }}
+              transition={{
+                duration: 3.2,
+                ease: "easeInOut",
+                repeat: Infinity,
+                repeatType: "mirror",
+              }}
             >
               <Sparkles className="w-6 h-6 text-yellow-400 drop-shadow-[0_0_6px_rgba(250,204,21,0.55)]" />
             </motion.div>
           </div>
 
-          <h3 className="text-[20px] font-bold text-white mb-2 tracking-tight relative">곧 만나요!</h3>
+          <h3 className="text-[20px] font-bold text-white mb-2 tracking-tight relative">
+            곧 만나요!
+          </h3>
           <p className="text-[13.5px] text-white/35 leading-relaxed mb-7 relative">
-            더 풍부한 감정 표현을 위해<br />
-            <span className="text-[#FF203A] font-semibold">이모티콘 기능</span>을 준비하고 있습니다.
+            더 풍부한 감정 표현을 위해
+            <br />
+            <span className="text-[#FF203A] font-semibold">이모티콘 기능</span>
+            을 준비하고 있습니다.
           </p>
 
           <button
@@ -938,17 +1301,30 @@ export default function GatheringChatRoomPage() {
 }
 
 // ─── 이미지 뷰어 모달 ────────────────────────────────────────
-function ImageViewerModal({ isOpen, initialIndex, images, onClose }: {
-  isOpen: boolean; initialIndex: number; images: string[]; onClose: () => void;
+function ImageViewerModal({
+  isOpen,
+  initialIndex,
+  images,
+  onClose,
+}: {
+  isOpen: boolean;
+  initialIndex: number;
+  images: string[];
+  onClose: () => void;
 }) {
-  const [index, setIndex]         = useState(initialIndex);
+  const [index, setIndex] = useState(initialIndex);
   const [direction, setDirection] = useState(0);
 
-  useEffect(() => { if (isOpen) setIndex(initialIndex); }, [isOpen, initialIndex]);
+  useEffect(() => {
+    if (isOpen) setIndex(initialIndex);
+  }, [isOpen, initialIndex]);
 
   const paginate = (d: number) => {
     const n = index + d;
-    if (n >= 0 && n < images.length) { setDirection(d); setIndex(n); }
+    if (n >= 0 && n < images.length) {
+      setDirection(d);
+      setIndex(n);
+    }
   };
 
   const handleDragEnd = (_: unknown, info: { offset: { x: number } }) => {
@@ -999,12 +1375,22 @@ function ImageViewerModal({ isOpen, initialIndex, images, onClose }: {
             src={images[index]}
             custom={direction}
             variants={{
-              enter: (d: number) => ({ x: d > 0 ? 500 : -500, opacity: 0, scale: 0.92 }),
+              enter: (d: number) => ({
+                x: d > 0 ? 500 : -500,
+                opacity: 0,
+                scale: 0.92,
+              }),
               center: { x: 0, opacity: 1, scale: 1 },
-              exit:  (d: number) => ({ x: d < 0 ? 500 : -500, opacity: 0, scale: 0.92 }),
+              exit: (d: number) => ({
+                x: d < 0 ? 500 : -500,
+                opacity: 0,
+                scale: 0.92,
+              }),
             }}
-            initial="enter" animate="center" exit="exit"
-            transition={{ type: 'spring', stiffness: 340, damping: 34 }}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ type: "spring", stiffness: 340, damping: 34 }}
             drag="x"
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.7}
