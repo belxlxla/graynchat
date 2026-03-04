@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft, Hourglass, Lock, User as UserIcon,
-  Clock, Unlock, Send, Sparkles, ChevronDown
+  Clock, Send, Sparkles, ChevronDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
