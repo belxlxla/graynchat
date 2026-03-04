@@ -21,11 +21,21 @@ const LOGO_ACTIVE_FILTER =
 const LOGO_INACTIVE_FILTER =
   'brightness(0) invert(1) opacity(0.38)';
 
-export default function BottomNavigation() {
+// 🔥 1. Props 타입 정의 추가
+interface BottomNavigationProps {
+  hasUnreadMessages?: boolean;
+}
+
+// 🔥 2. 컴포넌트에서 props 받도록 수정
+export default function BottomNavigation({ hasUnreadMessages }: BottomNavigationProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const [hasUnreadChats, setHasUnreadChats] = useState(false);
+  
+  // 외부 prop(hasUnreadMessages)이 있으면 그걸 우선으로 쓰고, 없으면 내부 상태 사용
+  const [localHasUnread, setLocalHasUnread] = useState(false);
+  const isUnread = hasUnreadMessages !== undefined ? hasUnreadMessages : localHasUnread;
+  
   const [pressedId, setPressedId] = useState<string | null>(null);
 
   const getActiveId = () => {
@@ -40,7 +50,8 @@ export default function BottomNavigation() {
   const activeId = getActiveId();
 
   useEffect(() => {
-    if (!user?.id) return;
+    // 외부에서 prop으로 받으면 자체 fetch는 건너뛰어도 됨
+    if (!user?.id || hasUnreadMessages !== undefined) return;
 
     const checkUnreadChats = async () => {
       try {
@@ -53,7 +64,7 @@ export default function BottomNavigation() {
           .maybeSingle();
 
         if (error) { console.warn('Nav check failed:', error.message); return; }
-        setHasUnreadChats(!!data);
+        setLocalHasUnread(!!data);
       } catch (err) {
         console.error('Check unread exception:', err);
       }
@@ -70,7 +81,7 @@ export default function BottomNavigation() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user]);
+  }, [user, hasUnreadMessages]);
 
   const handlePress = (id: string, path: string) => {
     setPressedId(id);
@@ -170,9 +181,9 @@ export default function BottomNavigation() {
                 >
                   {renderIcon(item, isActive)}
 
-                  {/* 채팅 미읽음 뱃지 */}
+                  {/* 🔥 채팅 미읽음 뱃지 (isUnread 변수 사용) */}
                   <AnimatePresence>
-                    {item.id === 'chats' && hasUnreadChats && (
+                    {item.id === 'chats' && isUnread && (
                       <motion.span
                         key="badge"
                         initial={{ scale: 0, opacity: 0 }}
