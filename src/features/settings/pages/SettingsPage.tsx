@@ -242,8 +242,12 @@ export default function SettingsPage() {
     <div className="w-full h-full flex flex-col bg-dark-bg text-white pb-24">
 
       {/* ── 헤더 ────────────────────────────────────────── */}
-      <header className="h-14 px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 shrink-0"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+<header className="px-4 flex items-center justify-between bg-dark-bg sticky top-0 z-10 shrink-0"
+  style={{ 
+    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    paddingTop: 'env(safe-area-inset-top)',
+    height: 'calc(56px + env(safe-area-inset-top))'
+  }}>
         <h1 className="text-[18px] font-bold tracking-tight">더보기</h1>
         <button
           onClick={() => { setIsSearching(!isSearching); if (isSearching) setSearchQuery(''); }}

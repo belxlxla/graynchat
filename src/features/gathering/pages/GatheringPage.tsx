@@ -1029,7 +1029,10 @@ export default function GatheringPage() {
   return (
     <div className="h-full w-full flex flex-col" style={{ background: '#080808', color: 'white' }}>
       {/* 헤더 */}
-      <header className="px-5 pt-6 pb-0 sticky top-0 z-10" style={{ background: '#080808' }}>
+<header className="px-5 pb-0 sticky top-0 z-10" style={{ 
+  background: '#080808',
+  paddingTop: 'calc(24px + env(safe-area-inset-top))'
+}}>
         <div className="flex items-center justify-between mb-5">
           <div>
             <p className="text-[10px] tracking-[0.16em] uppercase" style={{ color: 'rgba(255,255,255,0.22)' }}>

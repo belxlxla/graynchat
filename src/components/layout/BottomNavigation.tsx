@@ -126,10 +126,10 @@ export default function BottomNavigation({ hasUnreadMessages }: BottomNavigation
   };
 
   return (
-    <div
-      className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
-      style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
-    >
+<div
+  className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
+  style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+>
       <nav
         className="pointer-events-auto mx-5 w-full max-w-[320px]"
         style={{

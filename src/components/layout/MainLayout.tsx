@@ -72,31 +72,31 @@ export default function MainLayout() {
     return () => { supabase.removeChannel(channel); };
   }, [user?.id]);
 
-  return (
+return (
 <div
   className="flex flex-col h-[100dvh] text-white overflow-hidden"
-  style={{ background: '#0d0d0d', paddingTop: 'env(safe-area-inset-top)' }}
+  style={{ background: '#0d0d0d' }}  // ← 이미 있는지 확인
 >
-      <div className="flex-1 w-full relative overflow-hidden pb-[60px]">
-        <AnimatePresence mode="popLayout" initial={false} custom={{ isTab, direction }}>
-          <motion.div
-            key={location.pathname}
-            className="absolute inset-0 overflow-hidden"
-            custom={{ isTab, direction }}
-            variants={pageVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* 🔥 hasUnreadMessages prop 전달 */}
-      <BottomNavigation hasUnreadMessages={hasUnreadMessages} />
+<div className="flex-1 w-full relative overflow-hidden" style={{
+  paddingBottom: 'calc(58px + max(16px, env(safe-area-inset-bottom)) + 8px)'
+}}>
+      <AnimatePresence mode="popLayout" initial={false} custom={{ isTab, direction }}>
+        <motion.div
+          key={location.pathname}
+          className="absolute inset-0 overflow-hidden"
+          custom={{ isTab, direction }}
+          variants={pageVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+        >
+          <Outlet />
+        </motion.div>
+      </AnimatePresence>
     </div>
-  );
+    <BottomNavigation hasUnreadMessages={hasUnreadMessages} />
+  </div>
+);
 }
 
 // ─────────────────────────────────────────────────────────

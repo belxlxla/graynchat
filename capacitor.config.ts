@@ -4,6 +4,9 @@ const config: CapacitorConfig = {
   appId: 'vns.grayn.app',
   appName: 'GRAYN',
   webDir: 'dist',
+    ios: {
+    contentInset: 'always',  // ← 이거 추가
+  },
   // ✅ 아래 plugins 부분을 추가해서 네이티브 스플래시를 제어합니다.
   plugins: {
     SplashScreen: {

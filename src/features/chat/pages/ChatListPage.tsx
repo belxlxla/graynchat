@@ -455,7 +455,7 @@ const handleLeaveChatConfirm = async () => {
     <div className="w-full h-full flex flex-col bg-[#212121] text-white">
 
       {/* ── 헤더 ─────────────────────────────────────────── */}
-      <header className="h-[56px] px-5 flex items-center justify-between bg-[#212121] sticky top-0 z-50 shrink-0">
+     <header className="px-5 flex items-center justify-between bg-[#212121] sticky top-0 z-50 shrink-0" style={{ paddingTop: 'env(safe-area-inset-top)', height: 'calc(56px + env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-2">
           <h1 className="text-[22px] font-bold tracking-tight">채팅</h1>
           {totalUnread > 0 && (

@@ -485,12 +485,14 @@ export default function FriendsListPage() {
       {step === 'list' && (
         <>
           {/* Header */}
-          <header className="h-[54px] flex items-center justify-between px-4 shrink-0 relative z-20"
-            style={{ 
-              background: 'rgba(33, 33, 33, 0.95)',
-              backdropFilter: 'blur(12px)',
-              borderBottom: `1px solid ${T.border}` 
-            }}>
+<header className="flex items-center justify-between px-4 shrink-0 relative z-20"
+  style={{ 
+    background: 'rgba(33, 33, 33, 0.95)',
+    backdropFilter: 'blur(12px)',
+    borderBottom: `1px solid ${T.border}`,
+    paddingTop: 'env(safe-area-inset-top)',
+    height: 'calc(54px + env(safe-area-inset-top))'
+  }}>
             <span className="text-[18px] font-bold tracking-tight pl-1">친구</span>
 
             <div className="flex items-center gap-0">

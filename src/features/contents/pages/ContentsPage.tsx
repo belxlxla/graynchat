@@ -139,8 +139,13 @@ const handlePaymentAndNavigate = async (type: 'capsule' | 'report') => {
     <div className="h-full w-full flex flex-col text-white" style={{ background: '#0d0d0d' }}>
 
       {/* ── 헤더 ────────────────────────────────────────── */}
-      <header className="h-14 px-5 flex items-center sticky top-0 z-10"
-        style={{ background: '#0d0d0d', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+<header className="px-5 flex items-center sticky top-0 z-10"
+  style={{ 
+    background: '#0d0d0d', 
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    paddingTop: 'env(safe-area-inset-top)',
+    height: 'calc(56px + env(safe-area-inset-top))'
+  }}>
         <h1 className="text-[18px] font-bold tracking-tight">그레인 콘텐츠</h1>
       </header>
 
