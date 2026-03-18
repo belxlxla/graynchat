@@ -23,7 +23,7 @@ import ScreenLockPage from '../features/settings/pages/ScreenLockPage';
 import TwoFactorAuthPage from '../features/settings/pages/TwoFactorAuthPage';
 import PasswordChangePage from '../features/settings/pages/PasswordChangePage';
 import WithdrawPage from '../features/settings/pages/WithdrawPage';
-import AppLockOverlay from '../features/auth/components/AppLockOverlay';
+import AppLockOverlay from '../features/auth/components/AppLockOverlay';  
 import FriendsSettingsPage from '../features/settings/pages/FriendsSettingsPage';
 import BlockedFriendsPage from '../features/settings/pages/BlockedFriendsPage';
 import ChatRoomSettingsPage from '../features/chat/pages/ChatRoomSettingsPage';
@@ -277,7 +277,8 @@ export default function App() {
             style: { 
               background: '#333', 
               color: '#fff', 
-              borderRadius: '12px' 
+              borderRadius: '12px' ,
+              marginTop: '50px'
             } 
           }} 
         />

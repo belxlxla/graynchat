@@ -246,7 +246,7 @@ const handleVerify = async () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-dark-bg text-white px-6">
+    <div className="min-h-screen flex flex-col bg-dark-bg text-white px-6 pt-14">
       <div className="h-14 flex items-center -ml-2 mb-6 mt-4">
         <button onClick={handleBack} className="p-2"><ChevronLeft className="w-7 h-7" /></button>
       </div>
