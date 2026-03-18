@@ -74,14 +74,25 @@ export default function MainLayout() {
 
 return (
   <div
-    className="flex flex-col text-white"
+    className="text-white"
     style={{ 
       background: '#0d0d0d',
-      height: '100dvh',
-      overflow: 'hidden',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
     }}
   >
-    <div className="flex-1 relative overflow-hidden">
+    <div 
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 'calc(58px + max(16px, env(safe-area-inset-bottom)))',
+      }}
+    >
       <AnimatePresence mode="popLayout" initial={false} custom={{ isTab, direction }}>
         <motion.div
           key={location.pathname}
@@ -96,6 +107,7 @@ return (
         </motion.div>
       </AnimatePresence>
     </div>
+
     <BottomNavigation hasUnreadMessages={hasUnreadMessages} />
   </div>
 );
