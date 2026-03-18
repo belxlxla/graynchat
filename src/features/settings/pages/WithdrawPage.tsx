@@ -91,67 +91,47 @@ export default function WithdrawPage() {
   };
 
   // 최종 탈퇴 처리
-  const handleWithdraw = async () => {
-    if (!isStep3Valid || isProcessing) return;
-    setIsProcessing(true);
+ const handleWithdraw = async () => {
+  if (!isStep3Valid || isProcessing) return;
+  setIsProcessing(true);
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    const userEmail = session?.user?.email;
+
+    if (!userId || !userEmail) throw new Error('로그인 세션이 만료되었습니다.');
+
+    // 비밀번호 재인증
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password: password,
+    });
+    if (authError) throw new Error('비밀번호가 일치하지 않습니다.');
+
+    // withdrawal_reasons 저장 완전 제거 (테이블 없음)
+
+    // 계정 삭제 RPC 호출
+    const { error: rpcError } = await supabase.rpc('delete_user_account');
+    if (rpcError) throw rpcError;
 
     try {
-      // 0. 현재 세션 미리 확보
-      const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
-      const userEmail = session?.user?.email;
-
-      if (!userId || !userEmail) throw new Error('로그인 세션이 만료되었습니다.');
-
-      // 1. 비밀번호 재인증 (삭제 직전 본인 확인)
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: userEmail,
-        password: password,
-      });
-      if (authError) throw new Error('비밀번호가 일치하지 않습니다.');
-
-      // 2. 탈퇴 사유 저장 (삭제 '전'에 수행)
-      // 403 에러 방지를 위해 에러가 나더라도 다음 단계로 넘어가도록 처리
- // TODO: withdrawal_reasons 테이블 생성 후 활성화
-// try {
-//   const reasonText = selectedReason === 'other' 
-//     ? otherReason 
-//     : WITHDRAW_REASONS.find(r => r.id === selectedReason)?.label || '';
-
-//   await supabase.from('withdrawal_reasons').insert({
-//     user_id: userId,
-//     reason_code: selectedReason,
-//     reason_text: reasonText,
-//   });
-// } catch (e) {
-//   console.warn('사유 저장 실패 (무시하고 진행):', e);
-// }
-
-      // 3. 계정 삭제 RPC 호출 (가장 중요)
-      const { error: rpcError } = await supabase.rpc('delete_user_account');
-      if (rpcError) throw rpcError;
-
-      // 4. 세션 정리 및 종료
-      // RPC 성공 시 이미 유저가 없으므로 signOut 에러가 날 확률이 높습니다. 
-      // 이를 대비해 에러를 catch로 잡고 무조건 성공 화면으로 넘깁니다.
-      try {
-        await supabase.auth.signOut();
-      } catch (e) {
-        console.log('이미 세션이 종료되었습니다.');
-      }
-
-      // 모든 과정이 끝났으므로 모달 교체
-      setShowFinalConfirmModal(false);
-      setShowSuccessModal(true);
-
-    } catch (err: any) {
-      console.error('Withdraw Error:', err);
-      toast.error(err.message || '탈퇴 중 오류가 발생했습니다.');
-      setShowFinalConfirmModal(false);
-    } finally {
-      setIsProcessing(false);
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.log('이미 세션이 종료되었습니다.');
     }
-  };
+
+    setShowFinalConfirmModal(false);
+    setShowSuccessModal(true);
+
+  } catch (err: any) {
+    console.error('Withdraw Error:', err);
+    toast.error(err.message || '탈퇴 중 오류가 발생했습니다.');
+    setShowFinalConfirmModal(false);
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
   const handleFinalExit = () => {
     window.location.href = '/';
@@ -162,7 +142,8 @@ export default function WithdrawPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[#0A0A0A] text-white overflow-hidden font-sans">
       {/* 헤더 */}
-      <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0">
+      <header className="px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0"
+  style={{ paddingTop: 'env(safe-area-inset-top)', height: 'calc(56px + env(safe-area-inset-top))' }}>
         <button 
           onClick={() => {
             if (currentStep > 1) {
