@@ -25,7 +25,7 @@ jobs:
 
       # 2. 🆕 의존성 패키지 설치
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       # 3. 🆕 프로젝트 빌드 (여기서 최신 dist 폴더가 생성됩니다)
       - name: Build project
