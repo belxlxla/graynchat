@@ -46,6 +46,10 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<true/>
+	<false/>
+	
+	<!-- ✅ 이거 추가 -->
+	<key>UIWhitePointAdaptivityStyle</key>
+	<string>UIWhitePointAdaptivityStyleStandard</string>
 </dict>
 </plist>
