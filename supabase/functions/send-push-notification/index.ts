@@ -1,12 +1,64 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { create, getNumericDate } from 'https://deno.land/x/djwt@v2.8/mod.ts';
 
-// 🎯 Supabase 환경변수는 자동으로 제공됨!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-// 🔥 Firebase 서버 키만 직접 설정
-const FIREBASE_SERVER_KEY = Deno.env.get('sb_publishable_HCg2sR7BiAM6sc7lcHh3oA_lzSk2Qca')!;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// ✅ 서비스 계정으로 FCM 액세스 토큰 발급
+async function getFCMAccessToken(): Promise<string> {
+  const serviceAccount = JSON.parse(Deno.env.get('FIREBASE_SERVICE_ACCOUNT')!);
+
+  const now = getNumericDate(0);
+  const exp = getNumericDate(60 * 60); // 1시간
+
+  const payload = {
+    iss: serviceAccount.client_email,
+    sub: serviceAccount.client_email,
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: exp,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+  };
+
+  // PEM → CryptoKey 변환
+  const pemHeader = '-----BEGIN PRIVATE KEY-----';
+  const pemFooter = '-----END PRIVATE KEY-----';
+  const rawKey = serviceAccount.private_key
+    .replace(pemHeader, '')
+    .replace(pemFooter, '')
+    .replace(/\n/g, '');
+
+  const binaryKey = Uint8Array.from(atob(rawKey), (c) => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    binaryKey,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const jwt = await create({ alg: 'RS256', typ: 'JWT' }, payload, cryptoKey);
+
+  // JWT로 OAuth 토큰 교환
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+
+  const tokenData = await tokenRes.json();
+  return tokenData.access_token;
+}
 
 interface PushNotificationRequest {
   userIds: string[];
@@ -16,39 +68,25 @@ interface PushNotificationRequest {
 }
 
 serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   try {
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    };
-
-    if (req.method === 'OPTIONS') {
-      return new Response('ok', { headers: corsHeaders });
-    }
-
     const { userIds, title, body, data }: PushNotificationRequest = await req.json();
-    console.log('📨 푸시 알림 요청:', { userIds, title, body });
 
-    // Supabase 클라이언트 생성
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // 사용자들의 FCM 토큰 가져오기
+    // FCM 토큰 조회
     const { data: profiles, error } = await supabase
       .from('profiles')
       .select('fcm_token')
       .in('id', userIds)
       .not('fcm_token', 'is', null);
 
-    if (error) {
-      console.error('❌ 프로필 조회 에러:', error);
-      throw error;
-    }
+    if (error) throw error;
 
-    const tokens = profiles
-      .map((profile) => profile.fcm_token)
-      .filter(Boolean);
-
-    console.log(`📱 FCM 토큰 ${tokens.length}개 발견`);
+    const tokens: string[] = profiles.map((p) => p.fcm_token).filter(Boolean);
 
     if (tokens.length === 0) {
       return new Response(
@@ -57,51 +95,52 @@ serve(async (req) => {
       );
     }
 
-    // FCM에 푸시 알림 발송 (Legacy API)
-    const fcmResponse = await fetch(
-      'https://fcm.googleapis.com/fcm/send',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `key=${FIREBASE_SERVER_KEY}`,
-        },
-        body: JSON.stringify({
-          registration_ids: tokens,
-          notification: {
-            title,
-            body,
-            sound: 'default',
-            priority: 'high',
-          },
-          data: data || {},
-          priority: 'high',
-        }),
-      }
+    // ✅ V1 API 액세스 토큰 발급
+    const accessToken = await getFCMAccessToken();
+    const serviceAccount = JSON.parse(Deno.env.get('FIREBASE_SERVICE_ACCOUNT')!);
+    const projectId = serviceAccount.project_id; // ← JSON에서 자동 추출
+
+    // 토큰마다 개별 발송 (V1 API는 멀티캐스트 미지원)
+    const results = await Promise.allSettled(
+      tokens.map((token) =>
+        fetch(
+          `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`, // ← Bearer 방식
+            },
+            body: JSON.stringify({
+              message: {
+                token,
+                notification: { title, body },
+                data: data || {},
+                apns: {
+                  payload: {
+                    aps: { sound: 'default' },
+                  },
+                },
+              },
+            }),
+          }
+        )
+      )
     );
 
-    const fcmResult = await fcmResponse.json();
-    console.log('✅ FCM 응답:', fcmResult);
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.filter((r) => r.status === 'rejected').length;
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        result: fcmResult,
-        sentTo: tokens.length,
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: true, sentTo: succeeded, failed }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    console.error('❌ 에러 발생:', error);
+
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '알 수 없는 오류';
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

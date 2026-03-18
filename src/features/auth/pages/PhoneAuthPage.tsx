@@ -7,7 +7,6 @@ import { supabase } from '../../../shared/lib/supabaseClient';
 
 const CARRIERS = ['SKT', 'KT', 'LG U+', '알뜰폰'] as const;
 const VERIFY_TIME = 180;
-const DEMO_CODE = '000000';
 
 type StepType = 'input' | 'verify' | 'name';
 
@@ -95,29 +94,49 @@ export default function PhoneAuthPage() {
     setPhoneError(false);
   };
 
-  const handleSendCode = () => {
-    const raw = phoneNumber.replace(/-/g, '');
-    if (!carrier) return toast.error('통신사를 선택해주세요.');
-    if (raw.length < 10) return toast.error('휴대폰 번호를 확인해주세요.');
-    setStep('verify');
-    setTimer(VERIFY_TIME);
-    toast.success('인증번호가 발송되었습니다.');
-  };
+const handleSendCode = async () => {
+  const raw = phoneNumber.replace(/-/g, '')
+  if (!carrier) return toast.error('통신사를 선택해주세요.')
+  if (raw.length < 10) return toast.error('휴대폰 번호를 확인해주세요.')
 
-  const handleVerify = async () => {
-    if (verifyCode !== DEMO_CODE) {
-      setCodeError(true);
-      return toast.error('인증번호가 일치하지 않습니다.');
+  try {
+    const { data, error } = await supabase.functions.invoke('send-sms-verification', {
+      body: { phoneNumber: raw }  // ← phoneNumber로 맞춤
+    })
+    if (error) throw error
+
+    setStep('verify')
+    setTimer(VERIFY_TIME)
+    toast.success('인증번호가 발송되었습니다.')
+  } catch (e: any) {
+    toast.error(e?.message || 'SMS 발송에 실패했습니다.')
+  }
+}
+
+const handleVerify = async () => {
+  try {
+    const raw = phoneNumber.replace(/-/g, '')
+    const { data, error } = await supabase.functions.invoke('verify-sms-code', {
+      body: { phoneNumber: raw, code: verifyCode }  // ← phoneNumber로 맞춤
+    })
+
+    if (error || !data?.success) {
+      setCodeError(true)
+      return toast.error(data?.error || '인증번호가 일치하지 않습니다.')
     }
 
+    // 기존 분기 로직 그대로 유지
     if (isVerifyMode && verifyType === 'phone') {
-      await handlePhoneUpdate();
+      await handlePhoneUpdate()
     } else if (isVerifyMode && verifyType === 'name') {
-      setStep('name');
+      setStep('name')
     } else if (isSignupMode) {
-      await handleSignupComplete();
+      await handleSignupComplete()
     }
-  };
+  } catch (e: any) {
+    toast.error(e?.message || '인증 확인 중 오류가 발생했습니다.')
+  }
+}
 
   const handlePhoneUpdate = async () => {
     const verifyUserId = sessionStorage.getItem('verify_user_id');
