@@ -1133,7 +1133,7 @@ function EditProfileModal({ isOpen, onClose, initialProfile, onSave }: {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: T.bg }}>
+    <div className="fixed inset-0 z-[60] flex flex-col" style={{ background: T.bg, paddingTop: 'env(safe-area-inset-top)' }}>
       {/* ── Image Cropper Overlay ── */}
       <AnimatePresence>
         {isCropOpen && tempImageSrc && (

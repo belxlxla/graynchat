@@ -831,7 +831,7 @@ export default function GatheringChatRoomPage() {
   }
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#212121] text-white overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-[#212121] text-white overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* ───────── 헤더 ───────── */}
       <header className="h-[54px] px-3 flex items-center gap-2 shrink-0 bg-[#212121]/90 backdrop-blur-xl border-b border-white/[0.05] z-20">
         <button

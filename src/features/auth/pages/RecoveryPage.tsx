@@ -55,99 +55,75 @@ export default function RecoveryPage() {
   };
 
   // ✅ sms_verifications insert
-  const handleSendCode = async () => {
-    if (!carrier || !name || phoneNumber.replace(/-/g, '').length < 10) {
-      return toast.error('정보를 올바르게 입력해주세요.');
-    }
+const handleSendCode = async () => {
+  if (!carrier || !name || phoneNumber.replace(/-/g, '').length < 10) {
+    return toast.error('정보를 올바르게 입력해주세요.');
+  }
 
-    setIsLoading(true);
-    try {
-      const raw = phoneNumber.replace(/-/g, '');
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      const expiresAt = new Date(Date.now() + 180 * 1000).toISOString();
+  setIsLoading(true);
+  try {
+    const raw = phoneNumber.replace(/-/g, '');
+    
+    const { error } = await supabase.functions.invoke('send-sms-verification', {
+      body: { phoneNumber: raw }
+    });
 
-      const { error } = await supabase.from('sms_verifications').insert({
-        phone_number: raw,
-        verification_code: code,
-        expires_at: expiresAt,
-      });
+    if (error) throw error;
 
-      if (error) throw error;
-
-      // 실제 SMS 발송 로직 (Naver Cloud SMS 등) 여기에 추가
-      setIsVerifying(true);
-      setTimer(180);
-      toast.success('인증번호가 발송되었습니다.');
-    } catch (err) {
-      console.error('Send code error:', err);
-      toast.error('인증번호 발송에 실패했습니다.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    setIsVerifying(true);
+    setTimer(180);
+    toast.success('인증번호가 발송되었습니다.');
+  } catch (err) {
+    console.error('Send code error:', err);
+    toast.error('인증번호 발송에 실패했습니다.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // ✅ sms_verifications로 검증 후 users 조회
-  const handleVerify = async () => {
-    if (verifyCode.length !== 6) {
-      return toast.error('인증번호 6자리를 입력해주세요.');
+const handleVerify = async () => {
+  if (verifyCode.length !== 6) {
+    return toast.error('인증번호 6자리를 입력해주세요.');
+  }
+
+  setIsLoading(true);
+  try {
+    const raw = phoneNumber.replace(/-/g, '');
+
+    // 1. Edge Function으로 인증번호 검증
+    const { data, error } = await supabase.functions.invoke('verify-sms-code', {
+      body: { phoneNumber: raw, code: verifyCode }
+    });
+
+    if (error || !data?.success) {
+      return toast.error(data?.error || '인증번호가 일치하지 않습니다.');
     }
 
-    setIsLoading(true);
-    try {
-      const raw = phoneNumber.replace(/-/g, '');
+    // 2. users 테이블에서 이름 + 전화번호로 조회
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('email')
+      .eq('name', name.trim())
+      .eq('phone', raw)
+      .maybeSingle();
 
-      // 1. sms_verifications 검증
-      const { data: smsData, error: smsError } = await supabase
-        .from('sms_verifications')
-        .select('id, expires_at')
-        .eq('phone_number', raw)
-        .eq('verification_code', verifyCode)
-        .eq('is_verified', false)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    if (userError) throw userError;
 
-      if (smsError || !smsData) {
-        return toast.error('인증번호가 일치하지 않습니다.');
-      }
-
-      if (new Date(smsData.expires_at) < new Date()) {
-        return toast.error('인증번호가 만료되었습니다.');
-      }
-
-      // 2. 인증 완료 처리
-      await supabase
-        .from('sms_verifications')
-        .update({
-          is_verified: true,
-          verified_at: new Date().toISOString(),
-        })
-        .eq('id', smsData.id);
-
-      // 3. users 테이블에서 이름 + 전화번호로 조회
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('email')
-        .eq('name', name.trim())
-        .eq('phone', raw)
-        .maybeSingle();
-
-      if (userError) throw userError;
-
-      if (!userData) {
-        return toast.error('일치하는 회원 정보를 찾을 수 없습니다.');
-      }
-
-      setFoundEmail(userData.email);
-      setStep(type === 'id' ? 'id-result' : 'reset-pw');
-      toast.success('본인 인증이 완료되었습니다.');
-    } catch (err) {
-      console.error('Verify Error:', err);
-      toast.error('정보 조회 중 오류가 발생했습니다.');
-    } finally {
-      setIsLoading(false);
+    if (!userData) {
+      return toast.error('일치하는 회원 정보를 찾을 수 없습니다.');
     }
-  };
+
+    setFoundEmail(userData.email);
+    setStep(type === 'id' ? 'id-result' : 'reset-pw');
+    toast.success('본인 인증이 완료되었습니다.');
+  } catch (err) {
+    console.error('Verify Error:', err);
+    toast.error('정보 조회 중 오류가 발생했습니다.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // ✅ RPC 사용 - 프론트 변경 없음
   const handleResetPassword = async () => {
@@ -181,7 +157,7 @@ export default function RecoveryPage() {
   const displayTime = `${Math.floor(timer / 60)}:${timer % 60 < 10 ? '0' : ''}${timer % 60}`;
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6">
+    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6" style={{ paddingTop: 'max(24px, env(safe-area-inset-top))' }}>
       <header className="h-14 flex items-center shrink-0 mb-6">
         <button
           onClick={() => step === 'select' ? navigate(-1) : setStep('select')}

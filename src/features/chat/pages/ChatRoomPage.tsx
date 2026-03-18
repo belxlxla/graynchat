@@ -870,7 +870,7 @@ export default function ChatRoomPage() {
   const activeCapsule = timeCapsules[activeCapsuleIdx] ?? null;
 
   return (
-    <div className="flex flex-col h-[100dvh] text-white overflow-hidden relative" style={bgStyle}>
+    <div className="flex flex-col h-[100dvh] text-white overflow-hidden relative" style={{ ...bgStyle, paddingTop: 'env(safe-area-inset-top)' }}>
       {isImageBg && <div className="absolute inset-0 bg-black/40 pointer-events-none" />}
 
       <AnimatePresence>

@@ -207,7 +207,7 @@ export default function EditGatheringPostPage() {
   if (isLoading) return <div className="h-screen bg-[#080808] flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>;
 
   return (
-    <div className="flex flex-col h-[100dvh] text-white bg-[#080808]">
+    <div className="flex flex-col h-[100dvh] text-white bg-[#080808]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <header className="flex items-center gap-3 px-4 h-14 shrink-0 bg-[#0d0d0d] border-b border-[#2C2C2E]">
         <motion.button 
           whileTap={{ scale: 0.9 }} 

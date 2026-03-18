@@ -209,7 +209,7 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
 
   return (
     <div className="flex flex-col h-[100dvh] bg-[#111] text-[#eee] relative">
-      <header className="fixed top-0 w-full h-[52px] flex items-center justify-between px-4 bg-[#111]/80 backdrop-blur-md z-50 border-b border-white/5">
+<header className="fixed top-0 w-full flex items-center justify-between px-4 bg-[#111]/80 backdrop-blur-md z-50 border-b border-white/5" style={{ paddingTop: 'env(safe-area-inset-top)', height: 'calc(52px + env(safe-area-inset-top))' }}>
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-white">
             <ArrowLeft className="w-6 h-6" />
         </button>
@@ -229,7 +229,7 @@ const { data: userProfile } = await supabase.from('user_profiles').select('avata
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto pt-[52px] pb-[90px]">
+      <div className="flex-1 overflow-y-auto pb-[90px]" style={{ paddingTop: 'calc(52px + env(safe-area-inset-top))' }}>
         <div className="px-5 pt-6 pb-8">
             <div className="inline-flex items-center justify-center px-3 py-1 rounded-[6px] bg-[#222] text-[#999] text-[11px] font-medium mb-5">
                 {post.category}

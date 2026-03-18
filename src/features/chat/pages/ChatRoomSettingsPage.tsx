@@ -594,7 +594,7 @@ const handleInvite = async (selectedFriendIds: number[]) => {
 
   // ── 메인 뷰 ───────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#212121] text-white overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-[#212121] text-white overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
 
       {/* 헤더 */}
       <header className="h-[54px] px-3 flex items-center bg-[#212121]/90 backdrop-blur-xl border-b border-white/[0.05] shrink-0 z-10">
@@ -793,7 +793,7 @@ function SubPageView({ title, count, onBack, children }: {
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="flex flex-col h-[100dvh] bg-[#212121] text-white overflow-hidden absolute inset-0 z-50"
+      className="flex flex-col h-[100dvh] bg-[#212121] text-white overflow-hidden absolute inset-0 z-50" style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <header className="h-[54px] px-3 flex items-center bg-[#212121]/90 backdrop-blur-xl border-b border-white/[0.05] shrink-0">
         <button

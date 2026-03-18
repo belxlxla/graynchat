@@ -223,7 +223,7 @@ export default function AccountInfoPage() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* ── 헤더 (유지) ───────────────────────────────── */}
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">
         {/* 🛠️ 수정: navigate(-1) 대신 전체 설정(또는 메인) 경로를 직접 입력하세요 */}

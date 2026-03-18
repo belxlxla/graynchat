@@ -156,7 +156,7 @@ export default function BlockedFriendsPage() {
   );
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       
       {/* === Header === */}
       <header className="h-14 px-2 flex items-center bg-[#1C1C1E] border-b border-[#2C2C2E] shrink-0 z-10">

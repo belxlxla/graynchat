@@ -103,7 +103,7 @@ export default function TimeCapsuleViewPage() {
   if (!capsule) return null;
 
   return (
-    <div className="h-[100dvh] bg-[#0D0D0F] text-white flex flex-col overflow-hidden">
+    <div className="h-[100dvh] bg-[#0D0D0F] text-white flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* 배경 별빛 */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(20)].map((_, i) => (

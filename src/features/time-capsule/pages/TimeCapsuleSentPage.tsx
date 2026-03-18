@@ -198,7 +198,7 @@ export default function TimeCapsuleSentPage() {
   };
 
   return (
-    <div className="h-[100dvh] bg-[#0D0D0F] text-white flex flex-col">
+    <div className="h-[100dvh] bg-[#0D0D0F] text-white flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <header className="h-14 px-4 flex items-center justify-between bg-[#0D0D0F] border-b border-white/5 shrink-0">
         <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
           <ChevronLeft className="w-6 h-6" />

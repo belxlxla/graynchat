@@ -454,7 +454,7 @@ export default function TimeCapsuleCreatePage() {
   const currentStepIndex = stepOrder.indexOf(step);
 
   return (
-    <div className="h-[100dvh] bg-[#0D0D0F] text-white flex flex-col">
+    <div className="h-[100dvh] bg-[#0D0D0F] text-white flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <header className="h-14 px-4 flex items-center justify-between bg-[#0D0D0F] border-b border-white/5 shrink-0">
         <button
           onClick={() => {

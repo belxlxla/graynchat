@@ -625,7 +625,7 @@ export default function CreateGatheringPostPage() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] text-white bg-[#080808]">
+    <div className="flex flex-col h-[100dvh] text-white bg-[#080808]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {/* ── 헤더 (기존 유지) ────────────────────────────── */}
       <header className="flex items-center gap-3 px-4 h-14 shrink-0 bg-[#0d0d0d] border-b border-[#2C2C2E]">
         <motion.button

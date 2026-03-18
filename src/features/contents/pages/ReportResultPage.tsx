@@ -645,7 +645,7 @@ const handleRelationSelect = async (relationId: string) => {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-[#000000] text-white pb-safe scrollbar-hide">
+    <div className="h-full overflow-y-auto bg-[#000000] text-white pb-safe scrollbar-hide" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <header className="sticky top-0 z-50 bg-[#000000]/80 backdrop-blur-md px-4 h-14 flex items-center justify-between border-b border-white/5">
         <button onClick={handleBack} className="p-2 -ml-2 text-gray-400 hover:text-white">
           <ArrowLeft className="w-6 h-6" />

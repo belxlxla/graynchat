@@ -407,7 +407,7 @@ export default function SignUpPage() {
   const displayGuardianTime = `${Math.floor(guardianTimer / 60)}:${String(guardianTimer % 60).padStart(2, '0')}`;
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6">
+    <div className="flex flex-col h-[100dvh] bg-dark-bg text-white overflow-hidden p-6" style={{ paddingTop: 'max(24px, env(safe-area-inset-top))' }}>
       <header className="h-14 flex items-center shrink-0 mb-4">
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-white transition-colors">
           <ChevronLeft className="w-7 h-7" />
