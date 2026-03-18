@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { IAP } from '../../../types/iap';
 import { 
   ArrowLeft,
   Heart, Download,
@@ -130,9 +131,29 @@ export default function ReportResultPage() {
     requestPerms();
   }, []);
 
-  const handleRelationSelect = (relationId: string) => {
+const handleRelationSelect = async (relationId: string) => {
+  if (!user) return;
+  
+  try {
+    const { receipt } = await IAP.purchase({ productId: 'com.grayn.app.relation_analysis' });
+    
+    const { data, error } = await supabase.functions.invoke('verify-iap-receipt', {
+      body: { receipt, productId: 'com.grayn.app.relation_analysis', userId: user.id }
+    });
+    
+    if (error || !data?.success) {
+      toast.error('결제에 실패했습니다.');
+      return;
+    }
+    
+    toast.success('결제 완료!');
     startAnalysis(relationId);
-  };
+    
+  } catch (e: any) {
+    if (e.message === '결제가 취소되었습니다.') return;
+    toast.error(e.message || '결제 중 오류가 발생했습니다.');
+  }
+};
 
   const startAnalysis = async (relationId: string) => {
     if (!user || !selectedFriend) return;

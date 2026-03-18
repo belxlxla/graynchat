@@ -112,19 +112,20 @@ export default function WithdrawPage() {
 
       // 2. 탈퇴 사유 저장 (삭제 '전'에 수행)
       // 403 에러 방지를 위해 에러가 나더라도 다음 단계로 넘어가도록 처리
-      try {
-        const reasonText = selectedReason === 'other' 
-          ? otherReason 
-          : WITHDRAW_REASONS.find(r => r.id === selectedReason)?.label || '';
+ // TODO: withdrawal_reasons 테이블 생성 후 활성화
+// try {
+//   const reasonText = selectedReason === 'other' 
+//     ? otherReason 
+//     : WITHDRAW_REASONS.find(r => r.id === selectedReason)?.label || '';
 
-        await supabase.from('withdrawal_reasons').insert({
-          user_id: userId,
-          reason_code: selectedReason,
-          reason_text: reasonText,
-        });
-      } catch (e) {
-        console.warn('사유 저장 실패 (무시하고 진행):', e);
-      }
+//   await supabase.from('withdrawal_reasons').insert({
+//     user_id: userId,
+//     reason_code: selectedReason,
+//     reason_text: reasonText,
+//   });
+// } catch (e) {
+//   console.warn('사유 저장 실패 (무시하고 진행):', e);
+// }
 
       // 3. 계정 삭제 RPC 호출 (가장 중요)
       const { error: rpcError } = await supabase.rpc('delete_user_account');

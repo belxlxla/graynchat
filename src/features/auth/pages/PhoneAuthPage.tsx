@@ -100,7 +100,7 @@ const handleSendCode = async () => {
   if (raw.length < 10) return toast.error('휴대폰 번호를 확인해주세요.')
 
   try {
-    const { data, error } = await supabase.functions.invoke('send-sms-verification', {
+      const { error } = await supabase.functions.invoke('send-sms-verification', {
       body: { phoneNumber: raw }  // ← phoneNumber로 맞춤
     })
     if (error) throw error

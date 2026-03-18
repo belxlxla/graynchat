@@ -11,6 +11,7 @@ import {
 import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../auth/contexts/AuthContext';
+import { IAP } from '../../../types/iap';
 
 // --- 타입 정의 ---
 type TabType = 'sent' | 'received';
@@ -81,26 +82,46 @@ export default function ContentsPage() {
 }, [user]);
 
   // ── 결제 및 페이지 이동 ───────────────────────────────
-  const handlePaymentAndNavigate = async (type: 'capsule' | 'report') => {
-    if (!user?.id) return;
-    setIsPaymentLoading(true);
-    setPaymentTarget(type);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      if (type === 'capsule') {
-        toast.success('4,900원 결제 완료! 캡슐을 생성합니다.');
-        navigate('/time-capsule/create');
-      } else {
-        toast.success('2,900원 결제 완료! 리포트를 분석합니다.');
-        navigate('/main/contents/report');
-      }
-    } catch {
-      toast.error('결제에 실패했습니다. 다시 시도해주세요.');
-    } finally {
-      setIsPaymentLoading(false);
-      setPaymentTarget(null);
+const handlePaymentAndNavigate = async (type: 'capsule' | 'report') => {
+  if (!user?.id) return;
+  setIsPaymentLoading(true);
+  setPaymentTarget(type);
+
+  try {
+    const productId = type === 'capsule'
+      ? 'com.grayn.app.time_capsule'   // ← App Store Connect에 등록한 캡슐 상품 ID
+      : 'com.grayn.app.relation_analysis';
+
+    // 1. 결제 실행
+    const { receipt } = await IAP.purchase({ productId });
+
+    // 2. 영수증 검증
+    const { data, error } = await supabase.functions.invoke('verify-iap-receipt', {
+      body: { receipt, productId, userId: user.id }
+    });
+
+    if (error || !data?.success) {
+      toast.error('결제 검증에 실패했습니다.');
+      return;
     }
-  };
+
+    // 3. 결제 완료 후 이동
+    if (type === 'capsule') {
+      toast.success('결제 완료! 캡슐을 생성합니다.');
+      navigate('/time-capsule/create');
+    } else {
+      toast.success('결제 완료! 리포트를 분석합니다.');
+      navigate('/main/contents/report');
+    }
+
+  } catch (e: any) {
+    if (e.message === '결제가 취소되었습니다.') return;
+    toast.error(e.message || '결제에 실패했습니다.');
+  } finally {
+    setIsPaymentLoading(false);
+    setPaymentTarget(null);
+  }
+};
 
   // ── Helper Functions ──────────────────────────────────
   const getTimeRemaining = (scheduledAt: string) => {
