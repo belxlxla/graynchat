@@ -73,12 +73,15 @@ export default function MainLayout() {
   }, [user?.id]);
 
 return (
-<div
-  className="flex flex-col h-[100dvh] text-white overflow-hidden"
-  style={{ background: '#0d0d0d' }}
->
-  <div className="flex-1 w-full relative overflow-hidden"
-    style={{ paddingBottom: 'calc(58px + max(20px, env(safe-area-inset-bottom)))' }}>
+  <div
+    className="flex flex-col text-white"
+    style={{ 
+      background: '#0d0d0d',
+      height: '100dvh',
+      overflow: 'hidden',
+    }}
+  >
+    <div className="flex-1 relative overflow-hidden">
       <AnimatePresence mode="popLayout" initial={false} custom={{ isTab, direction }}>
         <motion.div
           key={location.pathname}

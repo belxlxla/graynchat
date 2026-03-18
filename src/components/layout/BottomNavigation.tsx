@@ -125,22 +125,22 @@ export default function BottomNavigation({ hasUnreadMessages }: BottomNavigation
     return null;
   };
 
-  return (
-<div
-  className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
-  style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
->
-      <nav
-        className="pointer-events-auto mx-5 w-full max-w-[320px]"
-        style={{
-          background: 'rgba(22, 22, 24, 0.78)',
-          backdropFilter: 'blur(32px) saturate(200%)',
-          WebkitBackdropFilter: 'blur(32px) saturate(200%)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '32px',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.05) inset',
-        }}
-      >
+return (
+  <div
+    className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
+    style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
+  >
+    <nav
+      className="pointer-events-auto mx-5 w-full max-w-[320px]"
+      style={{
+        background: 'rgba(22, 22, 24, 0.78)',
+        backdropFilter: 'blur(32px) saturate(200%)',
+        WebkitBackdropFilter: 'blur(32px) saturate(200%)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '32px',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.05) inset',
+      }}
+    >
         <div className="flex items-center justify-around px-3 h-[58px]">
           {navItems.map((item) => {
             const isActive  = activeId === item.id;

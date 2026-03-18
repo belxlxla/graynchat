@@ -4,19 +4,19 @@ const config: CapacitorConfig = {
   appId: 'vns.grayn.app',
   appName: 'GRAYN',
   webDir: 'dist',
-    ios: {
-    contentInset: 'always',  // ← 이거 추가
-    backgroundColor: '#0d0d0d', 
+  ios: {
+    contentInset: 'always',
+    backgroundColor: '#0d0d0d',
   },
-    android: {
-    backgroundColor: '#0d0d0d',  // ← 추가
+  android: {
+    backgroundColor: '#0d0d0d',
+    captureInput: true,
   },
-  // ✅ 아래 plugins 부분을 추가해서 네이티브 스플래시를 제어합니다.
   plugins: {
     SplashScreen: {
-      launchShowDuration: 0,      // 시스템 스플래시가 뜨는 시간을 0초로 (즉시 통과)
-      launchAutoHide: true,       // 자동으로 숨김
-      backgroundColor: "#1C1C1E", // 배경색을 앱 테마와 맞춤 (어두운 색)
+      launchShowDuration: 0,
+      launchAutoHide: true,
+      backgroundColor: "#0d0d0d",
       androidScaleType: "CENTER_CROP"
     }
   }
