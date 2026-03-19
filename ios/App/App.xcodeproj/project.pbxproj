@@ -15,6 +15,7 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		7A68936F2F6BB71200652306 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 7A68936E2F6BB71200652306 /* GoogleService-Info.plist */; };
 		7ABACB642F6A354A00CB94EA /* IAPPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 7ABACB632F6A354800CB94EA /* IAPPlugin.m */; };
 		7ABACB692F6A3A3C00CB94EA /* IAPManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ABACB682F6A3A3C00CB94EA /* IAPManager.swift */; };
 		7ABACB6B2F6A3A5C00CB94EA /* IAPPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ABACB6A2F6A3A5C00CB94EA /* IAPPlugin.swift */; };
@@ -31,6 +32,7 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		7A68936E2F6BB71200652306 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		7ABACB632F6A354800CB94EA /* IAPPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = IAPPlugin.m; sourceTree = "<group>"; };
 		7ABACB652F6A354D00CB94EA /* App-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "App-Bridging-Header.h"; sourceTree = "<group>"; };
 		7ABACB682F6A3A3C00CB94EA /* IAPManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IAPManager.swift; sourceTree = "<group>"; };
@@ -55,6 +57,7 @@
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
+				7A68936E2F6BB71200652306 /* GoogleService-Info.plist */,
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				7ABACB6C2F6A3AA800CB94EA /* Frameworks */,
@@ -168,6 +171,7 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				7A68936F2F6BB71200652306 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -334,7 +338,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = J4J5FC4RB4;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GRAYN;
@@ -364,7 +368,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = J4J5FC4RB4;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = GRAYN;

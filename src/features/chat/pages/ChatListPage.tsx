@@ -749,7 +749,7 @@ function LeaveChatModal({ chat, onClose, onConfirm }: {
             : '채팅방에서 나가면\n채팅 목록에서 사라집니다.'}
         </p>
       </div>
-      <div className="px-4 pb-8 pt-2 flex gap-2.5 shrink-0">
+      <div className="px-4 pb-28 pt-2 flex gap-2.5 shrink-0">
         <button
           onClick={onClose}
           className="flex-1 h-[50px] bg-[#2c2c2c] text-white/70 font-semibold rounded-2xl text-[15px] hover:bg-[#333] transition-colors"
