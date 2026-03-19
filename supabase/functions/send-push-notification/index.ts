@@ -10,13 +10,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// ✅ 서비스 계정으로 FCM 액세스 토큰 발급
 async function getFCMAccessToken(): Promise<string> {
   const serviceAccount = JSON.parse(Deno.env.get('FIREBASE_SERVICE_ACCOUNT')!);
-
   const now = getNumericDate(0);
-  const exp = getNumericDate(60 * 60); // 1시간
-
+  const exp = getNumericDate(60 * 60);
   const payload = {
     iss: serviceAccount.client_email,
     sub: serviceAccount.client_email,
@@ -25,28 +22,17 @@ async function getFCMAccessToken(): Promise<string> {
     exp: exp,
     scope: 'https://www.googleapis.com/auth/firebase.messaging',
   };
-
-  // PEM → CryptoKey 변환
   const pemHeader = '-----BEGIN PRIVATE KEY-----';
   const pemFooter = '-----END PRIVATE KEY-----';
   const rawKey = serviceAccount.private_key
-    .replace(pemHeader, '')
-    .replace(pemFooter, '')
-    .replace(/\n/g, '');
-
+    .replace(pemHeader, '').replace(pemFooter, '').replace(/\n/g, '');
   const binaryKey = Uint8Array.from(atob(rawKey), (c) => c.charCodeAt(0));
-
   const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    binaryKey,
+    'pkcs8', binaryKey,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign']
+    false, ['sign']
   );
-
   const jwt = await create({ alg: 'RS256', typ: 'JWT' }, payload, cryptoKey);
-
-  // JWT로 OAuth 토큰 교환
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -55,16 +41,8 @@ async function getFCMAccessToken(): Promise<string> {
       assertion: jwt,
     }),
   });
-
   const tokenData = await tokenRes.json();
   return tokenData.access_token;
-}
-
-interface PushNotificationRequest {
-  userIds: string[];
-  title: string;
-  body: string;
-  data?: Record<string, string>;
 }
 
 serve(async (req) => {
@@ -73,74 +51,139 @@ serve(async (req) => {
   }
 
   try {
-    const { userIds, title, body, data }: PushNotificationRequest = await req.json();
-
+    const body = await req.json();
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // FCM 토큰 조회
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('fcm_token')
-      .in('id', userIds)
-      .not('fcm_token', 'is', null);
+    // Database Webhook에서 직접 호출되는 경우 (messages INSERT)
+    if (body.type === 'INSERT' && body.table === 'messages') {
+      const message = body.record;
+      const senderId = message.sender_id;
+      const roomId = message.room_id;
+      const content = message.content;
 
-    if (error) throw error;
+      // 채팅방 멤버 조회 (보낸 사람 제외)
+      const { data: members } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', roomId)
+        .neq('user_id', senderId)
+        .is('left_at', null);
 
-    const tokens: string[] = profiles.map((p) => p.fcm_token).filter(Boolean);
+      if (!members || members.length === 0) {
+        return new Response(JSON.stringify({ message: 'No members' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
 
-    if (tokens.length === 0) {
-      return new Response(
-        JSON.stringify({ message: 'No FCM tokens found' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+      const receiverIds = members.map(m => m.user_id);
 
-    // ✅ V1 API 액세스 토큰 발급
-    const accessToken = await getFCMAccessToken();
-    const serviceAccount = JSON.parse(Deno.env.get('FIREBASE_SERVICE_ACCOUNT')!);
-    const projectId = serviceAccount.project_id; // ← JSON에서 자동 추출
+      // 알림 설정 + FCM 토큰 조회 (notify_all이 true인 사람만)
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('user_id, fcm_token, notify_all')
+        .in('user_id', receiverIds)
+        .eq('notify_all', true)
+        .not('fcm_token', 'is', null);
 
-    // 토큰마다 개별 발송 (V1 API는 멀티캐스트 미지원)
-    const results = await Promise.allSettled(
-      tokens.map((token) =>
-        fetch(
-          `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
-          {
+      if (!settings || settings.length === 0) {
+        return new Response(JSON.stringify({ message: 'No tokens' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // 보낸 사람 이름 조회
+      const { data: sender } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', senderId)
+        .single();
+
+      const senderName = sender?.name || '새 메시지';
+      const tokens = settings.map(s => s.fcm_token).filter(Boolean);
+
+      // FCM 발송
+      const accessToken = await getFCMAccessToken();
+      const serviceAccount = JSON.parse(Deno.env.get('FIREBASE_SERVICE_ACCOUNT')!);
+      const projectId = serviceAccount.project_id;
+
+      await Promise.allSettled(
+        tokens.map((token) =>
+          fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`, // ← Bearer 방식
+              'Authorization': `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
               message: {
                 token,
-                notification: { title, body },
-                data: data || {},
+                notification: {
+                  title: senderName,
+                  body: content.length > 50 ? content.substring(0, 47) + '...' : content,
+                },
+                data: { roomId, type: 'message' },
                 apns: {
-                  payload: {
-                    aps: { sound: 'default' },
-                  },
+                  payload: { aps: { sound: 'default' } },
                 },
               },
             }),
-          }
+          })
         )
+      );
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 기존 방식 (직접 호출)
+    const { userIds, title, body: notifBody, data } = body;
+    const { data: userSettings } = await supabase
+      .from('user_settings')
+      .select('user_id, fcm_token, notify_all')
+      .in('user_id', userIds)
+      .eq('notify_all', true)
+      .not('fcm_token', 'is', null);
+
+    const tokens = (userSettings || []).map(s => s.fcm_token).filter(Boolean);
+    if (tokens.length === 0) {
+      return new Response(JSON.stringify({ message: 'No tokens' }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    const accessToken = await getFCMAccessToken();
+    const serviceAccount = JSON.parse(Deno.env.get('FIREBASE_SERVICE_ACCOUNT')!);
+    const projectId = serviceAccount.project_id;
+
+    await Promise.allSettled(
+      tokens.map((token) =>
+        fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            message: {
+              token,
+              notification: { title, body: notifBody },
+              data: data || {},
+              apns: { payload: { aps: { sound: 'default' } } },
+            },
+          }),
+        })
       )
     );
 
-    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-    const failed = results.filter((r) => r.status === 'rejected').length;
-
-    return new Response(
-      JSON.stringify({ success: true, sentTo: succeeded, failed }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '알 수 없는 오류';
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 });

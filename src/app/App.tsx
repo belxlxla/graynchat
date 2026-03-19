@@ -131,9 +131,11 @@ function AppContent() {
       if (user?.id) {
         try {
           const { error } = await supabase
-            .from('profiles')
-            .update({ fcm_token: token.value })
-            .eq('id', user.id);
+            .from('user_settings')
+            .upsert({ 
+              user_id: user.id,
+              fcm_token: token.value 
+            }, { onConflict: 'user_id' });
           
           if (error) throw error;
           
