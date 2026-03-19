@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
-import { NativeSettings, AndroidSettings, IOSSettings } from 'capacitor-native-settings';
+import { NativeSettings } from 'capacitor-native-settings';
 
 export default function NotificationSettingsPage() {
   const navigate = useNavigate();
@@ -120,18 +120,19 @@ export default function NotificationSettingsPage() {
   };
 
   // 설정 앱 열기
-  const openAppSettings = async () => {
-    try {
-      if (Capacitor.getPlatform() === 'ios') {
-        await NativeSettings.openIOS({ option: IOSSettings.App });
-      } else if (Capacitor.getPlatform() === 'android') {
-        await NativeSettings.openAndroid({ option: AndroidSettings.AppNotification });
-      }
-    } catch (err) {
-      console.error('설정 앱 열기 실패:', err);
-      toast.error('설정 앱을 열 수 없습니다.');
+const openAppSettings = async () => {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await NativeSettings.open({
+        optionIOS: 'app',
+        optionAndroid: 'application_details', 
+      });
     }
-  };
+  } catch (err) {
+    console.error('설정 앱 열기 실패:', err);
+    toast.error('설정 앱을 열 수 없습니다.');
+  }
+};
 
   // 설정 변경
   const handleToggle = async (key: keyof typeof settings) => {
