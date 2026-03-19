@@ -26,6 +26,7 @@
     "@simplewebauthn/types": "^12.0.0",
     "@supabase/supabase-js": "^2.93.2",
     "@tanstack/react-query": "^5.90.20",
+    "capacitor-native-settings": "^8.1.0",
     "capacitor-purchases": "^1.2.4",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
