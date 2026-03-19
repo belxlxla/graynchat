@@ -126,10 +126,21 @@ export default function BottomNavigation({ hasUnreadMessages }: BottomNavigation
   };
 
 return (
-  <div
-    className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none"
-    style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
-  >
+<div
+  style={{
+    position: 'fixed',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    display: 'flex',
+    justifyContent: 'center',
+    paddingBottom: 'env(safe-area-inset-bottom)',
+    paddingLeft: '20px',
+    paddingRight: '20px',
+    pointerEvents: 'none',
+  }}
+>
     <nav
       className="pointer-events-auto mx-5 w-full max-w-[320px]"
       style={{
@@ -141,72 +152,66 @@ return (
         boxShadow: '0 12px 40px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.05) inset',
       }}
     >
-        <div className="flex items-center justify-around px-3 h-[58px]">
-          {navItems.map((item) => {
-            const isActive  = activeId === item.id;
-            const isPressed = pressedId === item.id;
-
-            return (
-              <button
-                key={item.id}
-                onClick={() => handlePress(item.id, item.path)}
-                className="relative flex items-center justify-center w-10 h-10 outline-none select-none"
+      <div className="flex items-center justify-around px-3 h-[58px]">
+        {navItems.map((item) => {
+          const isActive = activeId === item.id;
+          const isPressed = pressedId === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => handlePress(item.id, item.path)}
+              className="relative flex items-center justify-center w-10 h-10 outline-none select-none"
+            >
+              <AnimatePresence>
+                {isActive && (
+                  <motion.div
+                    layoutId="active-bg"
+                    initial={{ opacity: 0, scale: 0.7 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.7 }}
+                    transition={{ type: 'spring', stiffness: 550, damping: 32 }}
+                    className="absolute inset-0 rounded-[14px]"
+                    style={{
+                      background: 'rgba(255, 32, 58, 0.13)',
+                      border: '1px solid rgba(255, 32, 58, 0.22)',
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+              <motion.div
+                animate={{
+                  scale: isPressed ? 0.78 : isActive ? 1.08 : 1,
+                  y: isActive ? -0.5 : 0,
+                }}
+                transition={{ type: 'spring', stiffness: 620, damping: 26 }}
+                className="relative z-10 flex items-center justify-center"
               >
-                {/* 활성 배경 */}
+                {renderIcon(item, isActive)}
                 <AnimatePresence>
-                  {isActive && (
-                    <motion.div
-                      layoutId="active-bg"
-                      initial={{ opacity: 0, scale: 0.7 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.7 }}
-                      transition={{ type: 'spring', stiffness: 550, damping: 32 }}
-                      className="absolute inset-0 rounded-[14px]"
-                      style={{
-                        background: 'rgba(255, 32, 58, 0.13)',
-                        border: '1px solid rgba(255, 32, 58, 0.22)',
-                      }}
-                    />
+                  {item.id === 'chats' && isUnread && (
+                    <motion.span
+                      key="badge"
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ type: 'spring', stiffness: 600, damping: 22 }}
+                      className="absolute -top-[3px] -right-[3px] w-[8px] h-[8px] rounded-full bg-[#FF203A]"
+                      style={{ border: '1.5px solid rgba(22,22,24,0.9)' }}
+                    >
+                      <motion.span
+                        className="absolute inset-0 rounded-full bg-[#FF203A]"
+                        animate={{ scale: [1, 2.0, 1], opacity: [0.6, 0, 0.6] }}
+                        transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                      />
+                    </motion.span>
                   )}
                 </AnimatePresence>
-
-                {/* 아이콘 */}
-                <motion.div
-                  animate={{
-                    scale: isPressed ? 0.78 : isActive ? 1.08 : 1,
-                    y: isActive ? -0.5 : 0,
-                  }}
-                  transition={{ type: 'spring', stiffness: 620, damping: 26 }}
-                  className="relative z-10 flex items-center justify-center"
-                >
-                  {renderIcon(item, isActive)}
-
-                  {/* 🔥 채팅 미읽음 뱃지 (isUnread 변수 사용) */}
-                  <AnimatePresence>
-                    {item.id === 'chats' && isUnread && (
-                      <motion.span
-                        key="badge"
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0, opacity: 0 }}
-                        transition={{ type: 'spring', stiffness: 600, damping: 22 }}
-                        className="absolute -top-[3px] -right-[3px] w-[8px] h-[8px] rounded-full bg-[#FF203A]"
-                        style={{ border: '1.5px solid rgba(22,22,24,0.9)' }}
-                      >
-                        <motion.span
-                          className="absolute inset-0 rounded-full bg-[#FF203A]"
-                          animate={{ scale: [1, 2.0, 1], opacity: [0.6, 0, 0.6] }}
-                          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
-    </div>
-  );
+              </motion.div>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  </div>
+);
 }

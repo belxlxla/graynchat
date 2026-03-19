@@ -74,23 +74,25 @@ export default function MainLayout() {
 
 return (
   <div
-    className="text-white"
-    style={{ 
-      background: '#0d0d0d',
+    style={{
       position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
+      background: '#0d0d0d',
+      color: 'white',
+      overflow: 'hidden',
     }}
   >
-    <div 
+    <div
       style={{
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
-        bottom: 'calc(58px + max(16px, env(safe-area-inset-bottom)))',
+        bottom: 0,
+        overflow: 'hidden',
       }}
     >
       <AnimatePresence mode="popLayout" initial={false} custom={{ isTab, direction }}>
@@ -107,12 +109,10 @@ return (
         </motion.div>
       </AnimatePresence>
     </div>
-
     <BottomNavigation hasUnreadMessages={hasUnreadMessages} />
   </div>
 );
 }
-
 // ─────────────────────────────────────────────────────────
 //  Transition philosophy
 //  • 탭 전환  : opacity 위주, x는 6px 이하 미세 힌트만

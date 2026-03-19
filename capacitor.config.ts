@@ -1,16 +1,14 @@
 import type { CapacitorConfig } from '@capacitor/cli';
-
 const config: CapacitorConfig = {
   appId: 'vns.grayn.app',
   appName: 'GRAYN',
   webDir: 'dist',
   ios: {
-    contentInset: 'always',
+    contentInset: 'never',
     backgroundColor: '#0d0d0d',
   },
   android: {
     backgroundColor: '#0d0d0d',
-    captureInput: true,
   },
   plugins: {
     SplashScreen: {
@@ -21,5 +19,4 @@ const config: CapacitorConfig = {
     }
   }
 };
-
 export default config;

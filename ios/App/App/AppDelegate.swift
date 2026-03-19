@@ -7,16 +7,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        
-        // ✅ 웹뷰가 전체 화면을 차지하도록
-        DispatchQueue.main.async {
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                windowScene.windows.forEach { window in
-                    window.backgroundColor = UIColor(red: 13/255, green: 13/255, blue: 13/255, alpha: 1.0)
-                }
-            }
-        }
-        
         return true
     }
 
